@@ -43,10 +43,19 @@ class MappingPackBundleDiff {
         bundle: List<MappingBundleRule>,
         active: List<MappingBundleRule>,
     ): MappingPackBundleDiffResult {
-        val bundleSide = MappingPackBundleDiffResult.Side.BUNDLE
-        val activeSide = MappingPackBundleDiffResult.Side.ACTIVE
-        val proposed = index(bundle) ?: return duplicate(bundle, bundleSide)
-        val current = index(active) ?: return duplicate(active, activeSide)
+        val proposed = index(bundle)
+        val current = index(active)
+        return when {
+            proposed == null -> duplicate(bundle, MappingPackBundleDiffResult.Side.BUNDLE)
+            current == null -> duplicate(active, MappingPackBundleDiffResult.Side.ACTIVE)
+            else -> MappingPackBundleDiffResult.Changes(compare(proposed, current))
+        }
+    }
+
+    private fun compare(
+        proposed: Map<String, MappingBundleRule>,
+        current: Map<String, MappingBundleRule>,
+    ): List<MappingPackChange> {
         val changes = mutableListOf<MappingPackChange>()
         for (code in (proposed.keys + current.keys).toSortedSet()) {
             val p = proposed[code]
@@ -57,7 +66,7 @@ class MappingPackBundleDiff {
                 else -> changes += propertyChanges(code, c, p)
             }
         }
-        return MappingPackBundleDiffResult.Changes(changes)
+        return changes
     }
 
     private fun index(rules: List<MappingBundleRule>): Map<String, MappingBundleRule>? {
