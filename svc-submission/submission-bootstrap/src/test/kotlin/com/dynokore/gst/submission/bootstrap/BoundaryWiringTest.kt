@@ -11,9 +11,9 @@ import org.junit.jupiter.api.io.TempDir
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.context.properties.bind.Bindable
 import org.springframework.boot.context.properties.bind.Binder
-import org.springframework.boot.test.context.runner.ApplicationContextRunner
 import org.springframework.boot.context.properties.source.MapConfigurationPropertySource
 import org.springframework.boot.env.YamlPropertySourceLoader
+import org.springframework.boot.test.context.runner.ApplicationContextRunner
 import org.springframework.core.env.EnumerablePropertySource
 import org.springframework.core.env.MapPropertySource
 import org.springframework.core.io.ClassPathResource
@@ -50,8 +50,11 @@ class BoundaryWiringTest {
                 .withInitializer { it.environment.propertySources.addFirst(MapPropertySource("shipped", values)) }
         var failure: Throwable? = null
         runner.run { failure = it.startupFailure }
-        return generateSequence(failure) { it.cause }.joinToString(" | ") { it.message.orEmpty() }.takeIf { failure != null }
+        return failure?.let(::messages)
     }
+
+    private fun messages(failure: Throwable?): String =
+        generateSequence(failure) { it.cause }.joinToString(" | ") { it.message.orEmpty() }
 
     @Test
     fun `INV-AC-26429 without the key the start fails`() {
@@ -67,12 +70,14 @@ class BoundaryWiringTest {
         failureOf(shippedExcept(key) + (key to 0)).orEmpty() shouldContain
             "inv.boundary-check.max-documents must be greater than 0"
         SubmissionContext.offline(dir).withPropertyValues("$key=0").run { context ->
-            generateSequence(context.startupFailure) { it.cause }.joinToString(" | ") { it.message.orEmpty() } shouldContain
-                "inv.boundary-check.max-documents must be greater than 0"
+            messages(context.startupFailure) shouldContain "inv.boundary-check.max-documents must be greater than 0"
         }
         failureOf(shippedExcept()) shouldBe null
         MapConfigurationPropertySource(shippedExcept()).let {
-            Binder(it).bindOrCreate("inv.boundary-check", Bindable.of(BoundaryProperties::class.java)).maxDocuments shouldBe 5000
+            Binder(
+                it,
+            ).bindOrCreate("inv.boundary-check", Bindable.of(BoundaryProperties::class.java)).maxDocuments shouldBe
+                5000
         }
     }
 

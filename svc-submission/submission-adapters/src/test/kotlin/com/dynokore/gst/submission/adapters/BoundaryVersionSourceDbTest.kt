@@ -9,11 +9,10 @@ import com.dynokore.platform.tenancykernel.TenantId
 import com.dynokore.platform.tenancykernel.TransactionRunner
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
-import org.jooq.ExecuteContext
-import org.jooq.ExecuteListener
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
-import org.jooq.impl.DefaultConfiguration
+import org.jooq.tools.jdbc.MockConnection
+import org.jooq.tools.jdbc.MockResult
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
 import java.util.UUID
@@ -22,21 +21,7 @@ import java.util.UUID
 class BoundaryVersionSourceDbTest {
     private val connection =
         SubmissionDb.connect(SubmissionDb.RUNTIME, SubmissionDb.RUNTIME_PASSWORD).also { it.autoCommit = false }
-    private val seedDsl = DSL.using(connection, SQLDialect.POSTGRES)
-    private val statements = mutableListOf<String>()
-    private val readDsl =
-        DSL.using(
-            DefaultConfiguration()
-                .set(connection)
-                .set(SQLDialect.POSTGRES)
-                .set(
-                    object : ExecuteListener {
-                        override fun executeStart(ctx: ExecuteContext) {
-                            statements += ctx.sql().orEmpty()
-                        }
-                    },
-                ),
-        )
+    private val dsl = DSL.using(connection, SQLDialect.POSTGRES)
     private val bound = ThreadLocal<UUID>()
     private val runner =
         object : TransactionRunner {
@@ -50,7 +35,7 @@ class BoundaryVersionSourceDbTest {
                 }
             }
         }
-    private val source: BoundaryVersionSource = JooqBoundaryVersionSource(readDsl, runner)
+    private val source: BoundaryVersionSource = JooqBoundaryVersionSource(dsl, runner)
     private val sub = Submission.SUBMISSION_
     private val tenantA = UUID.randomUUID()
     private val tenantB = UUID.randomUUID()
@@ -77,7 +62,7 @@ class BoundaryVersionSourceDbTest {
         state: String,
         entity: String,
     ) = asTenant(tenant) {
-        seedDsl
+        dsl
             .insertInto(sub)
             .set(sub.TENANT_ID, tenant)
             .set(sub.DOC_UUID, doc.toString())
@@ -126,8 +111,7 @@ class BoundaryVersionSourceDbTest {
         seed(tenantB, doc, 2, "REJECTED", "EB")
         read(tenantA, listOf(doc)) shouldBe listOf(BoundaryVersion(doc, 1, "EA", LifecycleState.SENT))
         read(tenantB, listOf(doc)) shouldBe listOf(BoundaryVersion(doc, 2, "EB", LifecycleState.REJECTED))
-        // the tenant is in the WHERE clause as well as the row level security (CS-19)
-        statements.all { it.lowercase().contains("tenant_id") } shouldBe true
+        // the tenant is also in the WHERE clause (CS-19): see the statement case below
     }
 
     @Test
@@ -138,22 +122,37 @@ class BoundaryVersionSourceDbTest {
             docs.map { (state, doc) -> BoundaryVersion(doc, 1, "E-${state.name}", state) }
     }
 
-    @Test
-    fun `INV-AC-26429 an empty argument returns an empty list and issues no statement`() {
-        read(tenantA, emptyList()) shouldBe emptyList()
-        statements shouldBe emptyList()
+    /** The statement text the reader issues, recorded by a mock JDBC connection that answers no row. */
+    private fun issued(docs: Collection<UUID>): List<String> {
+        val recorded = mutableListOf<String>()
+        val mock =
+            DSL.using(
+                MockConnection { ctx ->
+                    recorded.add(ctx.sql())
+                    arrayOf(MockResult(0, DSL.using(SQLDialect.POSTGRES).newResult(sub.DOC_UUID)))
+                },
+                SQLDialect.POSTGRES,
+            )
+        val noTransaction =
+            object : TransactionRunner {
+                override fun <T> inTransaction(block: () -> T): T = block()
+            }
+        JooqBoundaryVersionSource(mock, noTransaction).versions(TenantId(tenantA), docs)
+        return recorded
     }
 
     @Test
-    fun `INV-AC-26429 the reader locks nothing and writes nothing`() {
-        val doc = UUID.randomUUID()
-        seed(tenantA, doc, 1, "SENT", "E1")
-        statements.clear()
-        read(tenantA, listOf(doc, UUID.randomUUID()))
+    fun `INV-AC-26429 an empty argument returns an empty list and issues no statement`() {
+        read(tenantA, emptyList()) shouldBe emptyList()
+        issued(emptyList()) shouldBe emptyList()
+    }
+
+    @Test
+    fun `INV-AC-26429 the reader locks nothing and writes nothing and carries the tenant in the WHERE clause`() {
+        val statements = issued(listOf(UUID.randomUUID(), UUID.randomUUID()))
         statements.size shouldBe 1
-        statements.forEach { sql ->
-            val s = sql.lowercase()
-            listOf("for update", "insert", "update", "delete").forEach { (s.contains(it)) shouldBe false }
-        }
+        val text = statements.single().lowercase().replace("\"", "")
+        text.contains("tenant_id = cast(? as uuid)") shouldBe true
+        listOf("for update", "insert", "update", "delete").filter { text.contains(it) } shouldBe emptyList()
     }
 }
