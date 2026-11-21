@@ -217,7 +217,10 @@ class PurchaseDateBasisPublishTest {
         published.clear()
         assertInstanceOf(ElectionOutcome.Done::class.java, record("CLAIMABLE_PORTION", first))
         assertTrue(published.flatMap { it.changedAttributes }.none { it.attribute == "purchaseDateBasis" })
-        assertTrue(published.flatMap { it.node.profile }.none { it.attribute == "purchaseDateBasis" })
+        assertEquals(
+            listOf(entry("INVOICE_DATE", first)),
+            published.flatMap { it.node.profile }.filter { it.attribute == "purchaseDateBasis" },
+        )
     }
 
     @Test

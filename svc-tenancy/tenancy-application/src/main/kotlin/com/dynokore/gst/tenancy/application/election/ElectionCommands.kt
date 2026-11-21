@@ -41,6 +41,9 @@ const val EXEMPT_PURCHASE_BASIS_ATTRIBUTE = "exemptPurchaseBasis"
 /** The profile attribute the elected purchase date basis is published under on EntityProfileChanged (INV-AC-21457). */
 const val PURCHASE_DATE_BASIS_ATTRIBUTE = "purchaseDateBasis"
 
+/** The profile attribute the elected apportionment mode is published under on EntityProfileChanged (INV-AC-26600). */
+const val APPORTIONMENT_MODE_ATTRIBUTE = "apportionmentMode"
+
 /** The codes of one stored election as published: ascending by code unit, joined by a comma without space. */
 fun exemptPurchaseCodesValue(row: ExemptPurchaseElectionRow): String = row.taxCodes.sorted().joinToString(",")
 
@@ -252,6 +255,9 @@ class ElectionCommands(
             )?.let { return@inTransaction it }
             if (kind == ElectionKind.PURCHASE_DATE_BASIS) {
                 publishPurchaseDateBasis(entity.ref, before, election, effectiveFrom)
+            }
+            if (kind == ElectionKind.APPORTIONMENT_MODE) {
+                publishApportionmentMode(entity.ref, before, election, effectiveFrom)
             }
             ElectionOutcome.Done(elections.history(entity.ref, kind).single { it.effectiveFrom == effectiveFrom })
         }
@@ -660,8 +666,12 @@ class ElectionCommands(
                 publishPurchaseDateBasis(entityRef, before, change.value, change.effectiveFrom)
             }
 
+            ElectionKind.APPORTIONMENT_MODE -> {
+                publishApportionmentMode(entityRef, before, change.value, change.effectiveFrom)
+            }
+
             else -> {
-                // the issuance mode and the apportionment mode publish no item here
+                // the issuance mode publishes no item here
             }
         }
     }
@@ -685,6 +695,25 @@ class ElectionCommands(
         effectiveFrom,
     )
 
+    /** EntityProfileChanged with the apportionment mode entry in changedAttributes and node.profile (INV-AC-26600). */
+    private fun publishApportionmentMode(
+        entityRef: String,
+        before: List<ElectionRecord>,
+        value: String,
+        effectiveFrom: LocalDate,
+    ) = publishProfile(
+        tenants.current(),
+        entityRef,
+        listOf(
+            ChangedAttribute(
+                APPORTIONMENT_MODE_ATTRIBUTE,
+                StatusTimeline.inForceOn(before, effectiveFrom)?.value,
+                value,
+            ),
+        ),
+        effectiveFrom,
+    )
+
     /** One publish carries every profile entry, as a StructureNode replaces the node's whole state. */
     private fun publishProfile(
         tenant: TenantId,
@@ -701,6 +730,7 @@ class ElectionCommands(
                     electionEntries(entity.ref, ElectionKind.ISSUANCE_MODE, ISSUANCE_MODE_ATTRIBUTE) +
                     electionEntries(entity.ref, ElectionKind.EXCHANGE_RATE_SOURCE, RATE_SOURCE_ATTRIBUTE) +
                     electionEntries(entity.ref, ElectionKind.PURCHASE_DATE_BASIS, PURCHASE_DATE_BASIS_ATTRIBUTE) +
+                    electionEntries(entity.ref, ElectionKind.APPORTIONMENT_MODE, APPORTIONMENT_MODE_ATTRIBUTE) +
                     exemptPurchaseEntries(exemptPurchases.history(entity.ref)) +
                     migrationCutoverEntries(cutovers.find(entity.ref))
             ).sortedBy { it.effectiveDate }
