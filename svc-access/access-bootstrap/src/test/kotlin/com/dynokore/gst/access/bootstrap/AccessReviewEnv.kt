@@ -226,6 +226,7 @@ internal class AccessReviewEnv(
         const val OFFICER_2 = "user:officer-2"
         const val ADMIN = "user:tenant-admin"
         const val TOKEN_OFFICER_1 = "token-o1"
+        const val TOKEN_ADMIN = "token-admin"
         val VIEWERS = listOf("user:viewer-1", "user:viewer-2", "user:viewer-3", "user:viewer-4")
         val SINGAPORE: ZoneId = ZoneId.of("Asia/Singapore")
 
@@ -247,7 +248,10 @@ internal class AccessReviewEnv(
                     EndUserPrincipalResolver::class.java,
                     {
                         TestTokenPrincipals(
-                            mapOf(TOKEN_OFFICER_1 to EndUserPrincipal(OFFICER_1, tenant, emptySet())),
+                            mapOf(
+                                TOKEN_OFFICER_1 to EndUserPrincipal(OFFICER_1, tenant, emptySet()),
+                                TOKEN_ADMIN to EndUserPrincipal(ADMIN, tenant, emptySet()),
+                            ),
                         )
                     },
                 ).let {

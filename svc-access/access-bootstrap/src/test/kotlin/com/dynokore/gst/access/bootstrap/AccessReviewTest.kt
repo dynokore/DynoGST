@@ -10,6 +10,7 @@ import com.dynokore.platform.configresolver.VariationPointKey
 import com.dynokore.platform.configresolver.VpStatus
 import com.dynokore.platform.productruntime.catalogue.GstVariationPointCatalogue
 import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 
 /**
@@ -84,6 +85,30 @@ class AccessReviewTest {
                     ),
                 ).isZero()
                 assertThat(env.open("2026Q3").status).isEqualTo(Status.OPEN)
+            }
+        }
+
+    @Test
+    @DisplayName(
+        "INV-AC-16620 a new tenant reviews quarterly, the monthly setting is refused while VP-05 is planned, " +
+            "and a caller without vp-05.set is refused",
+    )
+    fun `INV-AC-16620 quarterly default, monthly refused while planned, caller without permission refused`() =
+        run { env ->
+            val pinned = GstVariationPointCatalogue("access-svc").find(VariationPointKey("VP-05"))!!.status
+            if (pinned == VpStatus.PLANNED) {
+                assertThat(env.open("2026Q3").status).isEqualTo(Status.OPEN)
+                val monthly = env.setCadence("MONTHLY")
+                assertThat(monthly.status).describedAs(monthly.contentAsString).isGreaterThanOrEqualTo(400)
+                val noPermission = env.setCadence("QUARTERLY", AccessReviewEnv.TOKEN_ADMIN)
+                assertThat(noPermission.status).describedAs(noPermission.contentAsString).isEqualTo(403)
+                assertThat(
+                    env.count(
+                        "select count(*) from access.config_setting where tenant_id = ? and vp_key = 'VP-05'",
+                        env.tenant.value,
+                    ),
+                ).isZero()
+                env.assertRefused(env.refusal { env.open("2026-09") }, 400)
             }
         }
 
