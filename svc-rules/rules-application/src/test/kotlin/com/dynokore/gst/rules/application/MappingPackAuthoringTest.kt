@@ -539,6 +539,7 @@ class MappingPackAuthoringTest {
     }
 
     @Test
+    @Suppress("MaxLineLength", "ktlint:standard:max-line-length") // INV-T-25804: the task fixes this long test name
     fun `INV-AC-756 INV-AC-15994 INV-AC-15995 INV-AC-15993 approve step 6 an unaccepted non-PRIMARY entry is RUL-007, the acceptance ends with the draft`() {
         val e = Env()
         e.draft()
@@ -558,6 +559,7 @@ class MappingPackAuthoringTest {
     }
 
     @Test
+    @Suppress("MaxLineLength", "ktlint:standard:max-line-length") // INV-T-25804: the task fixes this long test name
     fun `INV-AC-756 INV-AC-15994 INV-AC-15995 approve step 6 an acceptance that expired or whose entry changed does not release the entry`() {
         val e = Env()
         e.draft()

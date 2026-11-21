@@ -49,6 +49,7 @@ class MappingAcceptanceTest {
     }
 
     @Test
+    @Suppress("MaxLineLength", "ktlint:standard:max-line-length") // INV-T-25804: the task fixes this long test name
     fun `INV-AC-756 INV-AC-15995 an entry changed to another IRAS code or source class after the acceptance is not in the set`() {
         val a = acc(x)
         accepted(listOf(x.copy(irasCode = "ZR")), a) shouldBe emptySet()
