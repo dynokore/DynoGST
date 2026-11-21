@@ -94,3 +94,43 @@ interface PartitionLifecycle {
 
     fun drop(partitionId: String)
 }
+
+/** The recorded acknowledgement behind a shortened notice window: the acknowledging user ID, never a role. */
+data class NoticeAcknowledgement(
+    val userId: String,
+    val soleOperator: Boolean,
+) {
+    init {
+        require(userId.isNotBlank()) { "the acknowledging user ID must not be blank" }
+    }
+}
+
+/** The VP-66 value in force and the acknowledgement behind it, read for the tenant on a business date. */
+interface NoticeWindowSource {
+    /** The notice window in force for the tenant on [on]. */
+    fun window(
+        tenant: String,
+        on: LocalDate,
+    ): NoticeWindow
+
+    /**
+     * The first recorded acknowledgement of the value in force at [notifiedAt], or null when no relaxation backs it;
+     * its sole-operator fact is read for the entity [entityRef] (INV-REQ-994).
+     */
+    fun acknowledgement(
+        tenant: String,
+        entityRef: String,
+        notifiedAt: Instant,
+    ): NoticeAcknowledgement?
+}
+
+/** Stores the notice row: the window that applied and the acknowledgement, fixed at notice time. */
+interface NoticeWriter {
+    fun record(
+        tenant: String,
+        partitionId: String,
+        notifiedAt: Instant,
+        window: NoticeWindow,
+        acknowledgement: NoticeAcknowledgement?,
+    )
+}

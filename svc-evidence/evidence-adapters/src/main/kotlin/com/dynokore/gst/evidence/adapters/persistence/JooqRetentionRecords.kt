@@ -17,8 +17,10 @@ import com.dynokore.gst.evidence.application.retention.DeletionAudit
 import com.dynokore.gst.evidence.application.retention.DeletionIntegrity
 import com.dynokore.gst.evidence.application.retention.EffectiveRetention
 import com.dynokore.gst.evidence.application.retention.HoldReader
+import com.dynokore.gst.evidence.application.retention.NoticeAcknowledgement
 import com.dynokore.gst.evidence.application.retention.NoticeReader
 import com.dynokore.gst.evidence.application.retention.NoticeRecord
+import com.dynokore.gst.evidence.application.retention.NoticeWriter
 import com.dynokore.gst.evidence.application.retention.PartitionRecord
 import com.dynokore.gst.evidence.application.retention.PartitionRegistry
 import com.dynokore.gst.evidence.application.retention.PartitionState
@@ -41,6 +43,7 @@ import org.jooq.Field
 import org.jooq.Table
 import tools.jackson.databind.ObjectMapper
 import java.time.Clock
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
@@ -112,6 +115,7 @@ class JooqRetentionRecords(
     HoldReader,
     RetentionEndReader,
     NoticeReader,
+    NoticeWriter,
     ApprovalReader,
     DeletionIntegrity {
     private val p = RETENTION_PARTITION
@@ -274,6 +278,31 @@ class JooqRetentionRecords(
             .limit(1)
             .fetchOne()
             ?.let { NoticeRecord(it.notifiedAt.req().toInstant(), NoticeWindow(maxOf(it.windowDays.req(), 1))) }
+    }
+
+    /**
+     * One insert into `retention_notice`: the window in whole days, the close (the notice instant plus those days, the
+     * arithmetic of `NoticeWindowGate`) and the acknowledging user ID, never a role (INV-AC-26255).
+     */
+    override fun record(
+        tenant: String,
+        partitionId: String,
+        notifiedAt: Instant,
+        window: NoticeWindow,
+        acknowledgement: NoticeAcknowledgement?,
+    ) {
+        val id = requireNotNull(uuid(tenant)) { "the tenant is not a UUID" }
+        val n = RETENTION_NOTICE
+        dsl
+            .insertInto(n)
+            .set(n.TENANT_ID, id)
+            .set(n.PARTITION_ID, partitionId)
+            .set(n.NOTIFIED_AT, notifiedAt.atOffset(ZoneOffset.UTC))
+            .set(n.WINDOW_DAYS, window.days)
+            .set(n.WINDOW_CLOSES_AT, notifiedAt.plus(Duration.ofDays(window.days.toLong())).atOffset(ZoneOffset.UTC))
+            .set(n.ACKNOWLEDGED_BY, acknowledgement?.userId)
+            .set(n.ACKNOWLEDGED_SOLE_OPERATOR, acknowledgement?.soleOperator)
+            .execute()
     }
 
     override fun approvals(
