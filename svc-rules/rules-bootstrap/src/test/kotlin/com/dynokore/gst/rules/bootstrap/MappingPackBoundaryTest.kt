@@ -634,7 +634,8 @@ class MappingPackBoundaryTest(
     }
 
     @Test
-    fun `INV-AC-1509 a drafted pack is stored as a MAPPING pack and nothing here changes a severity override pack`() {
+    @Suppress("MaxLineLength", "ktlint:standard:max-line-length") // INV-T-25794: the task fixes this long test name
+    fun `INV-AC-1509 INV-AC-15991 a drafted pack is stored as a MAPPING pack and nothing here changes a severity override pack`() {
         val packId = draft(label())
         value(TENANT_A, "select pack_type from rules.pack_registry where pack_id = ?", packId) shouldBe "MAPPING"
         value(TENANT_A, "select layer from rules.pack_registry where pack_id = ?", packId) shouldBe "TENANT_MAPPING"
@@ -961,7 +962,7 @@ class MappingPackOutcomesTest(
     }
 
     @Test
-    fun `a code absent from the catalogue answers 422 RUL-009 at sign-off and stores nothing`() {
+    fun `INV-AC-15990 a code absent from the catalogue answers 422 RUL-009 at sign-off and stores nothing`() {
         val label = label()
         val packId = draft(label)
         ok(mapCode(packId, "Z1", "ZZ", "PRIMARY"), 201)
@@ -975,7 +976,7 @@ class MappingPackOutcomesTest(
     }
 
     @Test
-    fun `a namespaced IRAS code answers 422 RUL-010 and not SRT-005 and stores nothing`() {
+    fun `INV-AC-15990 a namespaced IRAS code answers 422 RUL-010 and not SRT-005 and stores nothing`() {
         val packId = draft(label())
         val before = snapshot()
         val answer = mapCode(packId, "BAD", "X:SR")

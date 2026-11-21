@@ -503,7 +503,8 @@ class MappingPackAuthoringTest {
     }
 
     @Test
-    fun `INV-AC-1440 approve step 5 a code outside the catalogue is RUL-009 and no acceptance releases it`() {
+    @Suppress("MaxLineLength", "ktlint:standard:max-line-length") // INV-T-25794: the task fixes this long test name
+    fun `INV-AC-1440 INV-AC-15990 approve step 5 a code outside the catalogue is RUL-009 and no acceptance releases it`() {
         val e = Env()
         e.draft()
         e.map("A", "SR")
@@ -522,7 +523,8 @@ class MappingPackAuthoringTest {
     }
 
     @Test
-    fun `INV-AC-1440 approve step 5 a namespaced code is RUL-010 and a missing catalogue is RUL-009 for every code`() {
+    @Suppress("MaxLineLength", "ktlint:standard:max-line-length") // INV-T-25794: the task fixes this long test name
+    fun `INV-AC-1440 INV-AC-15990 approve step 5 a namespaced code is RUL-010 and a missing catalogue is RUL-009 for every code`() {
         val e = Env()
         e.draft()
         e.map("A", "SR")
