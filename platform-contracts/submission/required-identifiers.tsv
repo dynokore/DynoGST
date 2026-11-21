@@ -279,3 +279,8 @@ IdentityTripleCorrection.resubmittedCount	schema_property	openapi.yaml	INV-REQ-1
 blockedCount	property	schemas/readiness-changed-payload.schema.json	INV-REQ-904
 entityRef	property	schemas/submission-acknowledged-payload.schema.json	INV-REQ-740
 direction	property	schemas/submission-acknowledged-payload.schema.json	INV-REQ-740
+approverAlert	property	openapi.yaml	INV-REQ-895
+ReadinessStatus.approverAlert	schema_property	openapi.yaml	INV-REQ-895
+ApproverAlert.accCode	schema_property	openapi.yaml	INV-REQ-895
+ApproverAlert.raisedAt	schema_property	openapi.yaml	INV-REQ-895
+ACC_001	enum_value	openapi.yaml	INV-REQ-895

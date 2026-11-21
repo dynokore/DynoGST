@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: submission API
-  version: 1.21.0
+  version: 1.22.0
   description: >-
     Contract-first source of truth for submission (API-01, STK-44). The
     `submission-contract` module generates its server interfaces and DTOs
@@ -105,6 +105,11 @@ paths:
         The service always sends `filingDateRecorded`; false is the readiness fact "filing date not recorded" (INV-REQ-918, INV-Q-6704).
 
 
+        While ACC-001 is open for the entity (no active `tax.approver`), the
+        response carries it in `approverAlert`, advisory only: `ready` and
+        `tiers` never depend on it (INV-REQ-895).
+
+
         Timeout class (INV-REQ-1204 b7, INV-Q-3476): `API gateway -> any
         other service's public /v1 operation`, 3 s (x-timeout 3000).
         When the gateway's circuit breaker for this service is open, or
@@ -120,7 +125,7 @@ paths:
       x-caller-auth: end-user
       x-timeout: 3000
       x-error-codes: [SRT-004]
-      x-requirements: [INV-REQ-555, INV-REQ-1168, INV-REQ-814, INV-REQ-951, INV-REQ-1250, INV-REQ-1006]
+      x-requirements: [INV-REQ-555, INV-REQ-1168, INV-REQ-814, INV-REQ-951, INV-REQ-1250, INV-REQ-1006, INV-REQ-895]
       parameters:
         - $ref: '#/components/parameters/EntityRef'
         - $ref: '#/components/parameters/PeriodRef'
@@ -1943,6 +1948,12 @@ components:
             The service always sends it. False is the fact "filing date not
             recorded" (INV-REQ-918): no filing fact is recorded for the
             period. True means a filing fact is recorded for the period.
+        approverAlert:
+          $ref: '#/components/schemas/ApproverAlert'
+          description: >-
+            The service sends it only while ACC-001 is open for the entity
+            (no active `tax.approver`; INV-REQ-895). It is advisory: `ready`
+            and `tiers` never depend on it.
         filingOverride:
           $ref: '#/components/schemas/FilingGateOverride'
           description: >-
@@ -2188,6 +2199,17 @@ components:
           type: string
           format: date-time
       required: [code, raisedAt]
+    ApproverAlert:
+      type: object
+      properties:
+        accCode:
+          type: string
+          enum: [ACC-001]
+          x-enum-varnames: [ACC_001]
+        raisedAt:
+          type: string
+          format: date-time
+      required: [accCode, raisedAt]
     DrainResult:
       type: object
       properties:
