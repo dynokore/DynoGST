@@ -359,7 +359,7 @@ class RecordTopicTest(unittest.TestCase):
         text = (_HERE / "topics.yaml").read_text()
         self.assertEqual(gen.validate_record_topics(text, topics), [])
         self.assertEqual(sorted(t["event_type"].rsplit(".", 2)[-2] for t in topics if t["record_topic"]),
-                         ["AuditEntryRecorded", "DecisionTraceRecorded", "PayloadRejected"])
+                         ["AuditEntryRecorded", "DecisionTraceRecorded"])
 
 
 class RetainedWhileResolvableTest(unittest.TestCase):
