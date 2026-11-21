@@ -88,6 +88,7 @@ data class GapReportRun(
  * counterparty in that set with no scheme status in force on the run date (the injected clock, UTC) is listed again
  * under that class, whatever other classes it already has.
  */
+@Suppress("LongParameterList") // the ports of the report, wired by GapReportUseCases (INV-Q-4629)
 class RunGapReport(
     private val tx: TransactionRunner,
     private val parties: CounterpartyRepository,
