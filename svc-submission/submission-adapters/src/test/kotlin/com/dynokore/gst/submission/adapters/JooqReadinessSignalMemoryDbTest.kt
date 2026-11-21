@@ -116,8 +116,10 @@ class JooqReadinessSignalMemoryDbTest {
             "select data_type from information_schema.columns where table_schema = 'submission' and " +
                 "table_name = 'readiness_signal' and column_name = 'counts_by_state'",
         ) shouldBe listOf("jsonb")
-        ownerRows("select count(*) from submission.readiness_signal where tenant_id = '$t' and counts_by_state = " +
-            "'{\"QUEUED\": 1, \"BLOCKED\": 1}'::jsonb") shouldBe listOf("1")
+        ownerRows(
+            "select count(*) from submission.readiness_signal where tenant_id = '$t' and counts_by_state = " +
+                "'{\"QUEUED\": 1, \"BLOCKED\": 1}'::jsonb",
+        ) shouldBe listOf("1")
         now = now.plusSeconds(60)
         record(t, s1) shouldBe false
         row(t) shouldBe listOf(rowOf(s1, "2026-11-21T08:00:00"))
@@ -167,6 +169,7 @@ class JooqReadinessSignalMemoryDbTest {
         record(t1, s1)
         record(t2, s1)
         val sql = DSL.using(connection, SQLDialect.POSTGRES)
+
         fun insert(
             verdict: String,
             count: Int,
