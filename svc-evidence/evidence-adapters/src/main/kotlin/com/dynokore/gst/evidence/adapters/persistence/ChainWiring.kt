@@ -17,6 +17,7 @@ import com.dynokore.gst.evidence.application.integrity.ChainVerificationRecorder
 import com.dynokore.gst.evidence.application.integrity.DigestCopies
 import com.dynokore.gst.evidence.application.integrity.VerificationSources
 import com.dynokore.gst.evidence.application.lookup.ChainRecordReader
+import com.dynokore.gst.evidence.application.lookup.TransmittedVersionReader
 import com.dynokore.gst.evidence.domain.chain.RecordKind
 import com.dynokore.platform.evidencestore.EntityRef
 import com.dynokore.platform.evidencestore.EvidenceIndex
@@ -90,6 +91,10 @@ object ChainWiring {
 
     /** The chain record reader over the same ledgers as the appender, for the bootstrap (INV-REQ-691). */
     fun chainRecordReader(dsl: DSLContext): ChainRecordReader = JooqChainRecordReader(dsl, ledgers(dsl))
+
+    /** The transmitted-version reader over the same ledgers as the appender (INV-REQ-645). */
+    fun transmittedVersionReader(dsl: DSLContext): TransmittedVersionReader =
+        JooqTransmittedVersionReader(dsl, ledgers(dsl))
 
     fun recordAppender(
         dsl: DSLContext,
