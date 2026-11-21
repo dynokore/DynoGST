@@ -1729,6 +1729,65 @@ paths:
                             value: "SR-STD"
         default:
           $ref: '#/components/responses/Error'
+  /internal/v1/evidence/documents/{docUuid}/versions/{version}/transmitted-xml:
+    get:
+      operationId: getTransmittedVersion
+      summary: Read one transmitted XML version of a document
+      description: >-
+        Returns one transmitted version of a document: Doc UUID, version,
+        Acknowledgement ID (once received), the submission and acknowledgement
+        timestamps and the XML exactly as transmitted, byte-identical, with
+        its SHA-256 (INV-REQ-645). Served from the structured tier. Answers
+        202 when the object is in the cold tier; the client polls
+        `getEvidenceRetrieval` and repeats the read when it is READY
+        (INV-REQ-664). It changes no state. The caller is decided per request
+        by the permission key `doc.view.content` through
+        `AuthorityReplica.decide`, never by a role name (INV-Q-10027).
+      tags: [lookup]
+      x-principal: reporting
+      x-caller-auth: end-user
+      x-sync-edge: console-bff->evidence-svc
+      x-timeout: 2000
+      x-error-codes: []
+      x-requirements: [INV-REQ-645, INV-REQ-664]
+      parameters:
+        - name: docUuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: version
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: The transmitted version of the document.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransmittedVersion'
+              examples:
+                default:
+                  value:
+                    docUuid: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+                    version: 2
+                    acknowledgementId: "IRAS-ACK-2026Q1-E001"
+                    submittedAt: "2026-03-15T09:00:00Z"
+                    acknowledgedAt: "2026-03-15T09:00:30Z"
+                    xmlBase64: "PEludm9pY2UvPg=="
+                    xmlSha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        '202':
+          description: The evidence is in a slow storage tier; poll getEvidenceRetrieval.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetrievalPending'
+        default:
+          $ref: '#/components/responses/Error'
   /internal/v1/evidence/retention/maximum:
     get:
       operationId: getMaxEvidenceRetention
@@ -1980,6 +2039,36 @@ components:
           type: string
           maxLength: 40
       required: [retrievalId, expectedRetrievalSeconds, storageTier]
+    TransmittedVersion:
+      type: object
+      description: One transmitted XML version of a document, exactly as transmitted (INV-REQ-645).
+      properties:
+        docUuid:
+          type: string
+          format: uuid
+        version:
+          type: integer
+          minimum: 1
+        acknowledgementId:
+          type: string
+          maxLength: 100
+          description: Absent until the submission is acknowledged.
+        submittedAt:
+          type: string
+          format: date-time
+        acknowledgedAt:
+          type: string
+          format: date-time
+          description: Absent until the submission is acknowledged.
+        xmlBase64:
+          type: string
+          pattern: '^[A-Za-z0-9+/]*={0,2}$'
+          description: The exact transmitted bytes, base64; the bytes need not be UTF-8.
+        xmlSha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+          description: SHA-256 of the decoded bytes, 64 lower-case hex characters.
+      required: [docUuid, version, submittedAt, xmlBase64, xmlSha256]
     RetrievalStatus:
       type: object
       properties:

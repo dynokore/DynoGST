@@ -177,3 +177,10 @@ openapi.yaml	SampleCheckArtefact.hash	NONE
 openapi.yaml	SampleCheckArtefact.recordedAt	NONE
 openapi.yaml	SampleCheckArtefactPage.items	NONE
 openapi.yaml	SampleCheckArtefactPage.nextCursor	NONE
+openapi.yaml	TransmittedVersion.docUuid	NONE
+openapi.yaml	TransmittedVersion.version	NONE
+openapi.yaml	TransmittedVersion.acknowledgementId	NONE
+openapi.yaml	TransmittedVersion.submittedAt	NONE
+openapi.yaml	TransmittedVersion.acknowledgedAt	NONE
+openapi.yaml	TransmittedVersion.xmlBase64	SENSITIVE
+openapi.yaml	TransmittedVersion.xmlSha256	NONE

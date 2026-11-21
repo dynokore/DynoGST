@@ -123,3 +123,10 @@ DeletionResult.noticeWindowDays	schema_property	openapi.yaml	INV-REQ-1010
 DeletionResult.windowAcknowledgement	schema_property	openapi.yaml	INV-REQ-1010
 WindowAcknowledgement.userId	schema_property	openapi.yaml	INV-REQ-1010
 WindowAcknowledgement.soleOperator	schema_property	openapi.yaml	INV-REQ-1010
+# INV-T-26263. getTransmittedVersion and the TransmittedVersion properties (INV-REQ-645).
+getTransmittedVersion	operation	openapi.yaml	INV-REQ-645
+acknowledgementId	property	openapi.yaml	INV-REQ-645
+submittedAt	property	openapi.yaml	INV-REQ-645
+acknowledgedAt	property	openapi.yaml	INV-REQ-645
+xmlBase64	property	openapi.yaml	INV-REQ-645
+xmlSha256	property	openapi.yaml	INV-REQ-645

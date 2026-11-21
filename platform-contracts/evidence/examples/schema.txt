@@ -16,3 +16,4 @@
 ../schemas/offboarding-export-finished-payload.schema.json offboarding-export-finished-payload-*.json
 ../openapi.yaml#/components/schemas/SampleCheckArtefact sample-check-artefact-*.json
 ../openapi.yaml#/components/schemas/DecisionTraceEntry decision-trace-entry-*.json
+../openapi.yaml#/components/schemas/TransmittedVersion transmitted-version-*.json
