@@ -890,6 +890,20 @@ paths:
           in: path
           required: true
           schema: { type: string }
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 100
+            minimum: 1
+            maximum: 500
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 512
       responses:
         '200':
           description: The coverage map of the entity.
@@ -1538,9 +1552,10 @@ components:
         entityRef: { type: string }
         items:
           type: array
-          maxItems: 200
+          maxItems: 500
           items:
             $ref: '#/components/schemas/TriggerCoverageEntry'
+        nextCursor: { type: string, maxLength: 512 }
       required: [entityRef, items]
     TriggerMappingResult:
       type: object
