@@ -2,6 +2,7 @@ package com.dynokore.gst.submission.bootstrap
 
 import com.dynokore.gst.submission.adapters.SignedBindings
 import com.dynokore.gst.submission.adapters.SubmissionDb
+import com.dynokore.gst.submission.adapters.persistence.JooqBoundaryVersionSource
 import com.dynokore.gst.submission.adapters.persistence.JooqDrainResidualSource
 import com.dynokore.gst.submission.adapters.persistence.JooqReplayCandidateSource
 import com.dynokore.gst.submission.adapters.persistence.JooqReplayInFlightProbe
@@ -236,5 +237,34 @@ class TenancyVerifiedAdaptersDbTest {
         // version 2 and the first tenant holds version 1 only: asked about version 1, the first tenant sees no other.
         asTenant(t) { probe.hasOtherInFlight(TenantId(t), "own-$s", 1) } shouldBe false
         asTenant(other) { probe.hasOtherInFlight(TenantId(other), "own-$s", 1) } shouldBe true
+    }
+
+    @Test
+    fun `INV-AC-26429 the boundary version reader as tenant A shows no row of tenant B through the tenancy verifier`(
+        @TempDir dir: Path,
+    ) = run(dir) {
+        carriesTenancyListeners()
+        val a = UUID.randomUUID()
+        val b = UUID.randomUUID()
+        val doc = UUID.randomUUID()
+        seed { dsl, bind ->
+            bind(a)
+            version(dsl, a, doc.toString(), "SENT", "SUB-001")
+        }
+        seed { dsl, bind ->
+            bind(b)
+            dsl.execute(
+                "insert into submission.submission (tenant_id, doc_uuid, version, state, entity_ref) " +
+                    "values (?, ?, 2, 'REJECTED', ?)",
+                b,
+                doc.toString(),
+                e1,
+            )
+        }
+        val reader = JooqBoundaryVersionSource(dsl, runner)
+        asTenant(a) { reader.versions(TenantId(a), listOf(doc)) }.map { it.version to it.state.name } shouldBe
+            listOf(1 to "SENT")
+        asTenant(b) { reader.versions(TenantId(b), listOf(doc)) }.map { it.version to it.state.name } shouldBe
+            listOf(2 to "REJECTED")
     }
 }
