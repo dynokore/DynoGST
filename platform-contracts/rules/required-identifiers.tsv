@@ -428,3 +428,15 @@ MappingPackChange.proposed	schema_property	openapi.yaml	INV-REQ-1128
 MappingPackChange.change.ADDED	schema_enum_value	openapi.yaml	INV-REQ-1128
 MappingPackChange.change.CHANGED	schema_enum_value	openapi.yaml	INV-REQ-1128
 MappingPackChange.change.REMOVED	schema_enum_value	openapi.yaml	INV-REQ-1128
+# INV-T-26848 (INV-REQ-578): the other backticked names of INV-REQ-578 (`NON_MONETARY`, `IDENTITY`, `PERIOD_SHIFTING`, `MONETARY`, `STRUCTURAL`) are class codes, pack content and not contract identifiers.
+changeClass	property	schemas/mde-pack-contents.schema.json	INV-REQ-578
+classes	property	schemas/mde-pack-contents.schema.json	INV-REQ-578
+outcomes	property	schemas/mde-pack-contents.schema.json	INV-REQ-578
+fields	property	schemas/mde-pack-contents.schema.json	INV-REQ-578
+unlistedClass	property	schemas/mde-pack-contents.schema.json	INV-REQ-578
+classCode	property	schemas/mde-pack-contents.schema.json	INV-REQ-578
+afterTransmission	property	schemas/mde-pack-contents.schema.json	INV-REQ-578
+beforeTransmission	property	schemas/mde-pack-contents.schema.json	INV-REQ-578
+code	property	schemas/mde-pack-contents.schema.json	INV-REQ-578
+raised	property	schemas/mde-pack-contents.schema.json	INV-REQ-578
+field	property	schemas/mde-pack-contents.schema.json	INV-REQ-578

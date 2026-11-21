@@ -347,6 +347,123 @@
       "required": [
         "prefix"
       ]
+    },
+    "changeClass": {
+      "type": "object",
+      "description": "The amendment change taxonomy of INV-REQ-578 and INV-REQ-577. Absent means no taxonomy is in force and a consumer fails closed: it classifies nothing and decides nothing. The schema holds no value: class codes, outcome codes, raised codes and field names are pack content. JSON Schema cannot express, tested by the consumers (the checks of the ChangeTaxonomy constructor): every class named in outcomes, fields or unlistedClass is listed in classes, each listed class has exactly one outcomes entry, and field names are unique. An outcome code and a raised code are opaque to the contract.",
+      "properties": {
+        "classes": {
+          "type": "array",
+          "description": "The class codes, ordered from least to most restrictive.",
+          "items": {
+            "type": "string",
+            "description": "A class code.",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "outcomes": {
+          "type": "array",
+          "description": "The outcome of each class, after and before transmission.",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "classCode": {
+                "type": "string",
+                "description": "The class code this outcome belongs to.",
+                "minLength": 1
+              },
+              "afterTransmission": {
+                "type": "object",
+                "description": "The outcome after transmission.",
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "description": "The outcome code, opaque to the contract.",
+                    "minLength": 1
+                  },
+                  "raised": {
+                    "type": "array",
+                    "description": "The codes raised with the outcome, opaque to the contract.",
+                    "items": {
+                      "type": "string",
+                      "description": "A raised code.",
+                      "minLength": 1
+                    }
+                  }
+                },
+                "required": [
+                  "code"
+                ]
+              },
+              "beforeTransmission": {
+                "type": "object",
+                "description": "The outcome before transmission.",
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "description": "The outcome code, opaque to the contract.",
+                    "minLength": 1
+                  },
+                  "raised": {
+                    "type": "array",
+                    "description": "The codes raised with the outcome, opaque to the contract.",
+                    "items": {
+                      "type": "string",
+                      "description": "A raised code.",
+                      "minLength": 1
+                    }
+                  }
+                },
+                "required": [
+                  "code"
+                ]
+              }
+            },
+            "required": [
+              "classCode",
+              "afterTransmission",
+              "beforeTransmission"
+            ]
+          }
+        },
+        "fields": {
+          "type": "array",
+          "description": "The transmitted fields that have a class. A pack may list no field and let unlistedClass decide.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "field": {
+                "type": "string",
+                "description": "The transmitted field name.",
+                "minLength": 1
+              },
+              "classCode": {
+                "type": "string",
+                "description": "The class code of the field.",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "field",
+              "classCode"
+            ]
+          }
+        },
+        "unlistedClass": {
+          "type": "string",
+          "description": "The class code of a changed field that fields does not list.",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "classes",
+        "outcomes",
+        "fields",
+        "unlistedClass"
+      ]
     }
   },
   "required": [

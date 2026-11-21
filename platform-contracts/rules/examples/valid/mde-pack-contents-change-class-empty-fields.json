@@ -1,0 +1,94 @@
+{
+  "rows": [
+    {
+      "businessTermId": "IBT-046",
+      "canonicalSource": "line.taxRate",
+      "dataType": "DECIMAL",
+      "documentTypeCodes": [
+        "380"
+      ],
+      "submissionTypes": [
+        "TYPE_2"
+      ],
+      "irasStatus": "MANDATORY",
+      "sourceReference": "test data",
+      "specifications": [
+        {
+          "specificationVersion": "v1",
+          "pintCardinality": "EXACTLY_ONE",
+          "syntaxPath": "/Invoice/cbc:ID"
+        }
+      ]
+    }
+  ],
+  "changeClass": {
+    "classes": [
+      "NON_MONETARY",
+      "IDENTITY",
+      "PERIOD_SHIFTING",
+      "MONETARY",
+      "STRUCTURAL"
+    ],
+    "outcomes": [
+      {
+        "classCode": "NON_MONETARY",
+        "afterTransmission": {
+          "code": "RESUBMIT_SAME_UUID"
+        },
+        "beforeTransmission": {
+          "code": "SUPERSEDE"
+        }
+      },
+      {
+        "classCode": "IDENTITY",
+        "afterTransmission": {
+          "code": "HOLD_FOR_REVIEW",
+          "raised": [
+            "SUB-016"
+          ]
+        },
+        "beforeTransmission": {
+          "code": "SUPERSEDE"
+        }
+      },
+      {
+        "classCode": "PERIOD_SHIFTING",
+        "afterTransmission": {
+          "code": "RESUBMIT",
+          "raised": [
+            "PER-006"
+          ]
+        },
+        "beforeTransmission": {
+          "code": "SUPERSEDE"
+        }
+      },
+      {
+        "classCode": "MONETARY",
+        "afterTransmission": {
+          "code": "HOLD",
+          "raised": [
+            "SUB-015"
+          ]
+        },
+        "beforeTransmission": {
+          "code": "SUPERSEDE"
+        }
+      },
+      {
+        "classCode": "STRUCTURAL",
+        "afterTransmission": {
+          "code": "REJECT",
+          "raised": [
+            "ING-012"
+          ]
+        },
+        "beforeTransmission": {
+          "code": "REJECT"
+        }
+      }
+    ],
+    "fields": [],
+    "unlistedClass": "STRUCTURAL"
+  }
+}
