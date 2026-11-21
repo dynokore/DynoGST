@@ -420,6 +420,40 @@ class ConsultantGrantTest {
             assertThat(env.granteeKind(staff)).containsExactly("STAFF")
         }
 
+    // ---- INV-AC-16622 --------------------------------------------------------------------------------------------
+
+    @Test
+    fun `INV-AC-16622 request by the key holder, approval, 121-day refusal and repeated decision 409 in one sequence`() =
+        run { env ->
+            // the three callers are told apart by the permission decisions for the keys, never by a role name
+            assertThat(env.decision(env.support, "consultant-grant.request")).isEqualTo(AuthoriseResponse.Decision.ALLOW)
+            assertThat(env.decision(env.admin, "user.manage")).isEqualTo(AuthoriseResponse.Decision.ALLOW)
+            assertThat(env.decision(env.operator, "consultant-grant.request")).isEqualTo(AuthoriseResponse.Decision.DENY)
+            assertThat(env.decision(env.operator, "user.manage")).isEqualTo(AuthoriseResponse.Decision.DENY)
+            // (a) the first caller's request is PENDING
+            val first = env.request(actor = env.support)
+            assertThat(first.status).isEqualTo(ConsultantGrantRequestResponse.Status.PENDING)
+            assertThat(env.requestRows()).isEqualTo(1)
+            // (b) the third caller's request is refused and stores nothing
+            denied { env.request(actor = env.operator) }
+            assertThat(env.requestRows()).isEqualTo(1)
+            // (c) approval with no period writes one implementation.consultant grant ending go-live plus 30 days
+            val approved = env.decide(first.requestRef, actor = env.admin)
+            assertThat(approved.status).isEqualTo(ConsultantGrantRequestResponse.Status.APPROVED)
+            assertThat(approved.validTo).isEqualTo(env.goLive().plusDays(30))
+            assertThat(env.consultantGrants()).hasSize(1)
+            assertThat(Role.IMPLEMENTATION_CONSULTANT.wire).isEqualTo("implementation.consultant")
+            // (d) a second request approved with 121 days is refused with 400 and writes no grant
+            val second = env.request(actor = env.support, goLive = env.goLive().plusDays(1))
+            badRequest { env.decide(second.requestRef, actor = env.admin, days = 121) }
+            assertThat(env.statusOf(second.requestRef)).isEqualTo("PENDING")
+            assertThat(env.consultantGrants()).hasSize(1)
+            // (e) deciding the first request again is a 409 and writes no grant
+            assertThat(catchThrowable { env.decide(first.requestRef, actor = env.admin) })
+                .isInstanceOf(ApiConflict::class.java)
+            assertThat(env.consultantGrants()).hasSize(1)
+        }
+
     // ---- INV-AC-2494 ---------------------------------------------------------------------------------------------
 
     @Test
