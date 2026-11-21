@@ -1,5 +1,6 @@
 package com.dynokore.gst.submission.adapters.persistence
 
+import com.dynokore.gst.submission.adapters.persistence.jooq.tables.ReadinessSignal
 import com.dynokore.gst.submission.application.readiness.ReadinessSignalMemory
 import com.dynokore.gst.submission.application.readiness.ReadinessSnapshot
 import com.dynokore.platform.tenancykernel.TenantContext
@@ -26,30 +27,40 @@ class JooqReadinessSignalMemory(
     ): Boolean {
         require(entityRef.isNotBlank()) { "entityRef must not be blank" }
         require(periodRef.isNotBlank()) { "periodRef must not be blank" }
-        val counts =
+        val json =
             snapshot.countsByState.entries
                 .sortedBy { it.key.name }
                 .joinToString(prefix = "{", postfix = "}") { "\"${it.key.name}\":${it.value}" }
+        val t = ReadinessSignal.READINESS_SIGNAL
+        val counts = DSL.`val`(json, SQLDataType.VARCHAR).cast(SQLDataType.JSONB)
         val changed =
             dsl
-                .resultQuery(
-                    "insert into submission.readiness_signal " +
-                        "(tenant_id, entity_ref, period_ref, verdict, blocked_count, counts_by_state, signalled_at) " +
-                        "values ({0}, {1}, {2}, {3}, {4}, cast({5} as jsonb), {6}) " +
-                        "on conflict (tenant_id, entity_ref, period_ref) do update set " +
-                        "verdict = excluded.verdict, blocked_count = excluded.blocked_count, " +
-                        "counts_by_state = excluded.counts_by_state, signalled_at = excluded.signalled_at " +
-                        "where (readiness_signal.verdict, readiness_signal.blocked_count, " +
-                        "readiness_signal.counts_by_state) is distinct from " +
-                        "(excluded.verdict, excluded.blocked_count, excluded.counts_by_state) returning 1",
-                    DSL.`val`(tenants.current().value, SQLDataType.UUID),
-                    DSL.`val`(entityRef, SQLDataType.VARCHAR),
-                    DSL.`val`(periodRef, SQLDataType.VARCHAR),
-                    DSL.`val`(snapshot.verdict.name, SQLDataType.VARCHAR),
-                    DSL.`val`(snapshot.blockedCount, SQLDataType.INTEGER),
-                    DSL.`val`(counts, SQLDataType.VARCHAR),
-                    DSL.`val`(clock.instant().atOffset(ZoneOffset.UTC), SQLDataType.TIMESTAMPWITHTIMEZONE),
-                ).fetch()
+                .insertInto(t)
+                .set(t.TENANT_ID, tenants.current().value)
+                .set(t.ENTITY_REF, entityRef)
+                .set(t.PERIOD_REF, periodRef)
+                .set(t.VERDICT, snapshot.verdict.name)
+                .set(t.BLOCKED_COUNT, snapshot.blockedCount)
+                .set(t.COUNTS_BY_STATE, counts)
+                .set(t.SIGNALLED_AT, clock.instant().atOffset(ZoneOffset.UTC))
+                .onConflict(t.TENANT_ID, t.ENTITY_REF, t.PERIOD_REF)
+                .doUpdate()
+                .set(t.VERDICT, DSL.excluded(t.VERDICT))
+                .set(t.BLOCKED_COUNT, DSL.excluded(t.BLOCKED_COUNT))
+                .set(t.COUNTS_BY_STATE, DSL.excluded(t.COUNTS_BY_STATE))
+                .set(t.SIGNALLED_AT, DSL.excluded(t.SIGNALLED_AT))
+                .where(
+                    DSL
+                        .row(t.VERDICT, t.BLOCKED_COUNT, t.COUNTS_BY_STATE)
+                        .isDistinctFrom(
+                            DSL.row(
+                                DSL.excluded(t.VERDICT),
+                                DSL.excluded(t.BLOCKED_COUNT),
+                                DSL.excluded(t.COUNTS_BY_STATE),
+                            ),
+                        ),
+                ).returningResult(DSL.inline(1))
+                .fetch()
         return changed.isNotEmpty()
     }
 }
