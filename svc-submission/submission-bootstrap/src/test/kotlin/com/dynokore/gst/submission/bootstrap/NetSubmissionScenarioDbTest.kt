@@ -156,6 +156,7 @@ class NetSubmissionScenarioDbTest {
                     .set(Submission.SUBMISSION_.PAYLOAD_BYTES, bytes)
                     .set(Submission.SUBMISSION_.PAYLOAD_SHA256, "a".repeat(SHA_LENGTH))
                     .set(Submission.SUBMISSION_.ENTITY_REF, "E-001")
+                    .set(Submission.SUBMISSION_.SUBMISSION_TYPE, "TYPE_1B")
                     .set(Submission.SUBMISSION_.ATTEMPT_COUNT, 0)
                     .execute()
             }

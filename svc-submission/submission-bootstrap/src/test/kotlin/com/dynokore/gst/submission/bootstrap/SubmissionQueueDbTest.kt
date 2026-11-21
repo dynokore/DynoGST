@@ -59,6 +59,7 @@ class SubmissionQueueDbTest {
             .set(Submission.SUBMISSION_.VERSION, 1)
             .set(Submission.SUBMISSION_.STATE, state)
             .set(Submission.SUBMISSION_.ENTITY_REF, "E-001")
+            .set(Submission.SUBMISSION_.SUBMISSION_TYPE, "TYPE_1B")
             .execute()
     }
 

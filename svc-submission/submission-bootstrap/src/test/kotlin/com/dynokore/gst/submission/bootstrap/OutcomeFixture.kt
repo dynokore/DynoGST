@@ -130,6 +130,7 @@ class OutcomeFixture(
             .set(Submission.SUBMISSION_.PAYLOAD_BYTES, payload)
             .set(Submission.SUBMISSION_.PAYLOAD_SHA256, "b".repeat(SHA_LENGTH))
             .set(Submission.SUBMISSION_.ENTITY_REF, "E-001")
+            .set(Submission.SUBMISSION_.SUBMISSION_TYPE, "TYPE_1B")
             .set(Submission.SUBMISSION_.ATTEMPT_COUNT, 0)
             .execute()
     }
@@ -174,6 +175,7 @@ class OutcomeFixture(
             .set(Submission.SUBMISSION_.PAYLOAD_BYTES, payload)
             .set(Submission.SUBMISSION_.PAYLOAD_SHA256, "a".repeat(SHA_LENGTH))
             .set(Submission.SUBMISSION_.ENTITY_REF, "E-001")
+            .set(Submission.SUBMISSION_.SUBMISSION_TYPE, "TYPE_1B")
             .set(Submission.SUBMISSION_.ATTEMPT_COUNT, attempts)
             .set(Submission.SUBMISSION_.ACKNOWLEDGEMENT_ID, ack)
             .execute()

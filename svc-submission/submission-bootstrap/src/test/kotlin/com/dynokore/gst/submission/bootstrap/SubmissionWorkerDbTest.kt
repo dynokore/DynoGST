@@ -80,6 +80,7 @@ class SubmissionWorkerDbTest {
             .set(Submission.SUBMISSION_.PAYLOAD_BYTES, payload)
             .set(Submission.SUBMISSION_.PAYLOAD_SHA256, sha)
             .set(Submission.SUBMISSION_.ENTITY_REF, "E-001")
+            .set(Submission.SUBMISSION_.SUBMISSION_TYPE, "TYPE_1B")
             .execute()
     }
 

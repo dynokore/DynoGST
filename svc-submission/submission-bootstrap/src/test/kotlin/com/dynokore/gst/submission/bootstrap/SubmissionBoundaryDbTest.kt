@@ -70,6 +70,7 @@ class SubmissionBoundaryDbTest {
                 .set(Submission.SUBMISSION_.TENANT_ID, tenant)
                 .set(Submission.SUBMISSION_.STATE, "QUEUED")
                 .set(Submission.SUBMISSION_.ENTITY_REF, "E-001")
+                .set(Submission.SUBMISSION_.SUBMISSION_TYPE, "TYPE_1B")
                 .execute()
             queue.enqueue(QueueEntry(docUuid.toString(), Lane.LIVE, "{}"))
             check(!failAfter) { "forced failure after both writes" }
