@@ -1,5 +1,5 @@
 kind	id	task
-operation	checkPreIssuance	UNASSIGNED
+operation	checkPreIssuance	INV-T-26310
 operation	validateIssuance	UNASSIGNED
 operation	overrideValidation	INV-T-10713
 operation	recordRenditionSample	UNASSIGNED

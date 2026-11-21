@@ -115,6 +115,7 @@ open class OverrideWiringBase {
         replica: AuthorityReplica,
         stub: AccessStub,
         configure: (WebApplicationContextRunner) -> WebApplicationContextRunner = { it },
+        masterdataUrl: String = "http://127.0.0.1:9",
         block: (ServedService) -> T,
     ): T {
         var result: T? = null
@@ -125,7 +126,10 @@ open class OverrideWiringBase {
                 configure(
                     it
                         .withBean(AuthorityReplica::class.java, { replica })
-                        .withPropertyValues("payload.access-svc-url=${stub.url}"),
+                        .withPropertyValues(
+                            "payload.access-svc-url=${stub.url}",
+                            "payload.masterdata-svc-url=$masterdataUrl",
+                        ),
                 )
             },
         ) { service -> result = block(service) }
