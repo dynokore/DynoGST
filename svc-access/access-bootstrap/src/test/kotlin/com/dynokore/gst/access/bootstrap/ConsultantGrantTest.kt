@@ -423,13 +423,15 @@ class ConsultantGrantTest {
     // ---- INV-AC-16622 --------------------------------------------------------------------------------------------
 
     @Test
-    fun `INV-AC-16622 request by the key holder, approval, 121-day refusal and repeated decision 409 in one sequence`() =
+    fun `INV-AC-16622 request, approval, 121-day refusal and repeated decision 409 in one sequence`() =
         run { env ->
-            // the three callers are told apart by the permission decisions for the keys, never by a role name
-            assertThat(env.decision(env.support, "consultant-grant.request")).isEqualTo(AuthoriseResponse.Decision.ALLOW)
-            assertThat(env.decision(env.admin, "user.manage")).isEqualTo(AuthoriseResponse.Decision.ALLOW)
-            assertThat(env.decision(env.operator, "consultant-grant.request")).isEqualTo(AuthoriseResponse.Decision.DENY)
-            assertThat(env.decision(env.operator, "user.manage")).isEqualTo(AuthoriseResponse.Decision.DENY)
+            // user.manage is decided by the fixture matrix on the entity; consultant-grant.request lives on the
+            // operator's platform grant, out of reach of the entity decision, so (a) and (b) prove it by outcome
+            val allow = AuthoriseResponse.Decision.ALLOW
+            val deny = AuthoriseResponse.Decision.DENY
+            assertThat(env.decision(env.admin, "user.manage")).isEqualTo(allow)
+            assertThat(env.decision(env.support, "user.manage")).isEqualTo(deny)
+            assertThat(env.decision(env.operator, "user.manage")).isEqualTo(deny)
             // (a) the first caller's request is PENDING
             val first = env.request(actor = env.support)
             assertThat(first.status).isEqualTo(ConsultantGrantRequestResponse.Status.PENDING)
