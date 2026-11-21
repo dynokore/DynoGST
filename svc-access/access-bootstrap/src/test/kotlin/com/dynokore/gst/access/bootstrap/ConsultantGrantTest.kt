@@ -160,6 +160,11 @@ class ConsultantGrantTest {
             permission: String,
         ) = into(a, actor) { authorise.authorise(actor, permission, "entity:ENT-A").body!!.decision }
 
+        fun platformDecision(
+            actor: String,
+            permission: String,
+        ) = into(a, actor) { authorise.authorise(actor, permission, "platform").body!!.decision }
+
         fun <T> sql(
             query: String,
             map: (java.sql.ResultSet) -> T,
@@ -423,21 +428,26 @@ class ConsultantGrantTest {
     // ---- INV-AC-16622 --------------------------------------------------------------------------------------------
 
     @Test
-    fun `INV-AC-16622 request, approval, 121-day refusal and repeated decision 409 in one sequence`() =
+    fun `INV-AC-16622 request, approval, 121-day refusal and repeated decision 409 in one sequence`() {
         run { env ->
-            // user.manage is decided by the fixture matrix on the entity; consultant-grant.request lives on the
-            // operator's platform grant, out of reach of the entity decision, so (a) and (b) prove it by outcome
             val allow = AuthoriseResponse.Decision.ALLOW
             val deny = AuthoriseResponse.Decision.DENY
+            // (0b) consultant-grant.request: the first caller (support) holds it, the second and third do not
+            assertThat(env.platformDecision(env.support, "consultant-grant.request")).isEqualTo(allow)
+            assertThat(env.platformDecision(env.admin, "consultant-grant.request")).isEqualTo(deny)
+            assertThat(env.platformDecision(env.consultant, "consultant-grant.request")).isEqualTo(deny)
+            // (0c) user.manage: the second caller (admin) holds it, the first and third do not
             assertThat(env.decision(env.admin, "user.manage")).isEqualTo(allow)
             assertThat(env.decision(env.support, "user.manage")).isEqualTo(deny)
-            assertThat(env.decision(env.operator, "user.manage")).isEqualTo(deny)
+            assertThat(env.decision(env.consultant, "user.manage")).isEqualTo(deny)
+            // (0d, SAAS half) the operator does not hold the request key in the SAAS form
+            assertThat(env.platformDecision(env.operator, "consultant-grant.request")).isEqualTo(deny)
             // (a) the first caller's request is PENDING
             val first = env.request(actor = env.support)
             assertThat(first.status).isEqualTo(ConsultantGrantRequestResponse.Status.PENDING)
             assertThat(env.requestRows()).isEqualTo(1)
             // (b) the third caller's request is refused and stores nothing
-            denied { env.request(actor = env.operator) }
+            denied { env.request(actor = env.consultant) }
             assertThat(env.requestRows()).isEqualTo(1)
             // (c) approval with no period writes one implementation.consultant grant ending go-live plus 30 days
             val approved = env.decide(first.requestRef, actor = env.admin)
@@ -455,6 +465,7 @@ class ConsultantGrantTest {
                 .isInstanceOf(ApiConflict::class.java)
             assertThat(env.consultantGrants()).hasSize(1)
         }
+    }
 
     // ---- INV-AC-2494 ---------------------------------------------------------------------------------------------
 
