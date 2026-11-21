@@ -1,5 +1,6 @@
 # Vendored, read-only copy of invoice-docs' model/architecture/error-codes.yaml,
-# pinned at commit f30d4acd763184a05db8b9fad3b16043fc7ea2b1 (2026-11-20), the merge of invoice-docs INV-T-25061 giving every code its required headline (re-vendor INV-T-25063, INV-REQ-1022, coordinator ruling (delegated) HIGH option A of the owner ruling of 2026-11-18, breakdown tooling/owner-answers-1118-oa1118d-gap.md);
+# pinned at commit 18cc81a39793815b123dda42759bb19fb7d69e39 (2026-11-21), the last invoice-docs main commit that changed the file, bringing PAY-020, no accepted specification release (invoice-docs INV-T-26405; re-vendor INV-T-26406, INV-REQ-590, coordinator ruling (delegated) HIGH option A of breakdown tooling/ansq1121d-gap.md); this re-vendor also brings SRT-016, ING-025, ING-026 and the willTransmit and residualRisk members of the OVERRIDABLE codes (invoice-docs INV-T-26325);
+# previously pinned at f30d4acd763184a05db8b9fad3b16043fc7ea2b1 (2026-11-20), the merge of invoice-docs INV-T-25061 giving every code its required headline (re-vendor INV-T-25063, INV-REQ-1022, coordinator ruling (delegated) HIGH option A of the owner ruling of 2026-11-18, breakdown tooling/owner-answers-1118-oa1118d-gap.md);
 # previously pinned at e6e0d41a29d6e73e0e875e6c9cda552e9a609054 (2026-11-18), the merge of invoice-docs INV-T-24689 adding PER-019, annotateVariance refused on an attested run (INV-T-24691, INV-REQ-633, coordinator ruling (delegated) HIGH option A of breakdown tooling/gap24380b-gap.md);
 # previously pinned at 6853b9ea033250fe4142ab80ae28f4be6cd05741 (2026-11-17), the merge of invoice-docs INV-T-24453 adding PER-017 and PER-018, the attestation refusal codes (INV-T-24455, INV-REQ-947, coordinator ruling (delegated) HIGH of breakdown tooling/req-breakdown-149.md Round 12);
 # previously pinned at 36e16dcccd878c8110f5ea58d509ef14ddb436e6 (2026-11-18), the merge of invoice-docs INV-T-24412 adding PER-016, reconciliation not readable yet, HTTP 503 with Retry-After (INV-T-24414, INV-REQ-657, coordinator ruling (delegated) HIGH of breakdown tooling/req-breakdown-149.md Round 8);
@@ -188,6 +189,8 @@ error_codes:
   disposition: OVERRIDABLE
   owner: Finance
   headline: Customer UEN format invalid
+  willTransmit: The invoice is sent with the customer UEN as entered, although it does not match the UEN format.
+  residualRisk: The UEN stays unverified and may not identify the customer correctly.
 - code: MDM-004
   condition: Partial NA population (C-7 breach)
   severity: BLOCK
@@ -324,6 +327,8 @@ error_codes:
   disposition: OVERRIDABLE by tax.approver, with scoped and expiring acceptance
   owner: Tax operations
   headline: Sign-off blocked by unconfirmed mappings
+  willTransmit: The mapping pack is signed off together with the entries that are still secondary or inferred, only for the scope the tax approver accepts.
+  residualRisk: Those mappings stay unconfirmed until they are confirmed, so documents that use them carry a treatment that is not yet confirmed. The acceptance is scoped and expires.
 - code: RUL-008
   condition: 'Rate resolution for a credit note requires the preceding document''s date, but the preceding document is unknown:
     precedingDocumentNumber populated, precedingDocumentDate blank, and no document of that number found for the entity (FR-AA.1;
@@ -408,6 +413,8 @@ error_codes:
   disposition: OVERRIDABLE
   owner: Tax operations
   headline: Exchange rate source not approved
+  willTransmit: The document is processed with the exchange rate as entered, although it is not from an approved source.
+  residualRisk: The converted amounts may differ from those at an approved rate, and the rate source stays unapproved.
 - code: PAY-007
   condition: Profile ID inconsistent with direction
   severity: BLOCK
@@ -438,6 +445,8 @@ error_codes:
   disposition: OVERRIDABLE
   owner: Tax operations
   headline: GST charged in error
+  willTransmit: The document is sent with the GST charge that was flagged as wrongful against the Check GST Register.
+  residualRisk: The GST charged may be wrong, and the document carries that charge as sent.
 - code: PAY-012
   condition: Specification version selected for submission cannot represent content required by the transaction-date packs
     (§33.8)
@@ -488,6 +497,12 @@ error_codes:
   disposition: AUTO_RELEASE on a new canonical version of the document that carries identityTriple
   owner: Platform
   headline: Sender identity missing from document
+- code: PAY-020
+  condition: "No specification release is accepted on the submission date that is not older than the release resolved by the transaction date, so the payload of the document version is not built (HTTP not applicable: a build job outcome; INV-REQ-590)"
+  severity: BLOCK
+  disposition: MANUAL
+  owner: Platform
+  headline: No accepted specification release
 - code: SUB-001
   condition: Transport timeout or connection failure
   severity: WARN
@@ -579,6 +594,8 @@ error_codes:
   disposition: OVERRIDABLE only as a recorded keying-error correction (FR-AE.18)
   owner: Tax operations
   headline: Amount change needs a credit note
+  willTransmit: The amount change is recorded as a correction of a keying error and sent as an amendment, not as a credit note.
+  residualRisk: The change is not handled as a credit note, so it must really be a keying error. If it is not, the record of the transmitted document is wrong.
 - code: SUB-016
   condition: Counterparty identity changed on a transmitted document
   severity: BLOCK
@@ -665,6 +682,8 @@ error_codes:
   disposition: OVERRIDABLE
   owner: Tax operations
   headline: Period has documents not yet submitted
+  willTransmit: The period passes the readiness check although some in-scope documents have not been submitted.
+  residualRisk: Those documents are not covered by the period as submitted, so its figures may be incomplete.
 - code: PER-002
   condition: Completeness control failed for the period
   severity: BLOCK
@@ -1059,6 +1078,12 @@ error_codes:
   disposition: TERMINAL
   owner: Platform
   headline: Bulk action refused for sent documents
+- code: SRT-016
+  condition: "The override of an exception is not offered through console-bff: its catalogue disposition is not OVERRIDABLE or its code has no override route, so `getOverridePreview` refuses it and nothing is read or written (HTTP 409; INV-REQ-943, INV-REQ-1023, coordinator ruling of 2026-11-21)"
+  severity: BLOCK
+  disposition: TERMINAL
+  owner: Platform
+  headline: Override not offered for this error
 - code: CPL-001
   condition: 'Audit purge cut-off younger than the floor (HTTP 422; INV-Q-3267 a, INV-Q-3097)'
   severity: BLOCK
@@ -1326,6 +1351,12 @@ error_codes:
   disposition: TERMINAL
   owner: Platform
   headline: Tenant already scheduled or closed
+- code: TNC-015
+  condition: "Lifecycle change refused: the entity is in a lifecycle state from which the operation is not allowed (suspendEntity needs LIVE; a repeat on an entity that is already SUSPENDED is a no-op and is not refused), so the entity keeps its state and nothing is written or published (HTTP 409; INV-REQ-963, INV-AC-16049)"
+  severity: BLOCK
+  disposition: TERMINAL
+  owner: entity.admin
+  headline: Lifecycle change not allowed in this state
 - code: ING-022
   condition: "Aggregate number cannot be built: the number would exceed 64 characters, or the entity or business unit has no registered short code of 1 to 10 characters A-Z 0-9 in the structure; nothing is stored (HTTP 422; INV-REQ-436, INV-REQ-850 b7, INV-Q-11264)"
   severity: BLOCK
@@ -1368,6 +1399,18 @@ error_codes:
   disposition: MANUAL
   owner: Finance
   headline: Debit note held for review
+- code: ING-025
+  condition: "Backfill outside its scope: the request carries the `backfill` object and its transaction date lies outside the window of its situation (before the date submission is activated for EARLY_ADOPTION; outside the affected period for SILENT_FAILURE_CORRECTION, which also needs the affected period; outside the current period for MID_PERIOD_MIGRATION); nothing is recorded for that transaction (HTTP 422; INV-REQ-1086 behavior 4, INV-Q-17989)"
+  severity: BLOCK
+  disposition: TERMINAL
+  owner: Integration
+  headline: Backfill is outside its allowed scope
+- code: ING-026
+  condition: "Backfill scope cannot be checked now: tenancy-svc gave no answer within the edge policy (timeout, open circuit breaker, full bulkhead or no connection) or answered HTTP 503, so the period of the entity is unknown; nothing is recorded for that transaction; retryable with the same sourceSystem, sourceKey and sourceRevision (HTTP 503; INV-REQ-806, INV-REQ-1086, breakdown section 54)"
+  severity: BLOCK
+  disposition: TERMINAL
+  owner: Platform
+  headline: Cannot check backfill scope now
 - code: CPL-008
   condition: "The first administrator invitation cannot be reissued: the provisioning request does not read CREATED, or access-svc refused the reissue because the tenant's tenant.admin grant is not a PENDING one whose invitation has expired; nothing is sent (HTTP 409; INV-REQ-906, INV-Q-8232, INV-Q-16202)"
   severity: BLOCK
