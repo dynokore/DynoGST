@@ -70,7 +70,13 @@ class MappingPackBundleDiff {
         rules: List<MappingBundleRule>,
         side: MappingPackBundleDiffResult.Side,
     ): MappingPackBundleDiffResult {
-        val code = rules.groupingBy { it.internalTaxCode }.eachCount().entries.first { it.value > 1 }.key
+        val code =
+            rules
+                .groupingBy { it.internalTaxCode }
+                .eachCount()
+                .entries
+                .first { it.value > 1 }
+                .key
         return MappingPackBundleDiffResult.DuplicateInternalTaxCode(code, side)
     }
 
