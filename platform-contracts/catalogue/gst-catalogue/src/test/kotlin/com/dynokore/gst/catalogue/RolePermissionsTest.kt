@@ -833,3 +833,40 @@ class ClientSignatoryRecordKeyTest {
         assertNull(RolePermissions.kind("client-signatory.records"))
     }
 }
+
+class OperationalReportKeysTest {
+    private val saas = DeploymentForm.SAAS
+    private val privateForm = DeploymentForm.PRIVATE
+    private val both = listOf(saas, privateForm)
+    private val y = RoleAllowance.PERMITTED
+
+    @Test
+    fun `INV-AC-26858 exception ageing and pack activation history are READ with the holders of their siblings`() {
+        val holders =
+            mapOf(
+                "exception-ageing.view" to
+                    mapOf(
+                        "tenant.admin" to y,
+                        "tax.operator" to y,
+                        "tax.approver" to y,
+                        "agent.operator" to RoleAllowance.WITHIN_SCOPE,
+                    ),
+                "pack-activation-history.view" to mapOf("tax.approver" to y, "finance.viewer" to y),
+            )
+        holders.forEach { (key, expected) ->
+            assertEquals(PermissionKind.READ, RolePermissions.kind(key), key)
+            both.forEach { form ->
+                assertEquals(expected, OperationRoles.rolesFor(form, key), "$key $form")
+                val held =
+                    RolePermissions
+                        .cells(form)
+                        .filter { (_, perms) ->
+                            perms[key] != null
+                        }.mapValues { (_, perms) -> perms.getValue(key) }
+                assertEquals(expected, held, "$key $form")
+            }
+        }
+        assertNull(RolePermissions.kind("exception-ageings.view"))
+        assertNull(RolePermissions.kind("Exception-ageing.view"))
+    }
+}

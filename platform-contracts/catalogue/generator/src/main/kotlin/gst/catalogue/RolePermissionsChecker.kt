@@ -86,7 +86,7 @@ object RolePermissionsChecker {
 
     /**
      * Labels added to the matrix by INV-NOTE-10136 (INV-Q-10127 A), compared by equality; INV-T-10134 appends six, INV-T-10149 the last two,
-     * INV-T-9864 appends two (INV-Q-9779 A), INV-T-11439 appends one (INV-Q-11433 A), INV-T-11910 appends two (INV-Q-11901 A), INV-T-12840 appends one (INV-Q-12767 A), INV-T-13356 appends one (INV-Q-13348), INV-T-13835 appends one (INV-Q-13818), INV-T-16106 appends one (INV-Q-10127 A), INV-T-16683 appends one (INV-Q-16671 A), INV-T-17222 appends three (INV-Q-17215 A), INV-T-17503 appends one (INV-Q-16389), INV-T-15460 appends three (INV-Q-15430 A), INV-T-16220 appends one (INV-Q-16217 A), INV-T-16273 appends two (INV-Q-16272 A), INV-T-22584 appends one (counterparty-request.send), INV-T-17459 appends one (INV-Q-17446 A, client-signatory.record), INV-T-24484 appends one (reconciliation.export), INV-T-24736 appends two (regulatory-pack.rollback and regulatory-pack.reprocess), INV-T-24823 appends one (privacy-case.read).
+     * INV-T-9864 appends two (INV-Q-9779 A), INV-T-11439 appends one (INV-Q-11433 A), INV-T-11910 appends two (INV-Q-11901 A), INV-T-12840 appends one (INV-Q-12767 A), INV-T-13356 appends one (INV-Q-13348), INV-T-13835 appends one (INV-Q-13818), INV-T-16106 appends one (INV-Q-10127 A), INV-T-16683 appends one (INV-Q-16671 A), INV-T-17222 appends three (INV-Q-17215 A), INV-T-17503 appends one (INV-Q-16389), INV-T-15460 appends three (INV-Q-15430 A), INV-T-16220 appends one (INV-Q-16217 A), INV-T-16273 appends two (INV-Q-16272 A), INV-T-22584 appends one (counterparty-request.send), INV-T-17459 appends one (INV-Q-17446 A, client-signatory.record), INV-T-24484 appends one (reconciliation.export), INV-T-24736 appends two (regulatory-pack.rollback and regulatory-pack.reprocess), INV-T-24823 appends one (privacy-case.read), INV-T-26859 appends two (exception-ageing.view and pack-activation-history.view).
      */
     val addedRows: List<String> =
         listOf(
@@ -144,6 +144,8 @@ object RolePermissionsChecker {
             "Roll back an armed regulatory pack",
             "Re-evaluate the affected population under a superseding pack",
             "Read a privacy case record",
+            "View the exception ageing report",
+            "View the history of mapping pack activations",
         )
 
     /** The (key, row) pairs of the two enquiry lookups and the rendition sample check (INV-T-10492), compared by equality. */
@@ -277,6 +279,13 @@ object RolePermissionsChecker {
     /** The (key, row) pair of the privacy case read key (INV-T-24823, owner ruling of 2026-11-18 option A), compared by equality. */
     val privacyCasePairs: Map<String, String> =
         mapOf("privacy-case.read" to "Read a privacy case record")
+
+    /** The (key, row) pairs of the exception ageing and pack activation history read keys (INV-T-26859, coordinator ruling of 2026-11-21), compared by equality. */
+    val operationalReportPairs: Map<String, String> =
+        mapOf(
+            "exception-ageing.view" to "View the exception ageing report",
+            "pack-activation-history.view" to "View the history of mapping pack activations",
+        )
 
     /** The (key, row) pair of the break-glass reseal key (INV-T-16106, INV-Q-10127 A), compared by equality. */
     val resealPairs: Map<String, String> =
@@ -578,6 +587,13 @@ object RolePermissionsChecker {
                     PermissionKind.READ,
                     cells(permitted, both, "tenant.admin", "tax.operator", "tax.approver") + cells(withinScope, both, "agent.operator"),
                 ),
+            "exception-ageing.view" to
+                Required(
+                    PermissionKind.READ,
+                    cells(permitted, both, "tenant.admin", "tax.operator", "tax.approver") + cells(withinScope, both, "agent.operator"),
+                ),
+            "pack-activation-history.view" to
+                Required(PermissionKind.READ, cells(permitted, both, "tax.approver", "finance.viewer")),
         )
 
     /**
@@ -823,6 +839,13 @@ object RolePermissionsChecker {
         }
         table.permissions.filter { it.key !in reconciliationExportPairs && (it.row in reconciliationExportPairs.values || it.key.lowercase().replace('-', '.').startsWith("reconciliation.export")) }.forEach { p ->
             v += "key ${p.key}: not one of the keys ${reconciliationExportPairs.keys.joinToString()}, which alone carry the reconciliation export row (INV-T-24484)."
+        }
+        operationalReportPairs.forEach { (key, row) ->
+            val p = table.permissions.firstOrNull { it.key == key }
+            if (p != null && p.row != row) v += "key $key: row '${p.row}' differs from '$row' (keys ${operationalReportPairs.keys.joinToString()}, INV-T-26859)."
+        }
+        table.permissions.filter { it.key !in operationalReportPairs && it.row in operationalReportPairs.values }.forEach { p ->
+            v += "key ${p.key}: not one of the keys ${operationalReportPairs.keys.joinToString()}, which alone carry the operational report rows (INV-T-26859)."
         }
         privacyCasePairs.forEach { (key, row) ->
             val p = table.permissions.firstOrNull { it.key == key }

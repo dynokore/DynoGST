@@ -57,6 +57,8 @@ The key `audit-entry.purge` (row "Purge audit entries", WRITE) is held by `platf
 
 The whole-job run and pause are the key `job.operate-whole-job` (INV-REQ-1138), with the `row` of `job.operate`; `job.operate` has no cell for `platform.engineer`.
 
+The keys `exception-ageing.view` (row "View the exception ageing report", READ) and `pack-activation-history.view` (row "View the history of mapping pack activations", READ) are held by the same roles as `exception.view` (`tenant.admin`, `tax.operator`, `tax.approver` PERMITTED and `agent.operator` WITHIN_SCOPE) and `compliance-metrics.view` (`tax.approver` and `finance.viewer` PERMITTED) respectively, in SAAS and PRIVATE, every other role DENIED; they guard the operations `getExceptionAgeing` and `getPackActivationHistory` of submission, decided per request by `AuthorityReplica.decide`, never by a role name; `addedRows` now holds 56 labels (INV-T-26859; coordinator ruling of 2026-11-21, INV-Q-10027; least privilege NIST SP 800-53 AC-6, deny by default OWASP ASVS V4.1).
+
 ## What the build checks (`checkRolePermissions`, wired into `check`; also run by `generateRolePermissionCatalogue`)
 
 `RolePermissionsChecker` reports: a role set that differs from the 19 names; a role whose forms differ; a key that
