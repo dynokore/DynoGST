@@ -3,6 +3,8 @@ package com.dynokore.gst.submission.adapters
 import com.dynokore.gst.catalogue.DeploymentForm
 import com.dynokore.gst.catalogue.OperationRoles
 import com.dynokore.gst.submission.adapters.http.ComplianceRefusal
+import com.dynokore.gst.submission.adapters.http.FilingAccessRefusal
+import com.dynokore.gst.submission.adapters.http.FilingAccessRefusalAdvice
 import com.dynokore.gst.submission.adapters.http.FilingPeriodRefusal
 import com.dynokore.gst.submission.adapters.http.FilingRefusalAdvice
 import com.dynokore.gst.submission.adapters.http.ReadinessController
@@ -12,6 +14,7 @@ import com.dynokore.gst.submission.application.drain.PreviewDrain
 import com.dynokore.gst.submission.application.filing.AmbiguousDueDateException
 import com.dynokore.gst.submission.application.filing.ConfirmFiling
 import com.dynokore.gst.submission.application.filing.ConfirmFilingActions
+import com.dynokore.gst.submission.application.filing.FilerOptionsAt
 import com.dynokore.gst.submission.application.filing.FilingDueDates
 import com.dynokore.gst.submission.application.filing.FilingFact
 import com.dynokore.gst.submission.application.filing.FilingFactStore
@@ -24,10 +27,12 @@ import com.dynokore.gst.submission.application.readiness.ReadinessCheckReader
 import com.dynokore.gst.submission.application.readiness.ReleasedOverrideChecks
 import com.dynokore.gst.submission.application.readiness.StoredReadinessCheck
 import com.dynokore.gst.submission.contract.model.ConfirmFilingRequest
+import com.dynokore.gst.submission.domain.filer.FilerOption
 import com.dynokore.gst.submission.domain.gate.CheckVerdict
 import com.dynokore.gst.submission.domain.gate.GateMode
 import com.dynokore.gst.submission.domain.gate.LatestCheck
 import com.dynokore.platform.outboxandqueue.EntityRef
+import com.dynokore.platform.serviceruntime.http.ClosedErrorCode
 import com.dynokore.platform.serviceruntime.identity.EndUserPrincipal
 import com.dynokore.platform.serviceruntime.identity.EndUserPrincipalBindingFilter
 import com.dynokore.platform.serviceruntime.identity.MachineTokenFilter
@@ -35,6 +40,8 @@ import com.dynokore.platform.serviceruntime.replica.AuthorityChanged
 import com.dynokore.platform.serviceruntime.replica.AuthorityRecord
 import com.dynokore.platform.serviceruntime.replica.AuthorityReplica
 import com.dynokore.platform.serviceruntime.replica.CellAllowance
+import com.dynokore.platform.serviceruntime.replica.ConsentScopeItem
+import com.dynokore.platform.serviceruntime.replica.ConsentState
 import com.dynokore.platform.serviceruntime.replica.GrantScope
 import com.dynokore.platform.serviceruntime.replica.MachineEntityCoverage
 import com.dynokore.platform.serviceruntime.replica.MachinePrincipalFixtures
@@ -67,6 +74,7 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZoneOffset
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicReference
 
 /** `confirmFiling` over the controller (INV-AC-20947): the real use case over in-memory ports. */
 class ConfirmFilingControllerTest {
@@ -145,6 +153,34 @@ class ConfirmFilingControllerTest {
             ): Set<String> = emptySet()
         }
 
+    private val agentGrantRole =
+        roleMap
+            .rolesFor(ConfirmFilingActions.PERSON)
+            .keys
+            .sorted()
+            .first()
+
+    private var consentVersion = 10L
+
+    /** The live consent of the client entity "E" listing exactly [items]; the agent holds a CONSENT-scope grant. */
+    private fun consent(vararg items: ConsentScopeItem) {
+        replica.accept(
+            AuthorityChanged(
+                tenant,
+                "agent1",
+                consentVersion++,
+                AuthorityRecord.ConsentRecord(
+                    "E",
+                    ConsentState.LIVE,
+                    items.toSet(),
+                    clock.instant().minusSeconds(60),
+                ),
+            ),
+        )
+    }
+
+    private val replica = replica()
+
     private fun replica(): AuthorityReplica {
         val r = AuthorityReplica(clock, roleMap)
         r.onSnapshotComplete(0)
@@ -163,17 +199,33 @@ class ConfirmFilingControllerTest {
                 AuthorityRecord.RoleGrantRecord("g1", RoleGrantState.ACTIVE, grant),
             ),
         )
+        r.accept(
+            AuthorityChanged(
+                tenant,
+                "agent1",
+                2,
+                AuthorityRecord.RoleGrantRecord(
+                    "g2",
+                    RoleGrantState.ACTIVE,
+                    RoleGrant(agentGrantRole, GrantScope.CONSENT, null, clock.instant().minusSeconds(60)),
+                ),
+            ),
+        )
         return r
     }
 
+    private val option =
+        AtomicReference<FilerOption?>(FilerOption.DERIVED)
+
     private val confirm =
         ConfirmFiling(
-            replica(),
+            replica,
             dueDates,
             GateModesAt { _, _ -> GateMode.BLOCKING },
             latest,
             ReleasedOverrideChecks { _, _ -> emptySet() },
             store,
+            FilerOptionsAt { _, _, _ -> option.get() ?: error("the filer option is unreadable") },
         )
 
     private fun person(id: String) = EndUserPrincipal(id, tenant, setOf(EntityRef("E")), true)
@@ -246,6 +298,7 @@ class ConfirmFilingControllerTest {
         if (failure != null) {
             val response: ResponseEntity<String> =
                 when (failure) {
+                    is FilingAccessRefusal -> FilingAccessRefusalAdvice().refuse(failure)
                     is ComplianceRefusal -> ReadinessRefusalAdvice().refuse(failure)
                     is FilingPeriodRefusal -> FilingRefusalAdvice().refuse(failure)
                     is AmbiguousDueDateException -> FilingRefusalAdvice().ambiguous(failure)
@@ -363,6 +416,81 @@ class ConfirmFilingControllerTest {
         store.stored.size shouldBe 0
     }
 
+    /** INV-AC-928: the agent's consent lists everything but FILE_GST_RETURN; the refusal names a party kind. */
+    private fun refusedAgent(): Pair<Int, String> {
+        consent(ConsentScopeItem.SUBMIT_INVOICE_DATA)
+        return post(controller(person("agent1")), "P", body("2026-04-28T20:00:00Z"))
+    }
+
+    private fun mayPerform(json: tools.jackson.databind.JsonNode): List<String> =
+        json["mayPerform"].let { n -> (0 until n.size()).map { n[it].asString() } }
+
+    private fun noFactNoSnapshot() {
+        store.stored.size shouldBe 0
+    }
+
+    @Test
+    fun `INV-AC-928 an agent without FILE_GST_RETURN and option DERIVED is refused 403 SRT-004 naming CLIENT`() {
+        option.set(FilerOption.DERIVED)
+        val (status, text) = refusedAgent()
+        status shouldBe 403
+        val json = mapper.readTree(text)
+        json["code"].asString() shouldBe "SRT-004"
+        mayPerform(json) shouldBe listOf("CLIENT")
+        json["mayPerform"].size() shouldBe 1
+        envelopeErrors(text) shouldBe emptyList()
+        noFactNoSnapshot()
+    }
+
+    @Test
+    fun `INV-AC-928 option ALWAYS_CLIENT answers mayPerform CLIENT`() {
+        option.set(FilerOption.ALWAYS_CLIENT)
+        val (status, text) = refusedAgent()
+        status shouldBe 403
+        mayPerform(mapper.readTree(text)) shouldBe listOf("CLIENT")
+        noFactNoSnapshot()
+    }
+
+    @Test
+    fun `INV-AC-928 option EITHER_PARTY answers mayPerform CLIENT`() {
+        option.set(FilerOption.EITHER_PARTY)
+        val (status, text) = refusedAgent()
+        status shouldBe 403
+        mayPerform(mapper.readTree(text)) shouldBe listOf("CLIENT")
+        noFactNoSnapshot()
+    }
+
+    @Test
+    fun `INV-AC-928 an agent whose consent lists FILE_GST_RETURN is not refused and the 200 body has no mayPerform`() {
+        consent(ConsentScopeItem.FILE_GST_RETURN)
+        val (status, text) = post(controller(person("agent1")), "P", body("2026-04-28T20:00:00Z"))
+        status shouldBe 200
+        mapper.readTree(text).has("mayPerform") shouldBe false
+        text shouldNotContain "mayPerform"
+        store.stored.size shouldBe 1
+    }
+
+    @Test
+    fun `INV-AC-928 an unreadable filer option still answers 403 SRT-004 with no mayPerform member`() {
+        option.set(null)
+        val (status, text) = refusedAgent()
+        status shouldBe 403
+        val json = mapper.readTree(text)
+        json["code"].asString() shouldBe "SRT-004"
+        json.has("mayPerform") shouldBe false
+        noFactNoSnapshot()
+    }
+
+    @Test
+    fun `INV-AC-928 a person with no grant and a refused getReadiness carry no mayPerform`() {
+        val (status, text) = post(controller(person("u2")), "P", body("2026-04-28T20:00:00Z"))
+        status shouldBe 403
+        text shouldNotContain "mayPerform"
+        val other = ReadinessRefusalAdvice().refuse(ComplianceRefusal(ClosedErrorCode.ACCESS_DENIED))
+        other.statusCode.value() shouldBe 403
+        other.body!! shouldNotContain "mayPerform"
+    }
+
     /** The pinned error-envelope schema (unpacked by `unpackClientContracts`); unset or missing fails the case. */
     private fun envelopeErrors(text: String): List<String> {
         val dir = checkNotNull(System.getProperty("gst.client-contracts.dir")) { "gst.client-contracts.dir is not set" }
@@ -454,6 +582,7 @@ internal fun unusedConfirmFiling(): ConfirmFiling =
 
             override fun append(fact: NewFilingFact) = error("confirmFiling is not under test")
         },
+        FilerOptionsAt { _, _, _ -> error("confirmFiling is not under test") },
     )
 
 /** A port that must not be called: any call fails the test. */

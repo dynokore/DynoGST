@@ -159,7 +159,10 @@ class ConfirmFilingTest {
             GateMode.BLOCKING
         }
 
-    private fun useCase(replica: AuthorityReplica) = ConfirmFiling(replica, dueDates, modes, latest, released, store)
+    private fun useCase(replica: AuthorityReplica) =
+        ConfirmFiling(replica, dueDates, modes, latest, released, store) { _, _, _ ->
+            error("the filer option is not read in this case")
+        }
 
     private fun holder() = replicaWith(Triple(u1.id, ConfirmFilingActions.PERSON, "e1"))
 

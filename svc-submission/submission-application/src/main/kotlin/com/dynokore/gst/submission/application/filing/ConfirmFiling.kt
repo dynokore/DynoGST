@@ -2,6 +2,9 @@ package com.dynokore.gst.submission.application.filing
 
 import com.dynokore.gst.submission.application.gate.LatestChecks
 import com.dynokore.gst.submission.application.readiness.ReleasedOverrideChecks
+import com.dynokore.gst.submission.domain.filer.FilerOfRecord
+import com.dynokore.gst.submission.domain.filer.FilerOption
+import com.dynokore.gst.submission.domain.filer.Party
 import com.dynokore.gst.submission.domain.filing.FiledFact
 import com.dynokore.gst.submission.domain.filing.FilingConflict
 import com.dynokore.gst.submission.domain.filing.GoverningFiling
@@ -9,6 +12,7 @@ import com.dynokore.gst.submission.domain.gate.FilingGate
 import com.dynokore.gst.submission.domain.gate.Refuse
 import com.dynokore.platform.serviceruntime.replica.AuthorityReplica
 import com.dynokore.platform.serviceruntime.replica.AuthorizationRequest
+import com.dynokore.platform.serviceruntime.replica.ConsentScopeItem
 import com.dynokore.platform.serviceruntime.replica.DecisionReason
 import com.dynokore.platform.serviceruntime.replica.Principal
 import com.dynokore.platform.serviceruntime.replica.PrincipalKind
@@ -42,8 +46,10 @@ sealed interface ConfirmFilingResult {
         val confirmedAt: Instant,
     ) : ConfirmFilingResult
 
+    /** [mayPerform] names the filer of record only when the agent consent lacks `FILE_GST_RETURN` (INV-AC-928). */
     data class Forbidden(
         val reason: DecisionReason,
+        val mayPerform: Party? = null,
     ) : ConfirmFilingResult
 
     data object NoDueDate : ConfirmFilingResult
@@ -51,6 +57,15 @@ sealed interface ConfirmFilingResult {
     data class GateRefused(
         val code: String,
     ) : ConfirmFilingResult
+}
+
+/** The VP-11 filer option of an entity on a date (INV-REQ-1272); an unreadable option throws (fail closed). */
+fun interface FilerOptionsAt {
+    fun at(
+        tenant: TenantId,
+        entityRef: String,
+        on: LocalDate,
+    ): FilerOption
 }
 
 /**
@@ -61,6 +76,7 @@ sealed interface ConfirmFilingResult {
  * permission decision and before any gate read or append; only no date is [ConfirmFilingResult.NoDueDate]. The gate
  * mode is read at the filing's own calendar date, its transaction date (INV-REQ-1351).
  */
+@Suppress("LongParameterList")
 class ConfirmFiling(
     private val replica: AuthorityReplica,
     private val dueDates: FilingDueDates,
@@ -68,6 +84,7 @@ class ConfirmFiling(
     private val latestChecks: LatestChecks,
     private val releasedOverrides: ReleasedOverrideChecks,
     private val facts: FilingFactStore,
+    private val filerOptions: FilerOptionsAt,
 ) {
     fun handle(
         request: ConfirmFilingRequest,
@@ -107,12 +124,18 @@ class ConfirmFiling(
     ): ConfirmFilingResult? {
         val decision =
             replica.decide(
-                AuthorizationRequest(request.tenant, request.principal, request.entityRef, actionOf(request.principal)),
+                AuthorizationRequest(
+                    request.tenant,
+                    request.principal,
+                    request.entityRef,
+                    actionOf(request.principal),
+                    requiredScopeItem = ConsentScopeItem.FILE_GST_RETURN,
+                ),
                 deadline,
             )
         return when {
             !decision.allowed || decision.reason == DecisionReason.AUTHORITY_UNAVAILABLE -> {
-                ConfirmFilingResult.Forbidden(decision.reason)
+                ConfirmFilingResult.Forbidden(decision.reason, mayPerformOf(request, decision.reason))
             }
 
             !hasDueDate(request) -> {
@@ -124,6 +147,22 @@ class ConfirmFiling(
             }
         }
     }
+
+    /**
+     * The filer of record named in the refusal: only when a live agent consent lacks `FILE_GST_RETURN`, the caller
+     * lacks the item, so `FilerOfRecord.decide(option, false)`. An unreadable option names nobody (fail closed).
+     */
+    private fun mayPerformOf(
+        request: ConfirmFilingRequest,
+        reason: DecisionReason,
+    ): Party? =
+        if (reason != DecisionReason.CONSENT_SCOPE_MISSING) {
+            null
+        } else {
+            runCatching {
+                FilerOfRecord.decide(filerOptions.at(request.tenant, request.entityRef, request.filedAt), false).named
+            }.getOrNull()
+        }
 
     private fun gateRefusal(request: ConfirmFilingRequest): ConfirmFilingResult.GateRefused? {
         val latest = latestChecks.latest(request.entityRef, request.periodRef)

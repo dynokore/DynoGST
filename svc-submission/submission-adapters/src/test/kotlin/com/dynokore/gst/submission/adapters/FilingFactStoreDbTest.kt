@@ -9,6 +9,7 @@ import com.dynokore.gst.submission.application.filing.ConfirmFiling
 import com.dynokore.gst.submission.application.filing.ConfirmFilingActions
 import com.dynokore.gst.submission.application.filing.ConfirmFilingRequest
 import com.dynokore.gst.submission.application.filing.ConfirmFilingResult
+import com.dynokore.gst.submission.application.filing.FilerOptionsAt
 import com.dynokore.gst.submission.application.filing.GateModesAt
 import com.dynokore.gst.submission.application.filing.NewFilingFact
 import com.dynokore.gst.submission.application.gate.LatestChecks
@@ -169,6 +170,7 @@ class FilingFactStoreDbTest {
             },
             ReleasedOverrideChecks { _, _ -> emptySet() },
             store,
+            FilerOptionsAt { _, _, _ -> error("the filer option is not read in this case") },
         )
 
     private fun call(

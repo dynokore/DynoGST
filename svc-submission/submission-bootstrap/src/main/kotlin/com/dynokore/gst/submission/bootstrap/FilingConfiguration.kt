@@ -2,8 +2,10 @@ package com.dynokore.gst.submission.bootstrap
 
 import com.dynokore.gst.submission.adapters.persistence.JooqFilingDueDates
 import com.dynokore.gst.submission.adapters.persistence.ReadinessLatestChecks
+import com.dynokore.gst.submission.adapters.policy.PolicyFilerOptions
 import com.dynokore.gst.submission.adapters.policy.PolicyGateModes
 import com.dynokore.gst.submission.application.filing.ConfirmFiling
+import com.dynokore.gst.submission.application.filing.FilerOptionsAt
 import com.dynokore.gst.submission.application.filing.FilingDueDates
 import com.dynokore.gst.submission.application.filing.FilingFactStore
 import com.dynokore.gst.submission.application.filing.GateModesAt
@@ -58,6 +60,12 @@ class FilingConfiguration {
     ): GateModesAt = PolicyGateModes(reader, tenants)
 
     @Bean
+    fun filerOptionsAt(
+        reader: PolicyReader,
+        tenants: TenantContext,
+    ): FilerOptionsAt = PolicyFilerOptions(reader, tenants)
+
+    @Bean
     @Suppress("LongParameterList")
     fun confirmFiling(
         replica: AuthorityReplica,
@@ -66,5 +74,6 @@ class FilingConfiguration {
         latestChecks: LatestChecks,
         releasedOverrides: ReleasedOverrideChecks,
         facts: FilingFactStore,
-    ): ConfirmFiling = ConfirmFiling(replica, dueDates, gateModes, latestChecks, releasedOverrides, facts)
+        filerOptions: FilerOptionsAt,
+    ): ConfirmFiling = ConfirmFiling(replica, dueDates, gateModes, latestChecks, releasedOverrides, facts, filerOptions)
 }
