@@ -3,6 +3,7 @@ package com.dynokore.gst.submission.adapters.persistence
 import com.dynokore.gst.submission.adapters.persistence.jooq.tables.Submission
 import com.dynokore.gst.submission.application.queue.InFlightStore
 import com.dynokore.gst.submission.application.queue.VersionState
+import com.dynokore.gst.submission.domain.listing.SubmissionKind
 import com.dynokore.gst.submission.domain.ordering.InFlight
 import com.dynokore.gst.submission.domain.ordering.LifecycleState
 import com.dynokore.platform.tenancykernel.TenantId
@@ -18,14 +19,20 @@ class JooqInFlightStore(
     ): List<VersionState> {
         val s = Submission.SUBMISSION_
         return dsl
-            .select(s.VERSION, s.STATE)
+            .select(s.VERSION, s.STATE, s.SUBMISSION_TYPE)
             .from(s)
             .where(s.TENANT_ID.eq(tenant.value))
             .and(s.DOC_UUID.eq(docUuid))
             .orderBy(s.VERSION)
             .forUpdate()
             .fetch()
-            .map { VersionState(checkNotNull(it.value1()), LifecycleState.valueOf(checkNotNull(it.value2()))) }
+            .map {
+                VersionState(
+                    checkNotNull(it.value1()),
+                    LifecycleState.valueOf(checkNotNull(it.value2())),
+                    SubmissionKind.valueOf(checkNotNull(it.value3())),
+                )
+            }
     }
 
     override fun waitingDocUuids(
@@ -38,6 +45,7 @@ class JooqInFlightStore(
             .from(s)
             .where(s.TENANT_ID.eq(tenant.value))
             .and(s.STATE.eq(LifecycleState.READY.name))
+            .and(s.SUBMISSION_TYPE.ne(SubmissionKind.TYPE_1A.name))
             .and(
                 s.DOC_UUID.notIn(
                     dsl

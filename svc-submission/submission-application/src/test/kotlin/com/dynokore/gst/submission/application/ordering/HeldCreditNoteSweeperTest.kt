@@ -15,6 +15,7 @@ import com.dynokore.gst.submission.application.queue.SubmissionQueue
 import com.dynokore.gst.submission.application.queue.SubmissionStore
 import com.dynokore.gst.submission.application.queue.TenantTransactions
 import com.dynokore.gst.submission.application.queue.VersionState
+import com.dynokore.gst.submission.domain.listing.SubmissionKind
 import com.dynokore.gst.submission.domain.ordering.CreditNoteOption
 import com.dynokore.gst.submission.domain.ordering.LifecycleState
 import com.dynokore.platform.outboxandqueue.ClaimedItem
@@ -117,7 +118,7 @@ class HeldCreditNoteSweeperTest {
             override fun lockVersions(
                 tenant: TenantId,
                 docUuid: String,
-            ): List<VersionState> = listOf(VersionState(1, LifecycleState.READY))
+            ): List<VersionState> = listOf(VersionState(1, LifecycleState.READY, SubmissionKind.TYPE_1B))
 
             override fun waitingDocUuids(
                 tenant: TenantId,

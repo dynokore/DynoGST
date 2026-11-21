@@ -1,5 +1,6 @@
 package com.dynokore.gst.submission.application.queue
 
+import com.dynokore.gst.submission.domain.listing.SubmissionKind
 import com.dynokore.gst.submission.domain.ordering.LifecycleState
 import com.dynokore.gst.submission.domain.ordering.LifecycleState.ACKNOWLEDGED
 import com.dynokore.gst.submission.domain.ordering.LifecycleState.REJECTED
@@ -63,7 +64,7 @@ class RejectedAcknowledgementHandlerTest {
                 docUuid: String,
             ): List<VersionState> {
                 calls += "lockVersions"
-                return states.map { VersionState(it.key, it.value) }
+                return states.map { VersionState(it.key, it.value, SubmissionKind.TYPE_1B) }
             }
 
             override fun waitingDocUuids(

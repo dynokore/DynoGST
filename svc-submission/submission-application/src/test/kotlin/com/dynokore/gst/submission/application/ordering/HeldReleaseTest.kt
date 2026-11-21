@@ -5,6 +5,7 @@ import com.dynokore.gst.submission.application.queue.SubmissionQueue
 import com.dynokore.gst.submission.application.queue.SubmissionStore
 import com.dynokore.gst.submission.application.queue.VersionNotReady
 import com.dynokore.gst.submission.application.queue.VersionState
+import com.dynokore.gst.submission.domain.listing.SubmissionKind
 import com.dynokore.gst.submission.domain.ordering.LifecycleState
 import com.dynokore.platform.outboxandqueue.ClaimedItem
 import com.dynokore.platform.outboxandqueue.Lane
@@ -60,8 +61,12 @@ class HeldReleaseTest {
                 docUuid: String,
             ): List<VersionState> {
                 if (docUuid in notReady) return emptyList()
-                val other = blockedBy[docUuid]?.let { listOf(VersionState(it, LifecycleState.QUEUED)) }.orEmpty()
-                return other + VersionState(1, LifecycleState.READY)
+                val other =
+                    blockedBy[docUuid]
+                        ?.let {
+                            listOf(VersionState(it, LifecycleState.QUEUED, SubmissionKind.TYPE_1B))
+                        }.orEmpty()
+                return other + VersionState(1, LifecycleState.READY, SubmissionKind.TYPE_1B)
             }
 
             override fun waitingDocUuids(

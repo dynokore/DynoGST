@@ -148,6 +148,7 @@ interface InFlightStore {
 class VersionState(
     val version: Int,
     val state: LifecycleState,
+    val submissionType: SubmissionKind,
 )
 
 /** The `submission` row as the despatch step reads it. */

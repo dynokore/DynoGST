@@ -114,6 +114,7 @@ class ReplayAdaptersDbTest {
             .set(sub.VERSION, version)
             .set(sub.STATE, state)
             .set(sub.ENTITY_REF, e)
+            .set(sub.SUBMISSION_TYPE, "TYPE_1B")
             .set(sub.RETRY_FAILURES, if (retrying) 2 else 0)
             .set(sub.RETRY_FIRST_FAILURE_AT, if (retrying) t0.atOffset(ZoneOffset.UTC) else null)
             .set(sub.NEXT_ATTEMPT_AT, if (retrying) t0.atOffset(ZoneOffset.UTC) else null)

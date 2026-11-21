@@ -105,6 +105,7 @@ class BacklogVersionSourceDbTest {
             .set(sub.VERSION, 1)
             .set(sub.STATE, state.name)
             .set(sub.ENTITY_REF, e)
+            .set(sub.SUBMISSION_TYPE, "TYPE_1B")
             .set(sub.QUEUED_AT, queuedAt?.atOffset(ZoneOffset.UTC))
             .set(sub.RETRY_FAILURES, if (retrying) 1 else 0)
             .set(sub.RETRY_FIRST_FAILURE_AT, if (retrying) t0.atOffset(ZoneOffset.UTC) else null)

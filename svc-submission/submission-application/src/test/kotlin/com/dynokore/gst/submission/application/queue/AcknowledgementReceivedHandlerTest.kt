@@ -1,6 +1,7 @@
 package com.dynokore.gst.submission.application.queue
 
 import com.dynokore.gst.submission.application.ordering.AcknowledgedHook
+import com.dynokore.gst.submission.domain.listing.SubmissionKind
 import com.dynokore.gst.submission.domain.ordering.LifecycleState
 import com.dynokore.gst.submission.domain.ordering.LifecycleState.ACKNOWLEDGED
 import com.dynokore.gst.submission.domain.ordering.LifecycleState.SENT
@@ -53,7 +54,7 @@ class AcknowledgementReceivedHandlerTest {
                 docUuid: String,
             ): List<VersionState> {
                 calls += "lockVersions"
-                return states.map { VersionState(it.key, it.value) }
+                return states.map { VersionState(it.key, it.value, SubmissionKind.TYPE_1B) }
             }
 
             override fun waitingDocUuids(
@@ -245,7 +246,7 @@ class AcknowledgementReceivedHandlerTest {
                 override fun lockVersions(
                     tenant: TenantId,
                     docUuid: String,
-                ): List<VersionState> = listOf(VersionState(1, SENT))
+                ): List<VersionState> = listOf(VersionState(1, SENT, SubmissionKind.TYPE_1B))
             }
         val skewed =
             AcknowledgementReceivedHandler(
