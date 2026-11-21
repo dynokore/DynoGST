@@ -164,6 +164,7 @@ openapi.yaml	DecisionTraceView.decisions	IDENTIFYING
 openapi.yaml	DecisionTraceEntry.code	NONE
 openapi.yaml	DecisionTraceEntry.ruleId	NONE
 openapi.yaml	DecisionTraceEntry.packVersions	NONE
+openapi.yaml	DecisionTraceEntry.assertionText	NONE
 openapi.yaml	DecisionTraceEntry.inputs	IDENTIFYING
 openapi.yaml	DecisionTraceInput.name	NONE
 openapi.yaml	DecisionTraceInput.value	IDENTIFYING

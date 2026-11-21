@@ -1,0 +1,1 @@
+{"code":"PAY-002","ruleId":"BR-CO-15","packVersions":[{"packIdentifier":"schematron","version":"2026.1"}],"inputs":[{"name":"IBT-110","value":"7.00"}],"assertionText":""}
