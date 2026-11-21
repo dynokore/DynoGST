@@ -169,6 +169,30 @@ class RealVariationPointCatalogueSelfTest {
     }
 
     @Test
+    fun `INV-AC-27255 VP-66 DAYS_90 carries the typed value of 90 days and VP-26 is owned by payload-svc`() {
+        val rows = VariationPointYamlParser.parse(vendoredFile, pendingFile).associateBy { it.id }
+        val vp66 = rows.getValue("VP-66")
+        assertEquals(VpStatus.PLANNED, vp66.status)
+        val options = vp66.fields!!.options
+        assertEquals(listOf("DAYS_90", "LONGER", "SHORTER_ACKNOWLEDGED"), options.map { it.key })
+        assertEquals(listOf(Strictness.DEFAULT, Strictness.STRICTER, Strictness.LOOSER), options.map { it.strictness })
+        fun num(b: BoundValue?) = b?.number?.toInt()
+        val days90 = options[0].typedValue!!
+        assertEquals(ValueType.DURATION, days90.type)
+        assertEquals("days", days90.unit)
+        assertEquals(listOf<Int?>(90, 90, 90), listOf(num(days90.min), num(days90.max), num(days90.default)))
+        assertEquals(Direction.UP_STRICTER, days90.direction)
+        val longer = options[1].typedValue!!
+        assertEquals(listOf<Int?>(91, null, null), listOf(num(longer.min), num(longer.max), num(longer.default)))
+        val shorter = options[2].typedValue!!
+        assertEquals(listOf<Int?>(1, 89, null), listOf(num(shorter.min), num(shorter.max), num(shorter.default)))
+        val vp26 = rows.getValue("VP-26")
+        assertEquals("payload-svc", vp26.owner)
+        assertEquals("INV-REQ-1287", vp26.requirement)
+        assertEquals(VpStatus.PLANNED, vp26.status)
+    }
+
+    @Test
     fun `INV-T-10183 VP-29, VP-38 and VP-65 are available with the ruled option keys in order`() {
         val rows = VariationPointYamlParser.parse(vendoredFile, pendingFile).associateBy { it.id }
         val expected =

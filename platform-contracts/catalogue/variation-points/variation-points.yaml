@@ -52,6 +52,7 @@
 # Re-extracted 2026-11-20 (INV-T-25460; Keel INV-CS-25458): VP-83 becomes available (INV-REQ-24775 io_contract.status, coordinator ruling on the status of VP-83, option A); re-vendored with check-drift.py --write, only the status and revision keys of VP-83 moved; 84 rows.
 # Re-extracted 2026-11-20 (INV-T-25626; Keel INV-CS-25624): VP-84 becomes available (INV-REQ-25100 io_contract.status, coordinator ruling on the status of VP-84, option A); re-vendored with check-drift.py --write, only the status and revision keys of VP-84 moved; 84 rows.
 # Re-extracted 2026-11-20 (INV-T-25638; Keel INV-CS-25636): VP-63 becomes available (INV-REQ-1401 io_contract.status, coordinator ruling on the status of VP-63, option A); re-vendored with check-drift.py --write, only the status and revision keys of VP-63 moved; 84 rows.
+# Re-extracted 2026-11-22 (INV-T-27256; Keel INV-CS-27251 and INV-CS-26374): VP-66 option DAYS_90 gains the typed value duration days 90 to 90, default 90, UP_STRICTER (INV-REQ-2462, coordinator ruling option A), and the owner of VP-26 becomes payload-svc (INV-CS-26374); re-vendored with check-drift.py --write, no other row changes; 84 rows.
 #
 # Keel has no single repository-wide commit the way invoice-docs does, so each row
 # below pins to its own published entity_revision id (`revision`), not a shared SHA.
@@ -531,7 +532,7 @@ variation_points:
     basis: "Coordinator ruling (high confidence, delegated by owner 2026-10-11): INV-REQ-1273; conventions G1-G6 option A; INV-Q-2934, INV-Q-2936; for INV-T-3000"
 - id: VP-13
   requirement: INV-REQ-1274
-  revision: c03eb5a7-8b82-43bc-8dd6-a48941510ae0
+  revision: e54234af-2627-48a6-bcd8-66d2f9d5d470
   title: "When two filing facts disagree, the earlier date governs until corrected by default; using the filer of record's date is looser and needs the client signatory's acknowledgement"
   class: CONTROL
   class_modifiers: []
@@ -1048,13 +1049,13 @@ variation_points:
     basis: "Coordinator ruling (high confidence, delegated by owner 2026-10-11): INV-REQ-1286, must elect; conventions G1-G6 option A; INV-Q-2934, INV-Q-2936; for INV-T-3000; cross_row: typed from the published text cited in each record's source, for INV-T-3528 (coordinator typing of published text, INV-Q-3526 A; tooling/vp-constraints-breakdown.md)"
 - id: VP-26
   requirement: INV-REQ-1287
-  revision: c5bb3f78-0489-4c20-84dd-eeb4d81b8792
+  revision: fdfe29d2-910c-4eeb-89d6-5164e3244dc9
   title: "The pre-issuance check is advisory by default, or blocking inside the ERP, or off; validation on ingestion always applies"
   class: POLICY
   class_modifiers: []
   scope:
     - "entity"
-  owner: ingestion-svc
+  owner: payload-svc
   set_permission: "vp-26.set"
   must_be_elected: false
   default: "Advisory"
@@ -1331,7 +1332,7 @@ variation_points:
     basis: "Coordinator ruling (high confidence, delegated by owner 2026-10-11): INV-REQ-1294, INV-REQ-1184; INV-Q-2934 types PARAMETER and list rows only, so routing rules stay service data as for VP-47; conventions G1-G6 option A; INV-Q-2934, INV-Q-2936; for INV-T-3000"
 - id: VP-34
   requirement: INV-REQ-1295
-  revision: a8df7392-5aff-4a90-97b9-07488e95eb52
+  revision: de5db516-3d14-4bdc-9223-c62b08a3191d
   title: "Ingestion looks back 7 days by default, or 1 to 60 days, per feed"
   class: PARAMETER
   class_modifiers: []
@@ -1584,7 +1585,7 @@ variation_points:
     basis: "Coordinator ruling (high confidence, delegated by owner 2026-10-11): INV-REQ-1300; conventions G1-G6 option A; INV-Q-2934, INV-Q-2936; for INV-T-3000"
 - id: VP-40
   requirement: INV-REQ-1301
-  revision: 98f948e4-6fa9-4476-a60a-bd0041c4e8d0
+  revision: 393994b7-a06d-4468-a177-57fefda2abbd
   title: "The reconciliation work-paper is attested by a preparer and a separate approver by default; one attestation with a sole-operator acknowledgement is the looser option"
   class: CONTROL
   class_modifiers: []
@@ -1884,7 +1885,7 @@ variation_points:
     basis: "Coordinator ruling (high confidence, delegated by owner 2026-10-11): INV-REQ-1307, INV-REQ-1113 b2 (a policy names recipients and channels together), INV-REQ-1115; 'adds' webhook or chat combines with the base (G3 option A); conventions G1-G6 option A; INV-Q-2934, INV-Q-2936; for INV-T-3000; cross_option: typed from the published text cited in each record's source, for INV-T-3528 (coordinator typing of published text, INV-Q-3526 A; tooling/vp-constraints-breakdown.md)"
 - id: VP-47
   requirement: INV-REQ-1308
-  revision: 6c999848-1d70-43ba-a741-864cd2551673
+  revision: 1e1a5d3e-9d75-4405-9d75-ece47ea471d3
   title: "Customer webhooks are off by default, or subscriptions by event type, with no invoice content in a body"
   class: POLICY
   class_modifiers: []
@@ -2006,7 +2007,7 @@ variation_points:
     basis: "Coordinator ruling (high confidence, delegated by owner 2026-10-11): INV-REQ-1310, must elect; conventions G1-G6 option A; INV-Q-2934, INV-Q-2936; for INV-T-3000"
 - id: VP-50
   requirement: INV-REQ-1311
-  revision: 4a7e3bb6-ead4-4c1a-9858-791bf886ca50
+  revision: 28fb5a28-9400-4757-b940-2c34d90e783d
   title: "The System performs the wrongful GST charge check on every path by default; relying on the AP's documented check is looser and needs its record and tax.approver acknowledgement"
   class: CONTROL
   class_modifiers: []
@@ -2438,7 +2439,7 @@ variation_points:
     basis: "Coordinator ruling (high confidence, delegated by owner 2026-10-11): INV-REQ-1320: \"holding is the looser option\"; conventions G1-G6 option A; INV-Q-2934, INV-Q-2936; for INV-T-3000; acknowledged_by: VP-59 tax.approver, plus client.signatory under delegation: INV-REQ-1320 b2, INV-Q-2223, INV-Q-3134; for INV-T-3148"
 - id: VP-60
   requirement: INV-REQ-1321
-  revision: a29171a2-aa84-4779-9874-5324946152f9
+  revision: 94e2a11b-9f23-4bb3-a206-5be6de2bbe31
   title: "Under Relay mode the ERP may issue through its own AP when the issuance API is unavailable, and the System binds afterwards, by default; or issuance waits"
   class: POLICY
   class_modifiers: []
@@ -2707,7 +2708,7 @@ variation_points:
     basis: "Owner ruling (2026-10-11) on INV-Q-3057, recommended option (A) accepted; INV-REQ-1548; conventions G1-G6 option A; INV-Q-2934, INV-Q-2936; for INV-T-3000; status available: coordinator ruling INV-Q-10167 (HIGH, delegated, owner 2026-10-14), for INV-T-4946"
 - id: VP-66
   requirement: INV-REQ-2462
-  revision: d365a358-2f13-4a67-82b4-75d21ae63fb2
+  revision: cec2c6ef-6835-4c0b-b05f-a8d5ac611254
   title: "The notice window for a custody holder's legal-hold request before retention deletion is 90 days by default at installation level; lengthening is free, shortening needs a recorded acknowledgement"
   class: CONTROL
   class_modifiers: []
@@ -2733,6 +2734,13 @@ variation_points:
     options:
       - key: "DAYS_90"
         strictness: "DEFAULT"
+        typed_value:
+          type: "duration"
+          unit: "days"
+          min: 90
+          max: 90
+          default: 90
+          direction: "UP_STRICTER"
       - key: "LONGER"
         strictness: "STRICTER"
         typed_value:
