@@ -27,3 +27,4 @@
 ../schemas/document-code-raised-payload.schema.json document-code-raised-*.json
 ../schemas/submission-despatched-payload.schema.json submission-despatched-*.json
 ../schemas/unsubmitted-document-count-measured-payload.schema.json unsubmitted-document-count-measured-payload-*.json
+../schemas/submission-acknowledged-payload.schema.json submission-acknowledged-*.json
