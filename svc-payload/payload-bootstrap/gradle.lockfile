@@ -112,6 +112,7 @@ jakarta.annotation:jakarta.annotation-api:3.0.0=compileClasspath,productionRunti
 jakarta.servlet:jakarta.servlet-api:6.1.0=compileClasspath,productionRuntimeClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
 jakarta.validation:jakarta.validation-api:3.1.1=productionRuntimeClasspath,runtimeClasspath,testRuntimeClasspath
 jakarta.xml.bind:jakarta.xml.bind-api:4.0.5=productionRuntimeClasspath,runtimeClasspath,testRuntimeClasspath
+name.dmaus.schxslt:schxslt2:1.11.3=productionRuntimeClasspath,runtimeClasspath,testRuntimeClasspath
 net.bytebuddy:byte-buddy:1.18.11=testCompileClasspath,testRuntimeClasspath
 net.java.dev.jna:jna:5.18.1=testRuntimeClasspath
 net.javacrumbs.shedlock:shedlock-core:6.10.0=compileClasspath,productionRuntimeClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath

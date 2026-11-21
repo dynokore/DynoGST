@@ -109,6 +109,7 @@ jakarta.annotation:jakarta.annotation-api:3.0.0=testCompileClasspath,testRuntime
 jakarta.servlet:jakarta.servlet-api:6.1.0=testRuntimeClasspath
 jakarta.validation:jakarta.validation-api:3.1.1=testRuntimeClasspath
 jakarta.xml.bind:jakarta.xml.bind-api:4.0.5=testRuntimeClasspath
+name.dmaus.schxslt:schxslt2:1.11.3=testRuntimeClasspath
 net.javacrumbs.shedlock:shedlock-core:6.10.0=testRuntimeClasspath
 net.sf.saxon:Saxon-HE:12.10=testRuntimeClasspath
 org.apache.logging.log4j:log4j-api:2.25.5=testCompileClasspath,testRuntimeClasspath

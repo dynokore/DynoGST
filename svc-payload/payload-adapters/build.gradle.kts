@@ -64,6 +64,7 @@ dependencies {
     implementation(libs.platform.serviceRuntime.impl)
     implementation(libs.platform.integrationCanon.impl)
     implementation(libs.saxon.he)
+    implementation(libs.schxslt2)
     implementation(libs.jakarta.xml.bind.api)
     implementation(libs.jaxb.runtime)
     contractsBundle(variantOf(libs.platformContracts.bundle) { artifactType("zip") })
