@@ -15,6 +15,12 @@
       "minLength": 1,
       "description": "The identifier of the aggregate this document was recorded from: the aggregateId of the AggregateReady event, set only for a document recorded from an aggregate and absent on every other document; carried unchanged by CanonicalVersionCreated, PayloadReady and SubmissionDespatched so that aggregation-svc can mark the aggregate transmitted (INV-REQ-439). Optional so an older consumer validates."
     },
+    "entityRef": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 40,
+      "description": "The entity the canonical version was recorded under, set by canonical-svc and read by console-bff for the entity scope of its document index (INV-REQ-1037). Optional so an older consumer validates."
+    },
     "precedingDocUuid": {
       "type": "string",
       "format": "uuid",

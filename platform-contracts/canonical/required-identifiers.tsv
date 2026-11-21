@@ -240,3 +240,5 @@ NOT_PRECEDING	enum_value	schemas/net-derivation-refused-payload.schema.json	INV-
 BASE_CHANGED	enum_value	schemas/net-derivation-refused-payload.schema.json	INV-REQ-558
 DOCUMENT_NOT_FOUND	enum_value	schemas/net-derivation-refused-payload.schema.json	INV-REQ-558
 NET_NOT_POSITIVE	enum_value	schemas/net-derivation-refused-payload.schema.json	INV-REQ-558
+# INV-T-26811: optional entityRef on the CanonicalVersionCreated payload (INV-REQ-1037)
+entityRef	property	schemas/canonical-version-created-payload.schema.json	INV-REQ-1037

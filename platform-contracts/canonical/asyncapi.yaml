@@ -1,7 +1,7 @@
 asyncapi: 3.1.0
 info:
   title: canonical events
-  version: 1.18.0
+  version: 1.19.0
   description: >-
     Every event canonical produces or consumes (API-43, STK-45), wrapped at
     publish time in the CloudEvents 1.0.2 envelope every service shares
@@ -169,6 +169,8 @@ components:
         fields (IBT-025, IBT-026), blank-linkage justification and evidenceRef added by INV-T-3457
         (INV-REQ-560, INV-REQ-561, INV-Q-3450), additive within v1 (API-41). The optional object `routingFacts`
         carries the routing facts of the document version for submission-svc (INV-Q-6988).
+        The optional member `entityRef` carries the entity the version was recorded under, for the entity scope
+        of the console-bff document index (INV-REQ-1037).
       # INV-T-3386 (owner ruling INV-Q-3249, INV-REQ-1205 b4): this event carries invoice content
       # (FR-AH.12, INV-REQ-1223), so its topic keeps the content window (INV-ADR-2772), not the
       # event-log retention. Copied into event-log/topics.yaml as content_topic by generate-topics.py.
