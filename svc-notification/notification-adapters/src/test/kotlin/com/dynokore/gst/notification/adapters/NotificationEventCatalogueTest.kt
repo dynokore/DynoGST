@@ -126,4 +126,21 @@ class NotificationEventCatalogueTest {
             .map { it.eventType }
             .toSet() shouldBe messageNames(asyncApi)
     }
+
+    @Test
+    fun `INV-AC-26516 the catalogue lists the type for the topic with producer ingestion-svc, others unchanged`() {
+        val entries = NotificationEventCatalogue.load().entries()
+        val entry = entries.single { it.eventType == "com.dynokore.gst.ingestion.FeedHealthChanged.v1" }
+        entry.topic shouldBe "gst.ingestion.feed-health-changed.v1"
+        entry.producers shouldBe setOf("ingestion-svc")
+        entry.contentTopic shouldBe false
+        entries.any { it.eventType == "com.dynokore.gst.ingestion.FeedHealthChanged.v2" } shouldBe false
+        entries.any { it.eventType == "com.dynokore.gst.submission.FeedHealthChanged.v1" } shouldBe false
+        entries.any { it.eventType == "com.dynokore.gst.submission.BacklogValuesMeasured.v1" } shouldBe true
+        entries.any { it.eventType == "com.dynokore.gst.platform.PackCurrencyChanged.v1" } shouldBe true
+        entries
+            .filter { it.producers == setOf(NotificationEventCatalogue.SERVICE) }
+            .map { it.eventType }
+            .toSet() shouldBe messageNames(asyncApi)
+    }
 }

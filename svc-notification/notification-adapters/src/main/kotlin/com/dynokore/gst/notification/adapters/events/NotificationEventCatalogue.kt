@@ -54,7 +54,7 @@ object NotificationEventCatalogue {
                         contentTopic = false,
                     )
                 }
-        return EventCatalogue(own + consumed + platform + backlogValuesMeasured)
+        return EventCatalogue(own + consumed + platform + backlogValuesMeasured + feedHealthChanged)
     }
 
     /** The consumed BacklogValuesMeasured event (INV-REQ-1370); its producer is submission-svc. */
@@ -63,6 +63,15 @@ object NotificationEventCatalogue {
             BacklogValuesMeasuredHandler.EVENT_TYPE,
             BacklogValuesMeasuredHandler.TOPIC,
             setOf("submission-svc"),
+            contentTopic = false,
+        )
+
+    /** The consumed FeedHealthChanged event (INV-REQ-910); its producer is ingestion-svc. */
+    private val feedHealthChanged =
+        CatalogueEntry(
+            FeedHealthChangedHandler.EVENT_TYPE,
+            FeedHealthChangedHandler.TOPIC,
+            setOf("ingestion-svc"),
             contentTopic = false,
         )
 
