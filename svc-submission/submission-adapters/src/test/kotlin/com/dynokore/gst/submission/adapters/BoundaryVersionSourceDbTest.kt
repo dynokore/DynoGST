@@ -111,7 +111,8 @@ class BoundaryVersionSourceDbTest {
         seed(tenantB, doc, 2, "REJECTED", "EB")
         read(tenantA, listOf(doc)) shouldBe listOf(BoundaryVersion(doc, 1, "EA", LifecycleState.SENT))
         read(tenantB, listOf(doc)) shouldBe listOf(BoundaryVersion(doc, 2, "EB", LifecycleState.REJECTED))
-        // the tenant is also in the WHERE clause (CS-19): see the statement case below
+        // This case shows the result under row level security only; the tenant predicate in the WHERE clause (CS-19)
+        // is proved by the statement case `the reader locks nothing and writes nothing and carries the tenant ...`.
     }
 
     @Test
