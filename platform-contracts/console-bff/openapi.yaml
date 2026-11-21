@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: console-bff API
-  version: 1.21.0
+  version: 1.22.0
   description: >-
     Contract-first source of truth for console-bff (API-01, STK-44). The
     `console-bff-contract` module generates its server interfaces and DTOs
@@ -552,12 +552,24 @@ paths:
         Timeout class (INV-REQ-1204 b7, INV-Q-3476): `console-web ->
         console-bff`, 5 s for two sequential downstream calls (x-timeout
         5000): masterdata-svc, then evidence-svc.
+
+
+        Saga order (INV-REQ-886): console-bff first checks that the privacy
+        case is OPEN (evidence-svc getCase), then calls masterdata-svc
+        correctCounterpartyData, then appends the annotation through
+        evidence-svc appendEvidenceAnnotation with the same identifiers,
+        retried with the same Idempotency-Key until it lands. The request
+        must carry `entityRef`, `counterpartyRef` and `ackId`; console-bff
+        requires all three and refuses a request without any of them with
+        400 SRT-001, calling nothing. The case must be OPEN, otherwise
+        SRT-005. A repeat with the same body returns the existing
+        correction, unchanged.
       tags: [privacy]
       x-principal: filing-workflow
       x-caller-auth: end-user
       x-timeout: 5000
-      x-error-codes: []
-      x-requirements: [INV-REQ-957, INV-REQ-1010, INV-REQ-1379]
+      x-error-codes: [SRT-001, SRT-002, SRT-004, SRT-005, SRT-007, SRT-008, SRT-009, SRT-013]
+      x-requirements: [INV-REQ-957, INV-REQ-1010, INV-REQ-1379, INV-REQ-886]
       x-operation:
         role: security.officer
         scope: entity
@@ -580,7 +592,10 @@ paths:
             examples:
               default:
                 value:
-                  field: "counterpartyName"
+                  field: "legalName"
+                  entityRef: "E-001"
+                  counterpartyRef: "CP-0001"
+                  ackId: "ACK-0001"
                   correctedValue: "Acme Pte Ltd"
                   reason: "Subject-access request: name misspelled at onboarding"
       responses:
@@ -594,9 +609,21 @@ paths:
                 default:
                   value:
                     caseId: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
-                    field: "counterpartyName"
+                    field: "legalName"
                     correctedValue: "Acme Pte Ltd"
                     correctedAt: "2026-04-01T02:00:00Z"
+        '400':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '422':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
         default:
           $ref: '#/components/responses/Error'
   /bff/workspaces/{workspaceRef}/anonymised-samples:
@@ -1928,6 +1955,32 @@ components:
         field:
           type: string
           maxLength: 100
+          description: >-
+            The personal-data field to correct. Supported values: legalName,
+            addressLine1, addressLine2 and postalCode. console-bff refuses any
+            other value with 400 SRT-001.
+        entityRef:
+          type: string
+          minLength: 1
+          maxLength: 40
+          description: >-
+            The entity the counterparty belongs to. console-bff requires it
+            and refuses a request without it with 400 SRT-001.
+        counterpartyRef:
+          type: string
+          minLength: 1
+          maxLength: 40
+          description: >-
+            The counterparty whose master data is corrected. console-bff
+            requires it and refuses a request without it with 400 SRT-001.
+        ackId:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: >-
+            The acknowledgement ID that names the evidence chain to annotate.
+            console-bff requires it and refuses a request without it with
+            400 SRT-001.
         correctedValue:
           type: string
           maxLength: 500

@@ -10,3 +10,5 @@ openapi.yaml	/components/schemas/ApplyOperatingProfileRequest/properties/mode/en
 openapi.yaml	/components/schemas/DeferralTargetResponse/properties/kind/x-extensible-enum	equals	true	INV-REQ-957
 openapi.yaml	/components/schemas/DeferDocumentRequest/properties/target/$ref	equals	"#/components/schemas/DeferralTarget"	INV-REQ-957
 openapi.yaml	/components/schemas/Deferral/properties/target/$ref	equals	"#/components/schemas/DeferralTargetResponse"	INV-REQ-957
+openapi.yaml	/components/schemas/CorrectPersonalDataRequest/required	equals	["field","correctedValue","reason"]	INV-REQ-886
+openapi.yaml	/components/schemas/CorrectPersonalDataRequest/properties/field/enum	absent	-	INV-REQ-886
