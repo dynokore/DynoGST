@@ -417,3 +417,14 @@ acknowledgePackDelta.409	operation_response	openapi.yaml	INV-REQ-957
 armRegulatoryPack.409	operation_response	openapi.yaml	INV-REQ-957
 EvaluationResult.supplyType	schema_property	openapi.yaml	INV-REQ-772
 supplyType	property	schemas/code-catalogue-pack-contents.schema.json	INV-REQ-772
+diffMappingPackBundle	operation	openapi.yaml	INV-REQ-1128
+MappingPackBundlePart.bundleId	schema_property	openapi.yaml	INV-REQ-1128
+MappingPackBundlePart.entries	schema_property	openapi.yaml	INV-REQ-1128
+MappingPackDiff.changes	schema_property	openapi.yaml	INV-REQ-1128
+MappingPackChange.path	schema_property	openapi.yaml	INV-REQ-1128
+MappingPackChange.change	schema_property	openapi.yaml	INV-REQ-1128
+MappingPackChange.current	schema_property	openapi.yaml	INV-REQ-1128
+MappingPackChange.proposed	schema_property	openapi.yaml	INV-REQ-1128
+MappingPackChange.change.ADDED	schema_enum_value	openapi.yaml	INV-REQ-1128
+MappingPackChange.change.CHANGED	schema_enum_value	openapi.yaml	INV-REQ-1128
+MappingPackChange.change.REMOVED	schema_enum_value	openapi.yaml	INV-REQ-1128

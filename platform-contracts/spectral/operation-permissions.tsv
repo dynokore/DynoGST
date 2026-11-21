@@ -19,3 +19,4 @@ rules	dryRun	pack.dry-run
 masterdata	sendCounterpartyRequest	counterparty-request.send
 rules	rollbackPack	regulatory-pack.rollback
 rules	reprocessPopulation	regulatory-pack.reprocess
+rules	diffMappingPackBundle	mapping-pack.author
