@@ -4,6 +4,7 @@ post	/v1/batches	ingest	certification
 get	/v1/batches/{batchId}	ingest	certification
 post	/v1/certification-reports	certification	-
 get	/v1/compliance-metrics	reporting	-
+get	/v1/entities/{entityRef}/pack-activations	reporting	-
 put	/v1/entities/{entityRef}/periods/{periodRef}/control-totals	ingest	certification
 post	/v1/entities/{entityRef}/periods/{periodRef}/drain	filing-workflow	-
 post	/v1/entities/{entityRef}/periods/{periodRef}/filing	filing-workflow	-
@@ -16,6 +17,7 @@ get	/v1/entities/{entityRef}/periods/{periodRef}/submissions	reporting	-
 get	/v1/entities/{entityRef}/periods/{periodRef}/submissions/export	reporting	-
 get	/v1/entities/{entityRef}/periods/{periodRef}/submissions/reconciliation	reporting	-
 get	/v1/entities/{entityRef}/periods/{periodRef}/submissions/summary	reporting	-
+get	/v1/exception-ageing	reporting	-
 get	/v1/exceptions	reporting	-
 post	/v1/issuances	ingest	certification
 get	/v1/portfolio	reporting	-
