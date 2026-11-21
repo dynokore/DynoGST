@@ -76,37 +76,55 @@ class DeliverRequestedMessage(
         request: Request,
         address: String,
     ): MessageDeliveryRecord {
-        val version =
-            templates.versionOf(request.template)
-                ?: return failed(base, null, DeliveryFailure.TEMPLATE_UNKNOWN)
-        val channel =
-            channels.forChannel(request.channel)
-                ?: return failed(base, version, DeliveryFailure.CHANNEL_NOT_BOUND)
-        val message =
-            OutboundMessage(
-                channel = MessageChannel.valueOf(request.channel.name),
-                to = address,
-                templateId = request.template,
-                templateVersion = version,
-                content =
-                    if (request.sealedPasscode != null) {
-                        PasscodeContent(request.sealedPasscode)
-                    } else {
-                        LinkContent(requireNotNull(request.linkReference))
-                    },
-            )
-        val receipt: DeliveryReceipt =
+        val version = templates.versionOf(request.template)
+        val channel = if (version == null) null else channels.forChannel(request.channel)
+        return when {
+            version == null -> failed(base, null, DeliveryFailure.TEMPLATE_UNKNOWN)
+            channel == null -> failed(base, version, DeliveryFailure.CHANNEL_NOT_BOUND)
+            else -> send(base, channel, outbound(request, address, version), version)
+        }
+    }
+
+    private fun outbound(
+        request: Request,
+        address: String,
+        version: String,
+    ) = OutboundMessage(
+        channel = MessageChannel.valueOf(request.channel.name),
+        to = address,
+        templateId = request.template,
+        templateVersion = version,
+        content =
+            if (request.sealedPasscode != null) {
+                PasscodeContent(request.sealedPasscode)
+            } else {
+                LinkContent(requireNotNull(request.linkReference))
+            },
+    )
+
+    private fun send(
+        base: MessageDeliveryRecord,
+        channel: MessageDelivery,
+        message: OutboundMessage,
+        version: String,
+    ): MessageDeliveryRecord {
+        // The exception text is never copied: it may quote the address or the passcode.
+        val receipt: DeliveryReceipt? =
             try {
                 channel.send(message)
             } catch (_: Exception) {
-                return failed(base, version, DeliveryFailure.SEND_REFUSED)
+                null
             }
-        return base.copy(
-            templateVersion = version,
-            state = DeliveryRecordState.SENT,
-            deliveryId = receipt.deliveryId,
-            sentAt = clock.instant(),
-        )
+        return if (receipt == null) {
+            failed(base, version, DeliveryFailure.SEND_REFUSED)
+        } else {
+            base.copy(
+                templateVersion = version,
+                state = DeliveryRecordState.SENT,
+                deliveryId = receipt.deliveryId,
+                sentAt = clock.instant(),
+            )
+        }
     }
 
     private fun failed(
@@ -114,60 +132,76 @@ class DeliverRequestedMessage(
         version: String?,
         reason: String,
     ) = base.copy(templateVersion = version, state = DeliveryRecordState.FAILED, failureReason = reason)
+}
 
-    private class Request(
-        val template: String,
-        val channel: DeliveryChannel,
-        val recipients: List<String>,
-        val linkReference: String?,
-        val sealedPasscode: String?,
-    )
+private class Request(
+    val template: String,
+    val channel: DeliveryChannel,
+    val recipients: List<String>,
+    val linkReference: String?,
+    val sealedPasscode: String?,
+)
 
-    // Messages name the field only, never a value.
-    private fun parse(payload: Map<String, Any?>): Request {
-        val template = text(payload, "template") ?: throw ContractViolation("template is missing or blank")
-        val channelText = text(payload, "channel") ?: throw ContractViolation("channel is missing or blank")
-        val channel =
-            DeliveryChannel.entries.firstOrNull { it.name == channelText }
-                ?: throw ContractViolation("channel is not a known channel")
-        val raw = payload["recipients"] as? List<*> ?: throw ContractViolation("recipients is missing or not a list")
-        if (raw.isEmpty()) throw ContractViolation("recipients is empty")
-        val recipients =
-            raw.map { r ->
-                (r as? String)?.takeIf { it.isNotBlank() }
-                    ?: throw ContractViolation("a recipient is blank or not text")
-            }
-        val link = optional(payload, "linkReference")
-        val passcode = optional(payload, "sealedPasscode")
-        if (link == null &&
-            passcode == null
-        ) {
-            throw ContractViolation("neither linkReference nor sealedPasscode is present")
-        }
-        if (link != null &&
-            passcode != null
-        ) {
-            throw ContractViolation("linkReference and sealedPasscode are both present")
-        }
-        if (channel == DeliveryChannel.SMS && passcode == null) {
-            throw ContractViolation("an SMS message carries a sealedPasscode only")
-        }
-        if (passcode != null && recipients.size > 1) {
-            throw ContractViolation("a sealedPasscode message has one recipient only")
-        }
-        return Request(template, channel, recipients, link, passcode)
+// Messages name the field only, never a value.
+private fun parse(payload: Map<String, Any?>): Request {
+    val channel = channelOf(requiredText(payload, "channel"))
+    val recipients = recipientsOf(payload)
+    val link = optional(payload, "linkReference")
+    val passcode = optional(payload, "sealedPasscode")
+    checkContent(link, passcode)
+    checkShape(channel, passcode, recipients.size)
+    return Request(requiredText(payload, "template"), channel, recipients, link, passcode)
+}
+
+private fun checkContent(
+    link: String?,
+    passcode: String?,
+) {
+    if (link == null && passcode == null) {
+        throw ContractViolation("neither linkReference nor sealedPasscode is present")
     }
-
-    private fun text(
-        payload: Map<String, Any?>,
-        name: String,
-    ): String? = (payload[name] as? String)?.takeIf { it.isNotBlank() }
-
-    private fun optional(
-        payload: Map<String, Any?>,
-        name: String,
-    ): String? {
-        val v = payload[name] ?: return null
-        return (v as? String)?.takeIf { it.isNotBlank() } ?: throw ContractViolation("$name is blank or not text")
+    if (link != null && passcode != null) {
+        throw ContractViolation("linkReference and sealedPasscode are both present")
     }
+}
+
+private fun checkShape(
+    channel: DeliveryChannel,
+    passcode: String?,
+    recipientCount: Int,
+) {
+    if (channel == DeliveryChannel.SMS && passcode == null) {
+        throw ContractViolation("an SMS message carries a sealedPasscode only")
+    }
+    if (passcode != null && recipientCount > 1) {
+        throw ContractViolation("a sealedPasscode message has one recipient only")
+    }
+}
+
+private fun channelOf(name: String): DeliveryChannel =
+    DeliveryChannel.entries.firstOrNull { it.name == name }
+        ?: throw ContractViolation("channel is not a known channel")
+
+private fun recipientsOf(payload: Map<String, Any?>): List<String> {
+    val raw = payload["recipients"] as? List<*> ?: throw ContractViolation("recipients is missing or not a list")
+    if (raw.isEmpty()) throw ContractViolation("recipients is empty")
+    return raw.map { recipientOf(it) }
+}
+
+private fun recipientOf(value: Any?): String =
+    (value as? String)?.takeIf { it.isNotBlank() } ?: throw ContractViolation("a recipient is blank")
+
+private fun requiredText(
+    payload: Map<String, Any?>,
+    name: String,
+): String =
+    (payload[name] as? String)?.takeIf { it.isNotBlank() }
+        ?: throw ContractViolation("$name is missing or blank")
+
+private fun optional(
+    payload: Map<String, Any?>,
+    name: String,
+): String? {
+    val v = payload[name] ?: return null
+    return (v as? String)?.takeIf { it.isNotBlank() } ?: throw ContractViolation("$name is blank or not text")
 }

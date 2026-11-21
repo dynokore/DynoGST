@@ -1,5 +1,6 @@
 package com.dynokore.gst.notification.domain.delivery
 
+import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.time.Instant
@@ -48,6 +49,13 @@ data class MessageDeliveryRecord(
 
     companion object {
         private val NAMESPACE: UUID = UUID.fromString("6ba7b811-9dad-11d1-80b4-00c04fd430c8")
+        private const val UUID_BYTES = 16
+        private const val VERSION_BYTE = 6
+        private const val VARIANT_BYTE = 8
+        private const val CLEAR_VERSION = 0x0f
+        private const val SET_VERSION_5 = 0x50
+        private const val CLEAR_VARIANT = 0x3f
+        private const val SET_VARIANT = 0x80
 
         /** Name-based UUID, version 5 (RFC 9562), of `eventId#position`. */
         fun messageId(
@@ -55,25 +63,21 @@ data class MessageDeliveryRecord(
             position: Int,
         ): UUID {
             val sha = MessageDigest.getInstance("SHA-1")
-            sha.update(toBytes(NAMESPACE))
+            sha.update(
+                ByteBuffer
+                    .allocate(UUID_BYTES)
+                    .putLong(NAMESPACE.mostSignificantBits)
+                    .putLong(NAMESPACE.leastSignificantBits)
+                    .array(),
+            )
             val h = sha.digest("$eventId#$position".toByteArray(StandardCharsets.UTF_8))
-            h[6] = ((h[6].toInt() and 0x0f) or 0x50).toByte()
-            h[8] = ((h[8].toInt() and 0x3f) or 0x80).toByte()
-            var msb = 0L
-            var lsb = 0L
-            for (i in 0 until 8) msb = (msb shl 8) or (h[i].toLong() and 0xff)
-            for (i in 8 until 16) lsb = (lsb shl 8) or (h[i].toLong() and 0xff)
-            return UUID(msb, lsb)
+            h[VERSION_BYTE] = ((h[VERSION_BYTE].toInt() and CLEAR_VERSION) or SET_VERSION_5).toByte()
+            h[VARIANT_BYTE] = ((h[VARIANT_BYTE].toInt() and CLEAR_VARIANT) or SET_VARIANT).toByte()
+            val buffer = ByteBuffer.wrap(h)
+            return UUID(buffer.getLong(), buffer.getLong())
         }
 
         /** The reference of the recipient at the zero-based [position]; never an address. */
         fun recipientRef(position: Int): String = "recipient-${position + 1}"
-
-        private fun toBytes(u: UUID): ByteArray {
-            val b = ByteArray(16)
-            for (i in 0 until 8) b[i] = (u.mostSignificantBits ushr (8 * (7 - i))).toByte()
-            for (i in 8 until 16) b[i] = (u.leastSignificantBits ushr (8 * (15 - i))).toByte()
-            return b
-        }
     }
 }

@@ -100,14 +100,12 @@ class DeliverRequestedMessageTest {
             "linkReference" to "link-ref-1",
         )
 
-    private fun rec(
+    private fun record(
         position: Int,
         state: DeliveryRecordState,
         channel: DeliveryChannel,
         template: String,
         version: String?,
-        deliveryId: String?,
-        reason: String?,
     ) = MessageDeliveryRecord(
         messageId = MessageDeliveryRecord.messageId("evt-1", position),
         eventId = "evt-1",
@@ -118,10 +116,23 @@ class DeliverRequestedMessageTest {
         templateVersion = version,
         recipientRef = "recipient-${position + 1}",
         state = state,
-        deliveryId = deliveryId,
-        failureReason = reason,
-        sentAt = if (state == DeliveryRecordState.SENT) now else null,
     )
+
+    private fun sent(
+        position: Int,
+        channel: DeliveryChannel,
+        template: String,
+        deliveryId: String,
+    ) = record(position, DeliveryRecordState.QUEUED, channel, template, "1")
+        .copy(state = DeliveryRecordState.SENT, deliveryId = deliveryId, sentAt = now)
+
+    private fun failed(
+        position: Int,
+        template: String,
+        version: String?,
+        reason: String,
+    ) = record(position, DeliveryRecordState.QUEUED, DeliveryChannel.EMAIL, template, version)
+        .copy(state = DeliveryRecordState.FAILED, failureReason = reason)
 
     @Test
     @DisplayName("INV-AC-26362 an e-mail link message gives one SENT record and one send over two runs")
@@ -130,7 +141,7 @@ class DeliverRequestedMessageTest {
         f.twice(linkPayload(address))
         f.records.rows.values
             .toList() shouldBe
-            listOf(rec(0, DeliveryRecordState.SENT, DeliveryChannel.EMAIL, "signed-link", "1", "d-1", null))
+            listOf(sent(0, DeliveryChannel.EMAIL, "signed-link", "d-1"))
         f.email!!.sent.size shouldBe 1
         f.email.sent[0].content shouldBe LinkContent("link-ref-1")
         f.email.sent[0].to shouldBe address
@@ -150,7 +161,7 @@ class DeliverRequestedMessageTest {
         )
         f.records.rows.values
             .toList() shouldBe
-            listOf(rec(0, DeliveryRecordState.SENT, DeliveryChannel.SMS, "signed-link-passcode", "1", "d-1", null))
+            listOf(sent(0, DeliveryChannel.SMS, "signed-link-passcode", "d-1"))
         f.sms!!.sent.size shouldBe 1
         f.sms.sent[0].content shouldBe PasscodeContent(passcode)
     }
@@ -163,8 +174,8 @@ class DeliverRequestedMessageTest {
         f.records.rows.values
             .toList() shouldBe
             listOf(
-                rec(0, DeliveryRecordState.SENT, DeliveryChannel.EMAIL, "signed-link", "1", "d-1", null),
-                rec(1, DeliveryRecordState.SENT, DeliveryChannel.EMAIL, "signed-link", "1", "d-2", null),
+                sent(0, DeliveryChannel.EMAIL, "signed-link", "d-1"),
+                sent(1, DeliveryChannel.EMAIL, "signed-link", "d-2"),
             )
         f.email!!.sent.map { it.to } shouldBe listOf(address, address2)
     }
@@ -177,15 +188,7 @@ class DeliverRequestedMessageTest {
         f.records.rows.values
             .toList() shouldBe
             listOf(
-                rec(
-                    0,
-                    DeliveryRecordState.FAILED,
-                    DeliveryChannel.EMAIL,
-                    "signed-link",
-                    "1",
-                    null,
-                    "CHANNEL_NOT_BOUND",
-                ),
+                failed(0, "signed-link", "1", "CHANNEL_NOT_BOUND"),
             )
         f.sms!!.sent.size shouldBe 0
     }
@@ -197,7 +200,7 @@ class DeliverRequestedMessageTest {
         f.twice(linkPayload(address) + ("template" to "nope"))
         f.records.rows.values
             .toList() shouldBe
-            listOf(rec(0, DeliveryRecordState.FAILED, DeliveryChannel.EMAIL, "nope", null, null, "TEMPLATE_UNKNOWN"))
+            listOf(failed(0, "nope", null, "TEMPLATE_UNKNOWN"))
         f.email!!.sent.size shouldBe 0
     }
 
@@ -208,7 +211,7 @@ class DeliverRequestedMessageTest {
         f.twice(linkPayload(address))
         f.records.rows.values
             .toList() shouldBe
-            listOf(rec(0, DeliveryRecordState.FAILED, DeliveryChannel.EMAIL, "signed-link", "1", null, "SEND_REFUSED"))
+            listOf(failed(0, "signed-link", "1", "SEND_REFUSED"))
         f.email!!.sent.size shouldBe 1
     }
 
@@ -252,9 +255,9 @@ class DeliverRequestedMessageTest {
                     lines += "${r.message} ${r.parameters?.joinToString()} ${r.thrown}"
                 }
 
-                override fun flush() {}
+                override fun flush() = Unit
 
-                override fun close() {}
+                override fun close() = Unit
             }
         val root = Logger.getLogger("")
         root.addHandler(handler)
