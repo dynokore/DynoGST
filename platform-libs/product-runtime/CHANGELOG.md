@@ -6,6 +6,10 @@ train is its own (README.md: "own version and changelog").
 
 ## [Unreleased]
 
+## [2.23.3] - 2026-11-22
+### Changed
+- Version step only (G-DVS, INV-T-27031, INV-AC-27029): the published bytes change because the dependency `service-runtime` steps to 13.26.0; no code change in this module.
+
 ## [2.23.2] - 2026-11-22
 ### Changed
 - Version step only (G-DVS, INV-T-27167, INV-AC-27166): the published bytes change because the dependency `config-resolver` steps to 6.1.3; no code change in this module.

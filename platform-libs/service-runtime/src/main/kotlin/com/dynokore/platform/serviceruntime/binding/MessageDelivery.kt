@@ -25,7 +25,10 @@ interface MessageDelivery : Binding {
 /** The delivery channels; the SMS channel carries signed-link passcodes only (INV-REQ-2762). */
 enum class MessageChannel { EMAIL, SMS }
 
-/** What an [OutboundMessage] carries: a reference to a signed link, or a sealed passcode. Never free text. */
+/**
+ * What an [OutboundMessage] carries: a reference to a signed link, a sealed passcode, or the values of a
+ * server-side template. Never free text.
+ */
 sealed interface MessageContent
 
 /** A reference to a signed link; e-mail only. */
@@ -43,6 +46,17 @@ data class PasscodeContent(
 ) : MessageContent {
     init {
         require(sealedPasscode.isNotBlank()) { "sealedPasscode must not be blank" }
+    }
+}
+
+/** Values for a fixed server-side template, by key; non-empty, every key and value non-blank; e-mail only. */
+data class TemplateValuesContent(
+    val values: Map<String, String>,
+) : MessageContent {
+    init {
+        require(values.isNotEmpty()) { "values must not be empty" }
+        require(values.keys.none { it.isBlank() }) { "a values key must not be blank" }
+        require(values.values.none { it.isBlank() }) { "a values value must not be blank" }
     }
 }
 

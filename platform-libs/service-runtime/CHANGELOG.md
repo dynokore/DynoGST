@@ -6,6 +6,10 @@ train is its own (README.md: "own version and changelog").
 
 ## [Unreleased]
 
+## [13.26.0] - 2026-11-22
+### Added
+- `MessageContent` gains a third member, `TemplateValuesContent(values: Map<String, String>)` (non-empty map, every key and value non-blank), additive and EMAIL only; the SMS rule stays (SMS carries `PasscodeContent` only). Ruled in tooling/ansq1121f-gap.md (INV-T-27031, INV-REQ-817, INV-AC-27029).
+
 ## [13.25.1] - 2026-11-22
 ### Changed
 - Version step only (G-DVS, INV-T-27167, INV-AC-27166): the published bytes change because the dependency `config-resolver` steps to 6.1.3; no code change in this module.

@@ -110,4 +110,53 @@ class MessageDeliveryTest {
             }
         }
     }
+
+    private val retentionValues =
+        mapOf(
+            "periodStart" to "2026-01-01",
+            "periodEnd" to "2026-12-31",
+            "noticeWindowEndsAt" to "2027-01-30T00:00:00Z",
+        )
+
+    @Test
+    fun `INV-AC-27029 EMAIL accepts template values and keeps them equal`() {
+        val content = TemplateValuesContent(retentionValues)
+        message(templateId = "retention-notice", content = content).content shouldBe content
+    }
+
+    @Test
+    fun `INV-AC-27029 SMS refuses template values`() {
+        shouldThrow<IllegalArgumentException> {
+            message(channel = MessageChannel.SMS, content = TemplateValuesContent(retentionValues))
+        }
+    }
+
+    @Test
+    fun `INV-AC-27029 an empty map is refused`() {
+        shouldThrow<IllegalArgumentException> { TemplateValuesContent(emptyMap()) }
+    }
+
+    @Test
+    fun `INV-AC-27029 a blank key is refused`() {
+        for (blank in listOf("", "  ")) {
+            shouldThrow<IllegalArgumentException> { TemplateValuesContent(mapOf(blank to "v")) }
+        }
+    }
+
+    @Test
+    fun `INV-AC-27029 a blank value is refused and a leading space is not blank`() {
+        for (blank in listOf("", "  ")) {
+            shouldThrow<IllegalArgumentException> { TemplateValuesContent(mapOf("periodStart" to blank)) }
+        }
+        TemplateValuesContent(mapOf("periodStart" to " 2026-01-01")).values["periodStart"] shouldBe " 2026-01-01"
+    }
+
+    @Test
+    fun `INV-AC-27029 the SMS rule and the OutboundMessage field list are unchanged`() {
+        message(channel = MessageChannel.SMS, content = passcode).content shouldBe passcode
+        shouldThrow<IllegalArgumentException> { message(channel = MessageChannel.SMS, content = link) }
+        OutboundMessage::class.java.declaredFields
+            .filter { !it.isSynthetic }
+            .map { it.name } shouldBe listOf("channel", "to", "templateId", "templateVersion", "content")
+    }
 }
