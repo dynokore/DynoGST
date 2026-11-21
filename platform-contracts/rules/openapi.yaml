@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: rules API
-  version: 2.9.0
+  version: 2.10.0
   description: >-
     Contract-first source of truth for rules (API-01, STK-44). The
     `rules-contract` module generates its server interfaces and DTOs
@@ -1807,6 +1807,12 @@ components:
         ibt022Statement:
           type: string
           maxLength: 500
+        gstBasePercent:
+          type: string
+          pattern: '^(100|[0-9]{1,2})(\.[0-9]{1,6})?$'
+          description: >-
+            The percentage of the sale price on which the GST of the line is computed; the value of
+            the chosen treatment, absent when the treatment sets none.
         decisionTrace:
           type: object
           additionalProperties: true

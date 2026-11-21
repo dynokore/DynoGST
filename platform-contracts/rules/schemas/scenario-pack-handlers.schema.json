@@ -256,6 +256,11 @@
           "pattern": "^[0-9]{1,3}(\\.[0-9]{1,6})?$",
           "description": "The rate as a decimal string. Present exactly when rateBasis is FIXED."
         },
+        "gstBasePercent": {
+          "type": "string",
+          "pattern": "^(100|[0-9]{1,2})(\\.[0-9]{1,6})?$",
+          "description": "The percentage of the sale price on which the GST of the line is computed, decided by the handler; absent means the handler decides no reduction of the base. The value is pack data with a citation in sourceReference (INV-REQ-1032), never a constant of the engine."
+        },
         "ibt022Statement": {
           "type": "string",
           "minLength": 1,
