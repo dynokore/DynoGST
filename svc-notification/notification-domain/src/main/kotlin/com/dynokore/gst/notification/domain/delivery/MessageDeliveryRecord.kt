@@ -62,6 +62,8 @@ data class MessageDeliveryRecord(
             eventId: String,
             position: Int,
         ): UUID {
+            // RFC 9562 version 5 names SHA-1; this is an identifier, not a security use.
+            // nosemgrep: kotlin.lang.security.use-of-sha1.use-of-sha1
             val sha = MessageDigest.getInstance("SHA-1")
             sha.update(
                 ByteBuffer
