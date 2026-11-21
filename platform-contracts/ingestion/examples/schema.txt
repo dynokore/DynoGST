@@ -1,2 +1,3 @@
 ../schemas/transaction-request.schema.json
 ../schemas/feed-health-changed-payload.schema.json feed-health-changed-payload-*.json
+../openapi.yaml#/components/schemas/TriggerCoverageEntry trigger-coverage-entry-*.json

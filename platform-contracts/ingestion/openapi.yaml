@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: ingestion API
-  version: 1.18.0
+  version: 1.19.0
   description: >-
     Contract-first source of truth for ingestion (API-01, STK-44). The
     `ingestion-contract` module generates its server interfaces and DTOs
@@ -868,6 +868,57 @@ paths:
                   value: { entityRef: "E-001", adapterRef: "ERP-ACME-PULL", sourceSystem: "erp-acme", feedType: "PULL", configuredAt: "2026-03-20T03:15:00Z" }
         default:
           $ref: '#/components/responses/Error'
+  /internal/v1/ingestion/entities/{entityRef}/trigger-classes:
+    get:
+      operationId: getTriggerCoverageMap
+      summary: Read the trigger coverage map of an entity (SCR-17.2, F-2.7)
+      description: >-
+        Console query to console-bff. Returns one entry per trigger class
+        with its coverage state, so the onboarding-to-go-live flow resumes
+        from the coverage map held in ingestion-svc and never from a user's
+        session (INV-REQ-1008; catalogue/flow-resumption.tsv). The writes
+        are `mapTriggerClass` and `waiveTriggerClass`.
+      tags: [administration]
+      x-principal: filing-workflow
+      x-caller-auth: end-user
+      x-timeout: 2000
+      x-sync-edge: console-bff->ingestion-svc
+      x-error-codes: []
+      x-requirements: [INV-REQ-1008]
+      parameters:
+        - name: entityRef
+          in: path
+          required: true
+          schema: { type: string }
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 100
+            maximum: 500
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 512
+      responses:
+        '200':
+          description: The coverage map of the entity.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TriggerCoverageMap'
+              examples:
+                default:
+                  value:
+                    entityRef: "E-001"
+                    items:
+                      - { triggerClass: "OUTBOUND_DOCUMENT_ISSUED", status: "MAPPED", adapterRef: "ERP-ACME-PULL", decidedAt: "2026-03-20T03:15:00Z" }
+                      - { triggerClass: "THIRD_PARTY_ISSUANCE", status: "UNMAPPED" }
+        default:
+          $ref: '#/components/responses/Error'
   /internal/v1/ingestion/entities/{entityRef}/trigger-classes/{triggerClass}/mapping:
     post:
       operationId: mapTriggerClass
@@ -1479,6 +1530,32 @@ components:
       properties:
         adapterRef: { type: string, maxLength: 40 }
       required: [adapterRef]
+    TriggerCoverageEntry:
+      type: object
+      properties:
+        triggerClass:
+          type: string
+          enum:
+            [OUTBOUND_DOCUMENT_ISSUED, INBOUND_DOCUMENT_RECORDED, AGGREGABLE_BATCH_CLOSED, JOURNAL_ONLY_SUPPLY,
+              THIRD_PARTY_ISSUANCE]
+        status:
+          type: string
+          enum: [MAPPED, WAIVED, COVERED, UNMAPPED]
+          x-extensible-enum: true
+        adapterRef: { type: string, maxLength: 40 }
+        decidedAt: { type: string, format: date-time }
+      required: [triggerClass, status]
+    TriggerCoverageMap:
+      type: object
+      properties:
+        entityRef: { type: string }
+        items:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/TriggerCoverageEntry'
+        nextCursor: { type: string, maxLength: 512 }
+      required: [entityRef, items]
     TriggerMappingResult:
       type: object
       properties:

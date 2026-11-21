@@ -1,0 +1,5 @@
+{
+  "triggerClass": "OUTBOUND_DOCUMENT_ISSUED",
+  "adapterRef": "ERP-ACME-PULL",
+  "decidedAt": "2026-03-20T03:15:00Z"
+}
