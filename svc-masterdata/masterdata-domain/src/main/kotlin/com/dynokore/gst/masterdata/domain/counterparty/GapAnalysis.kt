@@ -2,7 +2,7 @@ package com.dynokore.gst.masterdata.domain.counterparty
 
 import com.dynokore.platform.partyregistry.IdentifierScheme
 
-/** The five gap classes of the pre-go-live gap report (INV-REQ-316), by the `findingClass` wire value. */
+/** The six gap classes of the pre-go-live gap report (INV-REQ-316), by the `findingClass` wire value. */
 enum class GapClass(
     val errorCode: String?,
 ) {
@@ -13,6 +13,12 @@ enum class GapClass(
 
     /** Carries no error code (the contract's `GapReport.rows.errorCode` is absent for it). */
     DUPLICATE_UEN(null),
+
+    /**
+     * INV-REQ-316 class 6: no approved scheme status in force and a document blocked by RUL-011. Carries no error code
+     * (the contract's `GapReport.rows.errorCode` is optional and this class names none).
+     */
+    SCHEME_STATUS_MISSING(null),
 }
 
 /** One counterparty listed under one class. */

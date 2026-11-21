@@ -105,4 +105,20 @@ class GapAnalysisTest {
             found,
         )
     }
+
+    @Test
+    fun `INV-AC-26221 GapClass has the six classes in order and SCHEME_STATUS_MISSING carries no error code`() {
+        assertEquals(
+            listOf(
+                "UEN_ABSENT",
+                "UEN_INVALID",
+                "GST_REGISTER_CONFLICT",
+                "ADDRESS_INCOMPLETE",
+                "DUPLICATE_UEN",
+                "SCHEME_STATUS_MISSING",
+            ),
+            GapClass.entries.map { it.name },
+        )
+        assertEquals(null, GapClass.SCHEME_STATUS_MISSING.errorCode)
+    }
 }

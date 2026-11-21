@@ -1,6 +1,7 @@
 package com.dynokore.gst.masterdata.application.gapreport
 
 import com.dynokore.gst.masterdata.application.counterparty.CounterpartyRepository
+import com.dynokore.gst.masterdata.application.held.HeldDocuments
 import com.dynokore.gst.masterdata.application.registry.LookupGstRegister
 import com.dynokore.gst.masterdata.application.registry.RegisterQuestion
 import com.dynokore.gst.masterdata.domain.counterparty.CounterpartyVersion
@@ -10,9 +11,13 @@ import com.dynokore.gst.masterdata.domain.counterparty.UenFormat
 import com.dynokore.gst.masterdata.domain.counterparty.conflictsWithRegister
 import com.dynokore.gst.masterdata.domain.counterparty.gapRows
 import com.dynokore.gst.masterdata.domain.counterparty.gstnOrNull
+import com.dynokore.gst.masterdata.domain.counterparty.schemesInForceOn
 import com.dynokore.gst.masterdata.domain.counterparty.uenOrNull
 import com.dynokore.platform.tenancykernel.TransactionRunner
+import java.time.Clock
 import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneOffset
 import java.util.UUID
 
 /** The state of a long-command record (API-17). */
@@ -79,12 +84,17 @@ data class GapReportRun(
  * the work runs on the bounded executor (INV-Q-17291). Class 3 goes only through [LookupGstRegister.check], the
  * register
  * use case with its cache, for the entity of the request; a counterparty whose lookup is unavailable is `notChecked`.
+ * Class 6 (SCHEME_STATUS_MISSING) reads the replica port [HeldDocuments.rul011Blocked] of the entity: a current
+ * counterparty in that set with no scheme status in force on the run date (the injected clock, UTC) is listed again
+ * under that class, whatever other classes it already has.
  */
 class RunGapReport(
     private val tx: TransactionRunner,
     private val parties: CounterpartyRepository,
     private val store: GapReportStore,
     private val register: LookupGstRegister,
+    private val held: HeldDocuments,
+    private val clock: Clock,
     private val runner: LongRunner,
 ) {
     fun handle(
@@ -117,6 +127,11 @@ class RunGapReport(
             gapRows(current) { UenFormat.accepts(it) }
                 .map { GapFinding(it.party.value, it.gapClass, it.gapClass.errorCode) }
                 .toMutableList()
+        val blocked = tx.inTransaction { held.rul011Blocked(entity) }
+        val today = LocalDate.now(clock.withZone(ZoneOffset.UTC))
+        current
+            .filter { it.partyRef in blocked && it.content.schemesInForceOn(today).isEmpty() }
+            .forEach { rows += GapFinding(it.partyRef.value, GapClass.SCHEME_STATUS_MISSING, null) }
         val notChecked = mutableListOf<String>()
         current.forEach { version -> registerFinding(entity, version, rows, notChecked) }
         return GapReportResult(

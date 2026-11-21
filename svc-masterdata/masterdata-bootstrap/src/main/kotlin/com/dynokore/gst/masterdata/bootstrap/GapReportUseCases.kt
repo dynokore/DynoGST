@@ -78,13 +78,16 @@ class GapReportUseCases {
     ): ExportAudit = AuditLogExportAudit(writer, tenants)
 
     @Bean
+    @Suppress("LongParameterList") // the ports of the report
     fun runGapReport(
         tx: TransactionRunner,
         parties: CounterpartyRepository,
         store: GapReportStore,
         register: LookupGstRegister,
+        held: HeldDocuments,
+        clock: Clock,
         runner: LongRunner,
-    ) = RunGapReport(tx, parties, store, register, runner)
+    ) = RunGapReport(tx, parties, store, register, held, clock, runner)
 
     @Bean
     fun readGapReport(
