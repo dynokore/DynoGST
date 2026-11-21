@@ -123,17 +123,15 @@ class PolicyNoticeWindowSourceTest {
     }
 
     private val first = listOf(ack("user-ack-1", "security.officer", "2026-02-01T10:00:00Z"))
-
     private fun sole(
         policy: Policy,
         relaxations: Relaxations,
     ) = PolicyNoticeWindowSource(policy, relaxations, defaultDays = 61).acknowledgement(tenant, ENTITY, NOTIFIED)
 
     @Test
-    fun `INV-AC-26255 VP-40 sole-operator option with an acknowledgement gives true at entity scope`() {
+    fun `INV-AC-26255 VP-40 selecting the sole-operator option with an acknowledgement gives true at entity scope`() {
         val policy = Policy(SelectedOption("DAYS_90"))
-        val held = listOf(ack("op", "tax.approver", "2026-01-01T00:00:00Z", LocalDate.of(2026, 1, 1)))
-        val result = sole(policy, Relaxations(first, vp40 = held))
+        val result = sole(policy, Relaxations(first, vp40 = listOf(ack("op", "tax.approver", "2026-01-01T00:00:00Z", LocalDate.of(2026, 1, 1)))))
         result?.soleOperator shouldBe true
         policy.vp40Scope?.entity shouldBe ENTITY
         policy.vp40Scope?.tenant shouldBe TenantId(UUID.fromString(tenant))
@@ -152,7 +150,7 @@ class PolicyNoticeWindowSourceTest {
     }
 
     @Test
-    fun `INV-AC-26255 the VP-40 date is the VP-66 acknowledgement date and a next-day election gives false`() {
+    fun `INV-AC-26255 the VP-40 date is the date of the VP-66 acknowledgement and an election from the next day gives false`() {
         val policy = Policy(SelectedOption("DAYS_90"))
         val dayAfter = ack("op", "r", "2026-02-02T00:00:00Z", LocalDate.of(2026, 2, 2))
         sole(policy, Relaxations(first, vp40 = listOf(dayAfter)))?.soleOperator shouldBe false
