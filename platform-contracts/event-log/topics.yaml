@@ -83,6 +83,7 @@ topics:
     producers:
       - access-svc
       - control-plane-svc
+      - evidence-svc
     subscribers:
       - notification-svc
   - topic: gst.access.operator-session-keys-changed.v1
@@ -1436,6 +1437,7 @@ replay_topics:
       - console-bff
   - topic: gst.evidence.replay-notification.v1
     event_types:
+      - com.dynokore.gst.access.MessageRequested.v1
       - com.dynokore.gst.evidence.EvidenceIntegrityFailed.v1
       - com.dynokore.gst.platform.ConnectionStatusChanged.v1
       - com.dynokore.gst.platform.PrivacyNoticeDue.v1

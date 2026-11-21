@@ -1,0 +1,1 @@
+{"template":"retention-notice","recipients":["holder@example.com"],"channel":"EMAIL","templateParameters":{"periodStart":"2019-01-01","periodEnd":"2019-12-31","noticeWindowEndsAt":"2027-03-31","noticeWindowDays":120}}
