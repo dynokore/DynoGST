@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: payload API
-  version: 2.3.1
+  version: 2.4.0
   description: >-
     Contract-first source of truth for payload (API-01, STK-44). The
     `payload-contract` module generates its server interfaces and DTOs
@@ -61,7 +61,9 @@ paths:
         A draft lacking the Supplier GSTN, invoice date, GST amount or
         submission type is refused as a malformed request with 400 and
         SRT-001 (INV-REQ-325): no verdict is given for it, so a draft that was
-        not checked never reads as PASS, and nothing is recorded.
+        not checked never reads as PASS, and nothing is recorded. A caller who
+        does not hold the permission of the operation is refused with 403 and
+        the closed code SRT-004, and nothing is recorded.
       tags: [pre-issuance]
       x-principal: ingest
       x-caller-auth: end-user
@@ -161,6 +163,8 @@ paths:
                     status: 400
                     code: "SRT-001"
                     correlationId: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+        '403':
+          $ref: '#/components/responses/Error'
         default:
           $ref: '#/components/responses/Error'
   /internal/v1/payload/documents/{docUuid}/versions/{version}/validate:
