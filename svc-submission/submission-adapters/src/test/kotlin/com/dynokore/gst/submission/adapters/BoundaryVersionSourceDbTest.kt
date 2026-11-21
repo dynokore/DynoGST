@@ -1,12 +1,18 @@
 package com.dynokore.gst.submission.adapters
 
+import com.dynokore.gst.submission.adapters.events.JacksonPayloadReadyDataReader
 import com.dynokore.gst.submission.adapters.persistence.JooqBoundaryVersionSource
+import com.dynokore.gst.submission.adapters.persistence.JooqSubmissionStore
 import com.dynokore.gst.submission.adapters.persistence.jooq.tables.Submission
 import com.dynokore.gst.submission.application.boundary.BoundaryVersion
 import com.dynokore.gst.submission.application.boundary.BoundaryVersionSource
+import com.dynokore.gst.submission.application.queue.NewReadySubmission
+import com.dynokore.gst.submission.domain.listing.SubmissionKind
 import com.dynokore.gst.submission.domain.ordering.LifecycleState
+import com.dynokore.platform.outboxandqueue.ContractViolation
 import com.dynokore.platform.tenancykernel.TenantId
 import com.dynokore.platform.tenancykernel.TransactionRunner
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
 import org.jooq.SQLDialect
@@ -155,5 +161,32 @@ class BoundaryVersionSourceDbTest {
         val text = statements.single().lowercase().replace("\"", "")
         text.contains("tenant_id = cast(? as uuid)") shouldBe true
         listOf("for update", "insert", "update", "delete").filter { text.contains(it) } shouldBe emptyList()
+    }
+
+    private fun payloadReady(docUuid: String) =
+        """{"docUuid":"$docUuid","version":1,"submissionType":"SUBMIT","specificationVersion":"1","payloadBytes":"AQ==","payloadSha256":"x"}"""
+
+    @Test
+    fun `INV-AC-26429 the PayloadReady reader stores the canonical lower-case Doc UUID and refuses other forms`() {
+        val fixed = UUID.randomUUID()
+        val reader = JacksonPayloadReadyDataReader()
+        reader.read(payloadReady(fixed.toString().uppercase())).docUuid shouldBe fixed.toString()
+        listOf("1-1-1-1-1", "not-a-uuid").forEach { bad ->
+            shouldThrow<ContractViolation> { reader.read(payloadReady(bad)) }.javaClass shouldBe
+                ContractViolation::class.java
+        }
+    }
+
+    @Test
+    fun `INV-AC-26429 a row stored with the reader Doc UUID of upper-case input is found by the boundary reader`() {
+        val fixed = UUID.randomUUID()
+        val stored = JacksonPayloadReadyDataReader().read(payloadReady(fixed.toString().uppercase())).docUuid
+        asTenant(tenantA) {
+            JooqSubmissionStore(dsl).insertReady(
+                TenantId(tenantA),
+                NewReadySubmission(stored, 1, "EU", null, byteArrayOf(1), "x", SubmissionKind.entries.first()),
+            )
+        }
+        read(tenantA, listOf(fixed)) shouldBe listOf(BoundaryVersion(fixed, 1, "EU", LifecycleState.READY))
     }
 }
