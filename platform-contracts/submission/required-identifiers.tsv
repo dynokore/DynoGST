@@ -283,4 +283,4 @@ approverAlert	property	openapi.yaml	INV-REQ-895
 ReadinessStatus.approverAlert	schema_property	openapi.yaml	INV-REQ-895
 ApproverAlert.accCode	schema_property	openapi.yaml	INV-REQ-895
 ApproverAlert.raisedAt	schema_property	openapi.yaml	INV-REQ-895
-ACC_001	enum_value	openapi.yaml	INV-REQ-895
+ACC-001	enum_value	openapi.yaml	INV-REQ-895
