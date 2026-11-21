@@ -134,4 +134,30 @@ class CanonicalVersionCreatedHandlerTest {
     fun `a payload that is not JSON raises ContractViolation`() {
         shouldThrow<ContractViolation> { handler.handle(event("{not json")) }
     }
+
+    private val aggregate = """"aggregateId":"AGG-2026-0001","""
+
+    @Test
+    fun `INV-AC-26556 INV-AC-2035 an aggregate event without a Doc UUID is refused and stores nothing`() {
+        listOf(
+            "",
+            """"docUuid":null,""",
+            """"docUuid":"not-a-uuid",""",
+            """"docuuid":"$doc",""",
+        ).forEach { docField ->
+            shouldThrow<ContractViolation> {
+                handler.handle(event(payload("SGD", total = "1.00", docField = aggregate + docField)))
+            }
+            memory.rows.isEmpty() shouldBe true
+            inputs.rows.isEmpty() shouldBe true
+        }
+    }
+
+    @Test
+    fun `INV-AC-26556 an aggregate event with a Doc UUID is stored with its aggregate id`() {
+        val field = aggregate + """"docUuid":"$doc","""
+        handler.handle(event(payload("SGD", total = "1.00", docField = field))) shouldBe HandleOutcome.APPLIED
+        memory.rows[doc to 1] shouldBe VersionFacts("E-1", BigDecimal("1.00"), "AGG-2026-0001")
+        inputs.rows shouldBe setOf(doc to 1)
+    }
 }
