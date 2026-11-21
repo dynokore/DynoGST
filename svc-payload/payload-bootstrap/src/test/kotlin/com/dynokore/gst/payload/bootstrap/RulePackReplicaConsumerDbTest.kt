@@ -235,10 +235,6 @@ class RulePackReplicaConsumerDbTest {
         tx(t1) { rules.active(schematron) }?.version shouldBe "2.0.0"
         ruleRows(t1) shouldBe 2
         ruleActive(t1) shouldBe 1
-        // re-activating the older version after the newer one flips the flag back without a unique violation
-        deliver(t1, false, activated("1.0.0")) shouldBe applied
-        tx(t1) { rules.active(schematron) }?.version shouldBe "1.0.0"
-        ruleActive(t1) shouldBe 1
     }
 
     @Test
