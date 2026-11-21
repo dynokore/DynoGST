@@ -284,3 +284,24 @@ ReadinessStatus.approverAlert	schema_property	openapi.yaml	INV-REQ-895
 ApproverAlert.accCode	schema_property	openapi.yaml	INV-REQ-895
 ApproverAlert.raisedAt	schema_property	openapi.yaml	INV-REQ-895
 ACC-001	enum_value	openapi.yaml	INV-REQ-895
+# INV-T-26743 (INV-REQ-980). Backticked names not rows: `exception-ageing.view` and `pack-activation-history.view` are catalogue permission keys; `AuthorityReplica.decide` is a library method; `reporting` is a principal value.
+getExceptionAgeing	operation	openapi.yaml	INV-REQ-980
+getExceptionAgeing.SRT-001	operation_error_code	openapi.yaml	INV-REQ-980
+getExceptionAgeing.SRT-004	operation_error_code	openapi.yaml	INV-REQ-980
+getExceptionAgeing.SRT-005	operation_error_code	openapi.yaml	INV-REQ-980
+getPackActivationHistory	operation	openapi.yaml	INV-REQ-980
+getPackActivationHistory.SRT-001	operation_error_code	openapi.yaml	INV-REQ-980
+getPackActivationHistory.SRT-004	operation_error_code	openapi.yaml	INV-REQ-980
+getPackActivationHistory.SRT-005	operation_error_code	openapi.yaml	INV-REQ-980
+ExceptionAgeingEntry.code	schema_property	openapi.yaml	INV-REQ-980
+ExceptionAgeingEntry.owner	schema_property	openapi.yaml	INV-REQ-980
+ExceptionAgeingEntry.entityRef	schema_property	openapi.yaml	INV-REQ-980
+ExceptionAgeingEntry.periodRef	schema_property	openapi.yaml	INV-REQ-980
+ExceptionAgeingEntry.openCount	schema_property	openapi.yaml	INV-REQ-980
+ExceptionAgeingEntry.oldestRaisedAt	schema_property	openapi.yaml	INV-REQ-980
+ExceptionAgeingEntry.ageBuckets	schema_property	openapi.yaml	INV-REQ-980
+PackActivationEntry.packId	schema_property	openapi.yaml	INV-REQ-980
+PackActivationEntry.packVersion	schema_property	openapi.yaml	INV-REQ-980
+PackActivationEntry.effectiveFrom	schema_property	openapi.yaml	INV-REQ-980
+PackActivationEntry.activatedBy	schema_property	openapi.yaml	INV-REQ-980
+PackActivationEntry.activatedAt	schema_property	openapi.yaml	INV-REQ-980

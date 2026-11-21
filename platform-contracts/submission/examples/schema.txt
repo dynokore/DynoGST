@@ -28,3 +28,5 @@
 ../schemas/submission-despatched-payload.schema.json submission-despatched-*.json
 ../schemas/unsubmitted-document-count-measured-payload.schema.json unsubmitted-document-count-measured-payload-*.json
 ../schemas/submission-acknowledged-payload.schema.json submission-acknowledged-*.json
+../openapi.yaml#/components/schemas/ExceptionAgeingPage exception-ageing-page*.json
+../openapi.yaml#/components/schemas/PackActivationHistoryPage pack-activation-history-page*.json

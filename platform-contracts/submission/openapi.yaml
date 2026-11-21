@@ -53,6 +53,10 @@ info:
     it is additive (INV-REQ-500, INV-T-21128).
     1.20.0 names the permission key `submission.view-status` and the 403
     refusal SRT-004 on checkSubmissionBoundary (INV-REQ-1005); it is additive.
+    1.22.0 adds the `reporting` reads getExceptionAgeing and
+    getPackActivationHistory, behind the permission keys
+    `exception-ageing.view` and `pack-activation-history.view` (INV-REQ-980,
+    INV-T-26743); it is additive.
   contact:
     name: submission (see CODEOWNERS)
 servers:
@@ -936,6 +940,173 @@ paths:
                               numerator: 2
                               denominator: 40
                         resubmissionSignal: "RISING"
+        '400':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/exception-ageing:
+    get:
+      operationId: getExceptionAgeing
+      summary: Read the exception ageing per error code, owner, entity and period
+      description: >-
+        The open exceptions per error code and catalogue owner, per registered
+        entity and prescribed period: the count, the oldest raise time and the
+        age buckets (INV-REQ-980). Access is decided per request by the
+        scoped permission key `exception-ageing.view` through
+        `AuthorityReplica.decide`, never by a role name. A caller without it
+        is refused with `403` (SRT-004). The read changes nothing and has no
+        side effect.
+
+
+        The optional filters `entityRef` and `periodRef` are equality filters
+        and combine with AND; with none, every entity and period in the
+        caller's scope is returned. A filter that breaks the contract is `400`
+        (SRT-001); an `entityRef` outside the caller's scope is `404`
+        (SRT-005). Cursor pagination (API-18), no offset and no total count.
+
+
+        Timeout class (INV-REQ-1204 b7, INV-Q-3476): `API gateway -> any
+        other service's public /v1 operation`, 3 s (x-timeout 3000).
+        When the gateway's circuit breaker for this service is open, or
+        the call times out, the gateway answers `503` with the API-20
+        envelope; the `503` is retryable, and the client retries by a
+        re-read (a safe GET; INV-REQ-1204 b7, INV-Q-3571).
+      tags: [metrics]
+      x-principal: reporting
+      x-operation:
+        kind: PERMISSION
+        permission: machine.status.read
+      x-caller-auth: end-user
+      x-timeout: 3000
+      x-error-codes: [SRT-001, SRT-004, SRT-005]
+      x-requirements: [INV-REQ-980]
+      parameters:
+        - name: entityRef
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 40
+        - name: periodRef
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 20
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 100
+            maximum: 500
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: One page of exception ageing rows.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExceptionAgeingPage'
+              examples:
+                default:
+                  value:
+                    items:
+                      - code: "SUB-015"
+                        owner: "tax.approver"
+                        entityRef: "E-001"
+                        periodRef: "2026Q1"
+                        openCount: 3
+                        oldestRaisedAt: "2026-03-01T08:00:00Z"
+                        ageBuckets:
+                          - label: "0-7d"
+                            count: 2
+                          - label: "8-30d"
+                            count: 1
+        '400':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/entities/{entityRef}/pack-activations:
+    get:
+      operationId: getPackActivationHistory
+      summary: Read the mapping pack activation history of an entity
+      description: >-
+        The activations of mapping packs of one entity, in ascending
+        `activatedAt`: pack, version, effective-from, optional effective-to,
+        the acting user ID and the activation time (INV-REQ-980). Access is
+        decided per request by the scoped permission key
+        `pack-activation-history.view` through `AuthorityReplica.decide`,
+        never by a role name. A caller without it is refused with `403`
+        (SRT-004). The read changes nothing and has no side effect.
+
+
+        A path or query value that breaks the contract is `400` (SRT-001); an
+        `entityRef` outside the caller's scope is `404` (SRT-005). Cursor
+        pagination (API-18), no offset and no total count.
+
+
+        Timeout class (INV-REQ-1204 b7, INV-Q-3476): `API gateway -> any
+        other service's public /v1 operation`, 3 s (x-timeout 3000).
+        When the gateway's circuit breaker for this service is open, or
+        the call times out, the gateway answers `503` with the API-20
+        envelope; the `503` is retryable, and the client retries by a
+        re-read (a safe GET; INV-REQ-1204 b7, INV-Q-3571).
+      tags: [metrics]
+      x-principal: reporting
+      x-operation:
+        kind: PERMISSION
+        permission: machine.status.read
+      x-caller-auth: end-user
+      x-timeout: 3000
+      x-error-codes: [SRT-001, SRT-004, SRT-005]
+      x-requirements: [INV-REQ-980]
+      parameters:
+        - $ref: '#/components/parameters/EntityRef'
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 100
+            maximum: 500
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: One page of pack activations, oldest first.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PackActivationHistoryPage'
+              examples:
+                default:
+                  value:
+                    items:
+                      - packId: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+                        packVersion: "2026.1"
+                        effectiveFrom: "2026-04-01"
+                        activatedBy: "u-1001"
+                        activatedAt: "2026-03-20T09:30:00Z"
         '400':
           $ref: '#/components/responses/Error'
         '403':
@@ -2112,6 +2283,88 @@ components:
           type: integer
           minimum: 0
       required: [numerator, denominator]
+    ExceptionAgeingPage:
+      type: object
+      properties:
+        items:
+          type: array
+          maxItems: 500
+          items:
+            $ref: '#/components/schemas/ExceptionAgeingEntry'
+        nextCursor:
+          type: string
+      required: [items]
+    ExceptionAgeingEntry:
+      type: object
+      properties:
+        code:
+          type: string
+          minLength: 1
+        owner:
+          type: string
+          minLength: 1
+          description: The catalogue owner of the error code.
+        entityRef:
+          type: string
+          minLength: 1
+          maxLength: 40
+        periodRef:
+          type: string
+          minLength: 1
+          maxLength: 20
+        openCount:
+          type: integer
+          minimum: 0
+        oldestRaisedAt:
+          type: string
+          format: date-time
+        ageBuckets:
+          type: array
+          items:
+            type: object
+            properties:
+              label:
+                type: string
+                minLength: 1
+              count:
+                type: integer
+                minimum: 0
+            required: [label, count]
+      required: [code, owner, entityRef, periodRef, openCount, oldestRaisedAt, ageBuckets]
+    PackActivationHistoryPage:
+      type: object
+      properties:
+        items:
+          type: array
+          maxItems: 500
+          items:
+            $ref: '#/components/schemas/PackActivationEntry'
+        nextCursor:
+          type: string
+      required: [items]
+    PackActivationEntry:
+      type: object
+      properties:
+        packId:
+          type: string
+          minLength: 1
+        packVersion:
+          type: string
+          minLength: 1
+        effectiveFrom:
+          type: string
+          format: date
+        effectiveTo:
+          type: string
+          format: date
+        activatedBy:
+          type: string
+          minLength: 1
+          description: The acting user ID, never a role.
+        activatedAt:
+          type: string
+          format: date-time
+      required: [packId, packVersion, effectiveFrom, activatedBy, activatedAt]
     ComplianceMetricsPage:
       type: object
       properties:

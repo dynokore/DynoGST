@@ -22,3 +22,5 @@ get	/v1/portfolio	period-readiness.view	-	person
 post	/v1/pre-issuance-checks	machine.ingestion.channels.write	machine.certification.ingest	machine
 post	/v1/transactions	machine.ingestion.channels.write	machine.certification.ingest	machine
 get	/v1/transactions/{docUuid}	machine.status.read	-	machine
+get	/v1/exception-ageing	machine.status.read	-	machine
+get	/v1/entities/{entityRef}/pack-activations	machine.status.read	-	machine

@@ -1,0 +1,17 @@
+{
+  "items": [
+    {
+      "code": "SUB-015",
+      "owner": "tax.approver",
+      "entityRef": "E-001",
+      "periodRef": "2026Q1",
+      "openCount": 3,
+      "oldestRaisedAt": "2026-03-01T08:00:00Z",
+      "ageBuckets": [
+        { "label": "0-7d", "count": 2 },
+        { "label": "8-30d", "count": 1 }
+      ]
+    }
+  ],
+  "nextCursor": "c-2"
+}
