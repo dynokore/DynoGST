@@ -8,7 +8,8 @@ class RegenerationGateTest {
     private val before =
         mapOf(DocumentId("A") to "SR", DocumentId("B") to "ZR", DocumentId("C") to "ES33")
 
-    private fun verdictOf(run: GateRun) = ReleaseGates.evaluate(setOf(Gate.REGENERATION), listOf(run), exposureReducing = false)
+    private fun verdictOf(run: GateRun) =
+        ReleaseGates.evaluate(setOf(Gate.REGENERATION), listOf(run), exposureReducing = false)
 
     @Test
     fun `INV-AC-2080 a changed document is reported and the train is not releasable`() {
