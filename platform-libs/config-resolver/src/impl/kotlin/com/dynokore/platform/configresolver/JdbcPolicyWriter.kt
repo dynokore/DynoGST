@@ -21,8 +21,9 @@ import java.util.UUID
  * lane
  * gate (INV-Q-4502). [audit] and [delegation] are public read-only properties (INV-Q-5117).
  *
- * Checks, in order, before anything is written (INV-Q-2930): the key (unknown and retired keys throw,
- * planned is refused), the scope level, the setting role (for every source, INV-Q-3169), the reason, rules
+ * Checks, in order, before anything is written (INV-Q-2930, INV-T-27167): the key lookup (an unknown key throws),
+ * the scope level, the setting permission (for every source, INV-Q-3169), the key state (a retired key throws, a
+ * planned key is refused), the reason, rules
  * config-resolver cannot evaluate (INV-Q-3173), the selection and its bounds (INV-Q-3167), the cross-scope
  * rule and installation bound (INV-T-3176, INV-Q-3202/3204/3206), the control relaxation
  * (INV-REQ-1244, INV-Q-3134/3136/3138/3142) and the effective date (INV-REQ-1243, INV-Q-2940/2977/3140).
@@ -89,10 +90,12 @@ class JdbcPolicyWriter(
     }
 
     override fun setPolicy(command: SetPolicyCommand): PolicyChange {
-        val definition = checks.settable(command.key)
+        val definition = checks.lookup(command.key)
         val key = definition.key
         val target = checks.targetOf(definition, command.scope, command.level)
-        val reason = checkSetter(definition, target, command)
+        checkPermission(definition, target, command)
+        checks.requireLive(definition)
+        val reason = checkReasonAndProfile(definition, target, command)
         checks.selectionAndBounds(definition, command.scope, target, command.selected, command.effectiveFrom)
         val looser = relaxations.looserOptions(definition, command.selected)
         val relaxation =
@@ -141,16 +144,28 @@ class JdbcPolicyWriter(
             null
         }
 
-    /** The setter's role, the reason and the profile fields; returns the reason (INV-Q-3169). */
-    private fun checkSetter(
+    /** The setting permission, decided before the key state (INV-Q-3169, INV-T-27167). */
+    private fun checkPermission(
+        definition: VariationPointDefinition,
+        target: SettingTarget,
+        command: SetPolicyCommand,
+    ) {
+        if (!holds(command.actor, target, definition.setPermission)) {
+            refuse(
+                definition.key,
+                PolicyRefusal.ROLE_NOT_ALLOWED,
+                "setting needs the permission ${definition.setPermission}",
+            )
+        }
+    }
+
+    /** The reason and the profile fields; returns the reason (INV-Q-3169). */
+    private fun checkReasonAndProfile(
         definition: VariationPointDefinition,
         target: SettingTarget,
         command: SetPolicyCommand,
     ): String {
         val key = definition.key
-        if (!holds(command.actor, target, definition.setPermission)) {
-            refuse(key, PolicyRefusal.ROLE_NOT_ALLOWED, "setting needs the permission ${definition.setPermission}")
-        }
         val reason =
             command.reason?.takeIf { it.isNotBlank() } ?: refuse(key, PolicyRefusal.REASON_REQUIRED, "no reason")
         if (command.source == SettingSource.PROFILE &&

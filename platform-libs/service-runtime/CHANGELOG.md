@@ -6,6 +6,10 @@ train is its own (README.md: "own version and changelog").
 
 ## [Unreleased]
 
+## [13.25.1] - 2026-11-22
+### Changed
+- Version step only (G-DVS, INV-T-27167, INV-AC-27166): the published bytes change because the dependency `config-resolver` steps to 6.1.3; no code change in this module.
+
 ## [13.25.0] - 2026-11-19
 ### Added
 - `PeriodErrorCode` gains `ATTESTATION_SEPARATION_OF_DUTIES` (PER-017, 403) and `ATTESTATION_UNEXPLAINED_RESIDUAL` (PER-018, 409), rendered by `Problems.renderPeriod`; `ClosedErrorCode` gains `BULK_ACTION_REFUSED` (SRT-015, 409; the `submittedCount` extension member is not rendered). The catalogue snapshot is re-vendored at invoice-docs daceb509 (coordinator ruling INV-T-25147, INV-AC-25146; consumer INV-T-24459).

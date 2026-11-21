@@ -10,9 +10,18 @@ internal class PolicyChecks(
     private val writes: JdbcSettingWrites,
     private val constraints: ValueConstraints?,
 ) {
-    /** Unknown and retired keys throw; a planned key cannot be set (INV-Q-2930, INV-REQ-1251). */
-    fun settable(key: VariationPointKey): VariationPointDefinition {
-        val definition = catalogue.require(key)
+    /**
+     * Unknown and retired keys throw; a planned key cannot be set (INV-Q-2930, INV-REQ-1251). Used by `validate` and
+     * the acknowledgement, which keep this order; the setting write uses [lookup] and [requireLive] (INV-T-27167).
+     */
+    fun settable(key: VariationPointKey): VariationPointDefinition = requireLive(lookup(key))
+
+    /** The catalogue lookup: an unknown key throws [UnknownVariationPoint] for every caller. */
+    fun lookup(key: VariationPointKey): VariationPointDefinition = catalogue.require(key)
+
+    /** The key state: a retired row throws, a planned row is refused (INV-REQ-1251). */
+    fun requireLive(definition: VariationPointDefinition): VariationPointDefinition {
+        val key = definition.key
         when (definition.status) {
             VpStatus.RETIRED -> throw VariationPointRetired(key)
             VpStatus.PLANNED -> refuse(key, PolicyRefusal.PLANNED, "a planned variation point cannot be set")

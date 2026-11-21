@@ -98,6 +98,71 @@ class SetterPermissionPostgresIT : WritePathBase() {
         assertEquals(v0, r.stored(key))
     }
 
+    private val oneDay = listOf(SelectedOption("DAYS_90"))
+
+    private fun Run.assertNothingStored() {
+        assertEquals(0L, settings())
+        assertEquals(emptyList<StoredEvent>(), events())
+    }
+
+    @Test
+    fun `INV-AC-27166 a planned row as admin is refused for the permission`() {
+        val r = Run(image)
+        val cmd = set(WriteCatalogue.PLANNED, r.e1, ScopeLevel.ENTITY, oneDay, admin)
+        assertEquals(PolicyRefusal.ROLE_NOT_ALLOWED, r.refusedPut(cmd))
+        r.assertNothingStored()
+    }
+
+    @Test
+    fun `INV-AC-27166 a planned row as approver is refused for the state`() {
+        val r = Run(image)
+        val cmd = set(WriteCatalogue.PLANNED, r.e1, ScopeLevel.ENTITY, oneDay, approver)
+        assertEquals(PolicyRefusal.PLANNED, r.refusedPut(cmd))
+        r.assertNothingStored()
+    }
+
+    @Test
+    fun `INV-AC-27166 a retired row as admin is refused for the permission`() {
+        val r = Run(image)
+        val cmd = set(WriteCatalogue.RETIRED, r.e1, ScopeLevel.ENTITY, oneDay, admin)
+        assertEquals(PolicyRefusal.ROLE_NOT_ALLOWED, r.refusedPut(cmd))
+        r.assertNothingStored()
+    }
+
+    @Test
+    fun `INV-AC-27166 a retired row as approver throws VariationPointRetired`() {
+        val r = Run(image)
+        val cmd = set(WriteCatalogue.RETIRED, r.e1, ScopeLevel.ENTITY, oneDay, approver)
+        assertThrows(VariationPointRetired::class.java) { r.put(cmd) }
+        r.assertNothingStored()
+    }
+
+    @Test
+    fun `INV-AC-27166 an unknown key throws UnknownVariationPoint for both callers`() {
+        val r = Run(image)
+        listOf(admin, approver).forEach {
+            val cmd = set(VariationPointKey("VP-99"), r.e1, ScopeLevel.ENTITY, oneDay, it)
+            assertThrows(UnknownVariationPoint::class.java) { r.put(cmd) }
+            r.assertNothingStored()
+        }
+    }
+
+    @Test
+    fun `INV-AC-27166 a planned row at a level it does not allow is refused for the scope`() {
+        val r = Run(image)
+        val cmd = set(WriteCatalogue.PLANNED, r.tenantScope, ScopeLevel.TENANT, oneDay, admin)
+        assertEquals(PolicyRefusal.SCOPE_NOT_ALLOWED, r.refusedPut(cmd))
+        r.assertNothingStored()
+    }
+
+    @Test
+    fun `INV-AC-27166 an unbound port refuses a planned row for the permission and does not disclose the state`() {
+        val r = Run(image)
+        val cmd = set(WriteCatalogue.PLANNED, r.e1, ScopeLevel.ENTITY, oneDay, approver)
+        assertEquals(PolicyRefusal.ROLE_NOT_ALLOWED, r.refusedPut(cmd, r.h.writer(permission = null)))
+        r.assertNothingStored()
+    }
+
     @Test
     fun `a port answering true is accepted`() {
         val r = Run(image)

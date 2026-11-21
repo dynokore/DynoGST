@@ -96,7 +96,7 @@ Released on its own version with its own changelog. Services consume it only as 
   installation — then the operating profile's value (stored as a setting with source `PROFILE`, profile id
   and version, INV-Q-2979), then the catalogue default (by deployment form where the row says so).
   Unknown and retired keys are refused, a planned key resolves to its default, a must-elect key with
-  nothing set raises `ElectionRequired` (INV-REQ-1251, INV-Q-2930).
+  nothing set raises `ElectionRequired` (INV-REQ-1251, INV-Q-2930). A setting is refused in this order: scope, then the setting permission, then the key state, so a caller without the permission learns nothing about the state of a key (INV-T-27167).
 - `VariationPointCatalogue`: the port a service adapts the generated gst-catalogue 1.2.0 `VariationPoint`
   to — scope levels, option keys with their per-option `Strictness` (never catalogue order, INV-Q-2936),
   multi-select, by-form default, form dependence.
