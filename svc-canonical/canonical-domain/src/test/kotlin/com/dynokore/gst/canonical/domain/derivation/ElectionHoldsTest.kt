@@ -41,8 +41,8 @@ class ElectionHoldsTest {
     @Test
     fun `INV-AC-26602 H6 SGD or null currency has no hold whatever the rate source election`() {
         for (elected in listOf(true, false)) {
-            ElectionHolds.decide(SALE, "SGD", apportionmentElected = false, rateSourceElected = elected) shouldBe emptyMap()
-            ElectionHolds.decide(SALE, null, apportionmentElected = false, rateSourceElected = elected) shouldBe emptyMap()
+            ElectionHolds.decide(SALE, "SGD", false, rateSourceElected = elected) shouldBe emptyMap()
+            ElectionHolds.decide(SALE, null, false, rateSourceElected = elected) shouldBe emptyMap()
         }
     }
 
