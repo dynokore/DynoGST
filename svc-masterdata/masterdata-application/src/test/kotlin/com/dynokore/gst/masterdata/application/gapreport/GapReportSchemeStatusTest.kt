@@ -1,20 +1,20 @@
 package com.dynokore.gst.masterdata.application.gapreport
 
 import com.dynokore.gst.masterdata.application.counterparty.CounterpartyRepository
+import com.dynokore.gst.masterdata.application.counterparty.MasterDataResolvedPublisher
+import com.dynokore.gst.masterdata.application.counterparty.RecordCounterparty
 import com.dynokore.gst.masterdata.application.held.HeldDocumentFact
 import com.dynokore.gst.masterdata.application.held.HeldDocuments
 import com.dynokore.gst.masterdata.application.held.HeldKind
 import com.dynokore.gst.masterdata.application.rate.directRunner
-import com.dynokore.gst.masterdata.application.registry.LookupGstRegister
 import com.dynokore.gst.masterdata.application.registry.LookupEvidenceLog
+import com.dynokore.gst.masterdata.application.registry.LookupGstRegister
 import com.dynokore.gst.masterdata.application.registry.RegisterAccess
 import com.dynokore.gst.masterdata.application.registry.RegisterCache
 import com.dynokore.gst.masterdata.application.registry.RegisterClient
 import com.dynokore.gst.masterdata.application.registry.RegisterPorts
 import com.dynokore.gst.masterdata.application.registry.RegisterSuggestions
 import com.dynokore.gst.masterdata.application.registry.RegistryPolicies
-import com.dynokore.gst.masterdata.application.counterparty.RecordCounterparty
-import com.dynokore.gst.masterdata.application.counterparty.MasterDataResolvedPublisher
 import com.dynokore.gst.masterdata.application.request.DirectTx
 import com.dynokore.gst.masterdata.domain.counterparty.CounterpartyChange
 import com.dynokore.gst.masterdata.domain.counterparty.CounterpartyVersion
@@ -23,10 +23,10 @@ import com.dynokore.gst.masterdata.domain.counterparty.IdentifierInput
 import com.dynokore.gst.masterdata.domain.counterparty.PartyRef
 import com.dynokore.gst.masterdata.domain.counterparty.PostalAddress
 import com.dynokore.gst.masterdata.domain.counterparty.SchemeStatus
+import com.dynokore.gst.masterdata.domain.counterparty.UenFormat
 import com.dynokore.gst.masterdata.domain.counterparty.WriteOrigin
 import com.dynokore.gst.masterdata.domain.counterparty.after
 import com.dynokore.gst.masterdata.domain.counterparty.gapRows
-import com.dynokore.gst.masterdata.domain.counterparty.UenFormat
 import com.dynokore.platform.partyregistry.IdentifierScheme
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -49,7 +49,13 @@ class GapReportSchemeStatusTest {
     private val provenance =
         null
             .after(
-                CounterpartyChange(listOf(IdentifierInput(IdentifierScheme.UEN, "201912345A")), "Acme", null, null, null),
+                CounterpartyChange(
+                    listOf(IdentifierInput(IdentifierScheme.UEN, "201912345A")),
+                    "Acme",
+                    null,
+                    null,
+                    null,
+                ),
                 "EV",
                 WriteOrigin.OPERATOR,
                 now,
@@ -153,7 +159,9 @@ class GapReportSchemeStatusTest {
     }
 
     private fun portWith(vararg facts: HeldDocumentFact): HeldDocuments =
-        com.dynokore.gst.masterdata.application.request.FakeHeld().also { h -> facts.forEach { h.apply(it) } }
+        com.dynokore.gst.masterdata.application.request
+            .FakeHeld()
+            .also { h -> facts.forEach { h.apply(it) } }
 
     private val a = party("CP-A", "201912345A")
     private val b = party("CP-B", "201912346B")

@@ -76,7 +76,7 @@ class GapAnalysisTest {
     @Test
     fun `the error codes are those of the report`() {
         assertEquals(
-            listOf("MDM-002", "MDM-003", "MDM-007", "MDM-006", null),
+            listOf("MDM-002", "MDM-003", "MDM-007", "MDM-006", null, null),
             GapClass.entries.map { it.errorCode },
         )
     }
