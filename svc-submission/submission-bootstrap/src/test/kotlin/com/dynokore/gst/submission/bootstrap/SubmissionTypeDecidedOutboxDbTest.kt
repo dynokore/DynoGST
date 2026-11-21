@@ -84,6 +84,7 @@ class SubmissionTypeDecidedOutboxDbTest {
         fun envelope(
             doc: String,
             version: Int,
+            taxCode: String = "SR",
         ): Envelope =
             Envelope(
                 id = EventId(UUID.randomUUID().toString()),
@@ -99,13 +100,14 @@ class SubmissionTypeDecidedOutboxDbTest {
                 instanceId = "canonical-svc-0",
                 correlation = CorrelationId("corr-1"),
                 causation = CausationId("cause-1"),
-                dataJson = created(doc, version),
+                dataJson = created(doc, version, taxCode),
             )
     }
 
     private fun created(
         doc: String,
         version: Int,
+        taxCode: String = "SR",
     ): String =
         """{"docUuid":"$doc","version":$version,"transactionDate":"2026-03-20","prescribedPeriodRef":"$period",
         |"scopeVerdict":"SUBMITTABLE",
@@ -114,7 +116,7 @@ class SubmissionTypeDecidedOutboxDbTest {
         |"currency":{"value":"SGD"},
         |"parties":{"value":{"buyer":{"name":"Buyer","identifierScheme":"SG_UEN","identifierValue":"201912345A"}}},
         |"totals":{"value":{"totalExcludingTax":"100.00","totalTax":"9.00"}},
-        |"lines":{"value":[{"taxCode":"SR"}]}}}
+        |"lines":{"value":[{"taxCode":"$taxCode"}]}}}
         """.trimMargin().replace("\n", "")
 
     private fun run(
@@ -151,6 +153,22 @@ class SubmissionTypeDecidedOutboxDbTest {
         data["version"] shouldBe 1
         data["submissionType"] shouldBe "TYPE_2"
         (data["docsequence"] as Number).toLong() shouldBe checkNotNull(rows[0].docsequence)
+    }
+
+    @Test
+    fun `INV-AC-27071 zero-rated sale off the network stages Type 2 with four members, no scheme`(
+        @TempDir dir: Path,
+    ) = run(dir) {
+        dueDate()
+        val doc = UUID.randomUUID().toString()
+        asTenant(a) { handler.handle(envelope(doc, 1, "ZR")) } shouldBe HandleOutcome.APPLIED
+
+        val row = events(a, doc).single()
+        val data = payload(row)
+        data.keys shouldBe setOf("docUuid", "version", "docsequence", "submissionType")
+        data["submissionType"] shouldBe "TYPE_2"
+        val text = checkNotNull(row.data).data().lowercase()
+        listOf("sws", "ibt022", "scheme").forEach { text.contains(it) shouldBe false }
     }
 
     @Test

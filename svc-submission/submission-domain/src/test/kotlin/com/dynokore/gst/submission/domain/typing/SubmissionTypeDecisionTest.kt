@@ -66,6 +66,17 @@ class SubmissionTypeDecisionTest {
     }
 
     @Test
+    fun `INV-AC-27071 a sale not on the network without self-billing is Type 2 and the purchase is not`() {
+        reachability.forEach {
+            val sale = facts(SALE, NOT_ON_NETWORK, it, debitNote = false, selfBilling = null)
+            val purchase = facts(PURCHASE, NOT_ON_NETWORK, it, debitNote = false, selfBilling = null)
+            SubmissionTypeDecision.decide(sale) shouldBe decided(TYPE_2)
+            SubmissionTypeDecision.decide(purchase) shouldNotBe decided(TYPE_2)
+            SubmissionTypeDecision.decide(purchase) shouldBe decided(TYPE_3)
+        }
+    }
+
+    @Test
     fun `INV-AC-10593 a purchase not on the network is Type 3 whatever the reachability says`() {
         reachability.forEach {
             val result = SubmissionTypeDecision.decide(facts(PURCHASE, NOT_ON_NETWORK, it))
