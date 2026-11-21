@@ -45,8 +45,8 @@ class JooqRulePackReplica(
     }
 
     /**
-     * Marks exactly the pair active and every other row of the tenant and of [packType] inactive. A pair that is not
-     * staged is never invented: [IllegalStateException], so the inbox retries it. Returns true when a row changed.
+     * Marks exactly the pair active and every other row of the tenant and of [packType] inactive (the others
+     * first). A pair that is not staged is never invented: [IllegalStateException], so the inbox retries it. Returns true when a row changed.
      */
     fun activate(
         packType: String,
@@ -54,13 +54,24 @@ class JooqRulePackReplica(
         version: String,
     ): Boolean {
         check(dsl.fetchExists(table, key(packType, packIdentifier, version))) { "the pack version is not staged yet" }
+        val ofType = table.TENANT_ID.eq(boundTenant()).and(table.PACK_TYPE.eq(packType))
         val target = table.PACK_IDENTIFIER.eq(packIdentifier).and(table.PACK_VERSION.eq(version))
-        return dsl
-            .update(table)
-            .set(table.ACTIVE, target)
-            .where(table.TENANT_ID.eq(boundTenant()).and(table.PACK_TYPE.eq(packType)))
-            .and(table.ACTIVE.ne(target))
-            .execute() > 0
+        // two statements: the one-active index is not deferrable, so the old row is cleared before the new one is set
+        val cleared =
+            dsl
+                .update(
+                    table,
+                ).set(table.ACTIVE, false)
+                .where(ofType.and(table.ACTIVE.isTrue).and(target.not()))
+                .execute()
+        val set =
+            dsl
+                .update(
+                    table,
+                ).set(table.ACTIVE, true)
+                .where(ofType.and(target).and(table.ACTIVE.isFalse))
+                .execute()
+        return cleared + set > 0
     }
 
     /** The active row of [packType] with its contents, or null when none is active for the tenant. */
