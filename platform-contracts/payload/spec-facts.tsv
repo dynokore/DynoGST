@@ -4,3 +4,4 @@ openapi.yaml	/components/schemas/DraftDocument/properties/submissionType/x-exten
 openapi.yaml	/components/schemas/DraftDocument/properties/submissionType/enum	equals	["TYPE_1A","TYPE_1B","TYPE_2","TYPE_3"]	INV-REQ-957
 openapi.yaml	/components/schemas/RecordRenditionSampleRequest/properties/submissionType/x-extensible-enum	absent	-	INV-REQ-1033
 openapi.yaml	/components/schemas/RecordRenditionSampleRequest/properties/submissionType/enum	equals	["TYPE_1A","TYPE_1B","TYPE_2","TYPE_3"]	INV-REQ-1033
+openapi.yaml	/paths/~1internal~1v1~1payload~1documents~1{docUuid}~1versions~1{version}~1regenerated/get/x-requirements	equals	["INV-REQ-591","INV-REQ-1345"]	INV-REQ-591
