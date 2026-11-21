@@ -92,6 +92,11 @@ class RunReadModelDbTest {
         money.lines,
     )
 
+    private fun purchase(
+        doc: String,
+        money: Money = Money(),
+    ) = facts(doc, money = money).copy(direction = Direction.PURCHASE)
+
     private fun d2Facts() =
         facts(
             d2,
@@ -297,5 +302,142 @@ class RunReadModelDbTest {
         scalar("select count(*) from pg_class where relname in $tables and relforcerowsecurity") shouldBe 4L
         val guarded = "tgrelid::regclass::text like 'reconciliation.document_%' and not tgisinternal"
         scalar("select count(*) from pg_trigger where $guarded") shouldBe 3L
+    }
+
+    private fun versionRows(
+        t: UUID,
+        doc: String,
+    ) = scalar("select count(*) from reconciliation.document_version where tenant_id = '$t' and doc_uuid = '$doc'")
+
+    private fun lineRows(
+        t: UUID,
+        doc: String,
+        entity: String,
+        direction: String,
+    ) = scalar(
+        "select count(*) from reconciliation.document_line where tenant_id = '$t' and doc_uuid = '$doc' " +
+            "and entity_ref = '$entity' and direction = '$direction'",
+    )
+
+    private fun periodColumn(
+        t: UUID,
+        entity: String,
+        column: String,
+    ) = scalar("select $column from reconciliation.document_period where tenant_id = '$t' and entity_ref = '$entity'")
+
+    private fun recordPair(t: UUID) {
+        model(t) {
+            it.recordVersion(t.toString(), "E-001", facts(d1)) shouldBe true
+            it.recordVersion(
+                t.toString(),
+                "E-002",
+                purchase(d1, Money(lines = listOf(line(1, "7.00", "0.63")))),
+            ) shouldBe true
+        }
+    }
+
+    @Test
+    fun `INV-AC-26646 a SALE and a PURCHASE version of one Doc UUID for two entities are two rows`() {
+        val t = UUID.randomUUID()
+        recordPair(t)
+        versionRows(t, d1) shouldBe 2L
+        lineRows(t, d1, "E-001", "SALE") shouldBe 2L
+        lineRows(t, d1, "E-002", "PURCHASE") shouldBe 1L
+    }
+
+    @Test
+    fun `INV-AC-26646 the load of each entity holds only its own side`() {
+        val t = UUID.randomUUID()
+        recordPair(t)
+        val e1 = model(t) { it.load(t.toString(), "E-001", "2026-Q1") }.single()
+        val e2 = model(t) { it.load(t.toString(), "E-002", "2026-Q1") }.single()
+        e1.docUuid shouldBe d1
+        e2.docUuid shouldBe d1
+        e1.versions.map { it.direction } shouldBe listOf(Direction.SALE)
+        e2.versions.map { it.direction } shouldBe listOf(Direction.PURCHASE)
+        e1.versions.single().allocation shouldBe
+            SgdAllocator.allocate(
+                "SGD",
+                listOf(
+                    AllocationLine(1, BigDecimal("100.00"), BigDecimal("9.00"), "SR"),
+                    AllocationLine(2, BigDecimal("50.00"), BigDecimal("4.50"), "SR"),
+                ),
+                null,
+            )
+        e2.versions.single().allocation shouldBe
+            SgdAllocator.allocate("SGD", listOf(AllocationLine(1, BigDecimal("7.00"), BigDecimal("0.63"), "SR")), null)
+    }
+
+    @Test
+    fun `INV-AC-26646 a repeat of either record returns false and stores no third row`() {
+        val t = UUID.randomUUID()
+        recordPair(t)
+        model(t) { it.recordVersion(t.toString(), "E-001", facts(d1)) } shouldBe false
+        model(t) {
+            it.recordVersion(t.toString(), "E-002", purchase(d1))
+        } shouldBe false
+        versionRows(t, d1) shouldBe 2L
+        lineRows(t, d1, "E-001", "SALE") shouldBe 2L
+        lineRows(t, d1, "E-002", "PURCHASE") shouldBe 1L
+    }
+
+    @Test
+    fun `INV-AC-26646 the same entity with the opposite direction is a second row and the same key stays one`() {
+        val t = UUID.randomUUID()
+        model(t) { it.recordVersion(t.toString(), "E-001", facts(d1)) } shouldBe true
+        model(t) { it.recordVersion(t.toString(), "E-001", facts(d1)) } shouldBe false
+        versionRows(t, d1) shouldBe 1L
+        model(t) { it.recordVersion(t.toString(), "E-001", purchase(d1)) } shouldBe true
+        versionRows(t, d1) shouldBe 2L
+    }
+
+    @Test
+    fun `INV-AC-26646 reassignPeriod for one entity leaves the period row of the other entity unchanged`() {
+        val t = UUID.randomUUID()
+        recordPair(t)
+        model(t) { it.reassignPeriod(t.toString(), "E-001", d1, 20, "2026-Q2") } shouldBe true
+        periodColumn(t, "E-001", "period_ref") shouldBe "2026-Q2"
+        periodColumn(t, "E-002", "period_ref") shouldBe "2026-Q1"
+        periodColumn(t, "E-002", "docsequence") shouldBe 10L
+    }
+
+    @Test
+    fun `INV-AC-26646 the primary keys are widened and the guards equal the previous ones`() {
+        fun pk(table: String) =
+            scalar(
+                "select string_agg(a.attname, ',' order by k.ord) from pg_index i " +
+                    "cross join lateral unnest(i.indkey) with ordinality k(attnum, ord) " +
+                    "join pg_attribute a on a.attrelid = i.indrelid and a.attnum = k.attnum " +
+                    "where i.indisprimary and i.indrelid = 'reconciliation.$table'::regclass",
+            )
+        pk("document_version") shouldBe "tenant_id,doc_uuid,entity_ref,direction,version"
+        pk("document_line") shouldBe "tenant_id,doc_uuid,entity_ref,direction,version,line_number"
+        pk("document_period") shouldBe "tenant_id,doc_uuid,entity_ref"
+        pk("document_acknowledgement") shouldBe "tenant_id,doc_uuid,version"
+        scalar(
+            "select count(*) from pg_description d " +
+                "join pg_attribute a on a.attrelid = d.objoid and a.attnum = d.objsubid " +
+                "where d.objoid = 'reconciliation.document_line'::regclass " +
+                "and a.attname in ('entity_ref','direction') " +
+                "and d.description = 'class: operational'",
+        ) shouldBe 2L
+        scalar(
+            "select count(*) from pg_policy where polrelid in " +
+                "('reconciliation.document_line'::regclass, 'reconciliation.document_version'::regclass)",
+        ) shouldBe 2L
+        scalar(
+            "select count(*) from pg_trigger where tgrelid = 'reconciliation.document_line'::regclass " +
+                "and tgname = 'document_line_append_only' and not tgisinternal",
+        ) shouldBe 1L
+        scalar(
+            "select count(*) from information_schema.role_table_grants where table_schema = 'reconciliation' " +
+                "and table_name = 'document_line' and grantee = 'reconciliation_runtime' " +
+                "and privilege_type in ('UPDATE','DELETE','TRUNCATE')",
+        ) shouldBe 0L
+        scalar(
+            "select count(*) from information_schema.role_table_grants where table_schema = 'reconciliation' " +
+                "and table_name = 'document_line' and grantee = 'reconciliation_runtime' " +
+                "and privilege_type in ('SELECT','INSERT')",
+        ) shouldBe 2L
     }
 }
