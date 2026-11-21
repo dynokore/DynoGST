@@ -17,14 +17,19 @@ class SchXslt2PinTest {
     private fun lines(relative: String): List<String> = Files.readAllLines(root.resolve(relative))
 
     private val libraryLines: List<String> =
-        lines("gradle/libs.versions.toml").filter { it.trimStart().startsWith("#").not() && it.contains("\"$group:$artifact\"") }
+        lines("gradle/libs.versions.toml").filter {
+            it.trimStart().startsWith("#").not() &&
+                it.contains("\"$group:$artifact\"")
+        }
 
     private val versionRef: String =
         Regex("""version\.ref\s*=\s*"([^"]+)"""").find(libraryLines.single())!!.groupValues[1]
 
+    private val versionLine = Regex("""^\s*${Regex.escape(versionRef)}\s*=\s*"([^"]+)"\s*$""")
+
     private val pinned: String =
         lines("gradle/libs.versions.toml")
-            .mapNotNull { Regex("""^\s*${Regex.escape(versionRef)}\s*=\s*"([^"]+)"\s*$""").find(it)?.groupValues?.get(1) }
+            .mapNotNull { versionLine.find(it)?.groupValues?.get(1) }
             .single()
 
     @Test
