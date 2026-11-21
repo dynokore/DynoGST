@@ -1,6 +1,7 @@
 package com.dynokore.gst.payload.bootstrap
 
 import com.dynokore.gst.payload.adapters.packs.JooqMdePackReplica
+import com.dynokore.gst.payload.adapters.packs.JooqRulePackReplica
 import com.dynokore.gst.payload.adapters.packs.RulePackEventsHandler
 import com.dynokore.platform.outboxandqueue.ConsumerSubscription
 import com.dynokore.platform.outboxandqueue.EventCatalogue
@@ -30,6 +31,12 @@ class PackReplicaConfiguration {
     ): JooqMdePackReplica = JooqMdePackReplica(dsl) { tenants.current().value }
 
     @Bean
+    fun rulePackReplica(
+        dsl: DSLContext,
+        tenants: TenantContext,
+    ): JooqRulePackReplica = JooqRulePackReplica(dsl) { tenants.current().value }
+
+    @Bean
     @Suppress("LongParameterList")
     fun rulePackStagedConsumer(
         catalogue: EventCatalogue,
@@ -39,6 +46,7 @@ class PackReplicaConfiguration {
         clock: Clock,
         dsl: DSLContext,
         replica: JooqMdePackReplica,
+        rules: JooqRulePackReplica,
     ): JdbcInboxConsumer =
         consumer(
             RulePackEventsHandler.STAGED_TYPE,
@@ -50,6 +58,7 @@ class PackReplicaConfiguration {
             clock,
             dsl,
             replica,
+            rules,
         )
 
     @Bean
@@ -62,6 +71,7 @@ class PackReplicaConfiguration {
         clock: Clock,
         dsl: DSLContext,
         replica: JooqMdePackReplica,
+        rules: JooqRulePackReplica,
     ): JdbcInboxConsumer =
         consumer(
             RulePackEventsHandler.ACTIVATED_TYPE,
@@ -73,6 +83,7 @@ class PackReplicaConfiguration {
             clock,
             dsl,
             replica,
+            rules,
         )
 
     @Suppress("LongParameterList")
@@ -86,6 +97,7 @@ class PackReplicaConfiguration {
         clock: Clock,
         dsl: DSLContext,
         replica: JooqMdePackReplica,
+        rules: JooqRulePackReplica,
     ): JdbcInboxConsumer {
         val entry = catalogue.find(type)
         check(entry != null && entry.topic == topic) { "the event catalogue does not list $type on $topic" }
@@ -95,7 +107,7 @@ class PackReplicaConfiguration {
             reader,
             scope,
             dsl,
-            RulePackEventsHandler(type, replica),
+            RulePackEventsHandler(type, replica, rules),
             rebuildRequired,
             clock,
         )

@@ -20,6 +20,7 @@ import tools.jackson.databind.json.JsonMapper
 class RulePackEventsHandler(
     private val expectedType: String,
     private val replica: JooqMdePackReplica,
+    private val rules: JooqRulePackReplica,
 ) : EventHandler {
     private val json = JsonMapper.builder().build()
 
@@ -40,8 +41,25 @@ class RulePackEventsHandler(
             log.error("staged pack {} came with another type than the recorded one; nothing changes", identifier)
             throw ContractViolation("a pack identifier is already recorded with another type")
         }
-        if (packType != MDE_PACK_TYPE) return HandleOutcome.IGNORED
-        return when (replica.stage(identifier, version, json.writeValueAsString(contents))) {
+        if (packType in RULE_PACK_TYPES) {
+            return stageRulePack(packType, identifier, version, json.writeValueAsString(contents))
+        }
+        return if (packType ==
+            MDE_PACK_TYPE
+        ) {
+            stageMde(identifier, version, json.writeValueAsString(contents))
+        } else {
+            HandleOutcome.IGNORED
+        }
+    }
+
+    private fun stageMde(
+        identifier: String,
+        version: String,
+        contents: String,
+    ): HandleOutcome {
+        val log = LoggerFactory.getLogger(RulePackEventsHandler::class.java)
+        return when (replica.stage(identifier, version, contents)) {
             StageResult.STORED -> {
                 HandleOutcome.APPLIED
             }
@@ -61,6 +79,34 @@ class RulePackEventsHandler(
         }
     }
 
+    private fun stageRulePack(
+        packType: String,
+        identifier: String,
+        version: String,
+        contents: String,
+    ): HandleOutcome =
+        when (rules.stage(packType, identifier, version, contents)) {
+            StageResult.STORED -> {
+                HandleOutcome.APPLIED
+            }
+
+            StageResult.UNCHANGED -> {
+                HandleOutcome.IGNORED
+            }
+
+            StageResult.CONFLICT -> {
+                LoggerFactory
+                    .getLogger(RulePackEventsHandler::class.java)
+                    .error(
+                        "staged {} pack {} version {} came with other contents; the stored one is kept",
+                        packType,
+                        identifier,
+                        version,
+                    )
+                throw ContractViolation("a $packType pack version is already staged with other contents")
+            }
+        }
+
     private fun contentsOf(data: JsonNode): JsonNode =
         data.get("artefact")?.get("contents")?.takeUnless {
             it.isNull || it.isMissingNode || (it.isString && it.asString().isBlank()) ||
@@ -71,13 +117,22 @@ class RulePackEventsHandler(
         val identifier = text(data, "packIdentifier")
         val version = text(data, "version")
         val packType = checkNotNull(replica.typeOf(identifier)) { "the pack identifier is not staged yet" }
-        if (packType != MDE_PACK_TYPE) {
-            LoggerFactory
-                .getLogger(RulePackEventsHandler::class.java)
-                .info("activation of pack {} of another type ignored", identifier)
-            return HandleOutcome.IGNORED
+        return when {
+            packType in RULE_PACK_TYPES -> {
+                if (rules.activate(packType, identifier, version)) HandleOutcome.APPLIED else HandleOutcome.IGNORED
+            }
+
+            packType == MDE_PACK_TYPE -> {
+                if (replica.activate(identifier, version)) HandleOutcome.APPLIED else HandleOutcome.IGNORED
+            }
+
+            else -> {
+                LoggerFactory
+                    .getLogger(RulePackEventsHandler::class.java)
+                    .info("activation of pack {} of another type ignored", identifier)
+                HandleOutcome.IGNORED
+            }
         }
-        return if (replica.activate(identifier, version)) HandleOutcome.APPLIED else HandleOutcome.IGNORED
     }
 
     private fun text(
@@ -100,6 +155,9 @@ class RulePackEventsHandler(
 
     companion object {
         const val MDE_PACK_TYPE = "MDE"
+        const val SCHEMATRON_PACK_TYPE = "schematron"
+        const val SEVERITY_OVERRIDE_PACK_TYPE = "severity-override"
+        private val RULE_PACK_TYPES = setOf(SCHEMATRON_PACK_TYPE, SEVERITY_OVERRIDE_PACK_TYPE)
         const val STAGED_TYPE = "com.dynokore.gst.platform.RulePackStaged.v1"
         const val ACTIVATED_TYPE = "com.dynokore.gst.platform.RulePackActivated.v1"
         const val STAGED_TOPIC = "gst.platform.rule-pack-staged.v1"

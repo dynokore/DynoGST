@@ -2,6 +2,7 @@ package com.dynokore.gst.payload.bootstrap
 
 import com.dynokore.gst.payload.adapters.PayloadDb
 import com.dynokore.gst.payload.adapters.packs.JooqMdePackReplica
+import com.dynokore.gst.payload.adapters.packs.JooqRulePackReplica
 import com.dynokore.gst.payload.adapters.packs.RulePackEventsHandler
 import com.dynokore.platform.outboxandqueue.CausationId
 import com.dynokore.platform.outboxandqueue.ConsumerSubscription
@@ -63,6 +64,7 @@ class PackReplicaConsumerDbTest {
         val runner: TransactionRunner = context.getBean(TransactionRunner::class.java)
         val dsl: DSLContext = context.getBean(DSLContext::class.java)
         val replica: JooqMdePackReplica = context.getBean(JooqMdePackReplica::class.java)
+        val rules: JooqRulePackReplica = context.getBean(JooqRulePackReplica::class.java)
         val catalogue: EventCatalogue = context.getBean(EventCatalogue::class.java)
         val consumerBeans: Map<String, JdbcInboxConsumer> = context.getBeansOfType(JdbcInboxConsumer::class.java)
         val log = Log()
@@ -77,7 +79,7 @@ class PackReplicaConsumerDbTest {
             log,
             scope,
             dsl,
-            RulePackEventsHandler(type, replica),
+            RulePackEventsHandler(type, replica, rules),
             RebuildRequiredSink { },
             Clock.systemUTC(),
         )
@@ -292,7 +294,7 @@ class PackReplicaConsumerDbTest {
         deliver(t1, true, staged("1.0.0", """{"a":1}""")) shouldBe applied
         shouldThrow<IllegalStateException> { deliver(t1, false, activated("2.0.0")) }
         // an unknown identifier is held for retry too (the handler alone: the failed record above stays queued)
-        val handler = RulePackEventsHandler(RulePackEventsHandler.ACTIVATED_TYPE, replica)
+        val handler = RulePackEventsHandler(RulePackEventsHandler.ACTIVATED_TYPE, replica, rules)
         shouldThrow<IllegalStateException> {
             tx(
                 t1,
@@ -324,7 +326,7 @@ class PackReplicaConsumerDbTest {
     fun `INV-AC-23578 a staged pack without contents is a contract violation`(
         @TempDir dir: Path,
     ) = run(dir) { t1 ->
-        val handler = RulePackEventsHandler(RulePackEventsHandler.STAGED_TYPE, replica)
+        val handler = RulePackEventsHandler(RulePackEventsHandler.STAGED_TYPE, replica, rules)
         for (contents in listOf("null", "{}", "\"\"", "[]")) {
             shouldThrow<com.dynokore.platform.outboxandqueue.ContractViolation> {
                 handler.handle(
@@ -344,7 +346,7 @@ class PackReplicaConsumerDbTest {
     fun `INV-AC-23578 a handler refuses an event of another type`(
         @TempDir dir: Path,
     ) = run(dir) { t1 ->
-        val handler = RulePackEventsHandler(RulePackEventsHandler.ACTIVATED_TYPE, replica)
+        val handler = RulePackEventsHandler(RulePackEventsHandler.ACTIVATED_TYPE, replica, rules)
         shouldThrow<com.dynokore.platform.outboxandqueue.ContractViolation> {
             handler.handle(envelope(t1, RulePackEventsHandler.STAGED_TYPE, staged("1.0.0", "{}")))
         }
