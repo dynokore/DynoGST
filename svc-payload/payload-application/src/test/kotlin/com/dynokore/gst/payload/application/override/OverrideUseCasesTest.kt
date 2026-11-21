@@ -118,6 +118,25 @@ class OverrideUseCasesTest {
     }
 
     @Test
+    fun `INV-AC-2167 an override of MDM-003 applies to version 1 and version 2 is blocked again`() {
+        overridable(d1, version = 1, code = "MDM-003")
+        overridable(d1, version = 2, code = "MDM-003")
+        ask("A1", d1, version = 1, code = "MDM-003").shouldBeInstanceOf<OverrideResult.Released>()
+        audit.entries shouldBe
+            listOf(
+                RecordingAudit.Entry("requested", "A1", "A1", "register lag", d1, 1),
+                RecordingAudit.Entry("released", "A1", "A1", "register lag", d1, 1),
+            )
+        store.find(d1, 2, "MDM-003") shouldBe null
+        ask("A1", d1, version = 2, code = "MDM-003").shouldBeInstanceOf<OverrideResult.Released>()
+        store.rows.values
+            .map { it.version }
+            .toSet() shouldBe setOf(1, 2)
+        store.rows.size shouldBe 2
+        authority.asked.map { it.second }.toSet() shouldBe setOf("validation.override")
+    }
+
+    @Test
     fun `a code stored for version 1 and asked for version 2 is refused`() {
         overridable(d1, version = 1)
         versions.put(d1, 2, "10.00")
@@ -191,12 +210,12 @@ class OverrideUseCasesTest {
         decisions = FakeDecisions(BigDecimal("1.00"))
         overridable(d2, total = "5.00")
         ask("A1", d2)
-        audit.entries shouldBe listOf(RecordingAudit.Entry("requested", "A1", "A1", "register lag"))
+        audit.entries shouldBe listOf(RecordingAudit.Entry("requested", "A1", "A1", "register lag", d2, 1))
         approve().execute("A1", d2, 1, "PAY-011") shouldBe OverrideResult.Refused("SAME_PERSON_TWICE")
         audit.entries.size shouldBe 1
         approve().execute("A2", d2, 1, "PAY-011").shouldBeInstanceOf<OverrideResult.Released>()
         audit.entries.map { it.kind } shouldBe listOf("requested", "released")
-        audit.entries[1] shouldBe RecordingAudit.Entry("released", "A2", "A1", "register lag")
+        audit.entries[1] shouldBe RecordingAudit.Entry("released", "A2", "A1", "register lag", d2, 1)
     }
 
     @Test

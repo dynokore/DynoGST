@@ -153,6 +153,8 @@ class RecordingAudit : AuditTrail {
         val actor: String,
         val firstApprover: String,
         val reason: String,
+        val docUuid: UUID,
+        val version: Int,
     )
 
     val entries = mutableListOf<Entry>()
@@ -161,13 +163,13 @@ class RecordingAudit : AuditTrail {
         userId: String,
         override: StoredOverride,
     ) {
-        entries += Entry("requested", userId, override.requestedBy, override.reason)
+        entries += Entry("requested", userId, override.requestedBy, override.reason, override.docUuid, override.version)
     }
 
     override fun released(
         userId: String,
         override: StoredOverride,
     ) {
-        entries += Entry("released", userId, override.requestedBy, override.reason)
+        entries += Entry("released", userId, override.requestedBy, override.reason, override.docUuid, override.version)
     }
 }

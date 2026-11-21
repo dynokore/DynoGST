@@ -73,6 +73,7 @@ class OutboxOverrideAuditTest {
                     version: Int,
                 ) = listOf(
                     StoredFinding("PAY-011", "", "m", true),
+                    StoredFinding("MDM-003", "", "m", true),
                     StoredFinding("PAY-001", "", "m", true),
                     StoredFinding("PAY-008", "", "m", true),
                 )
@@ -134,10 +135,13 @@ class OutboxOverrideAuditTest {
                 .execute(user, doc, 1, code, reason)
         }
 
-    private fun approve(user: String): OverrideResult =
+    private fun approve(
+        user: String,
+        code: String = "PAY-011",
+    ): OverrideResult =
         inTransaction { store, _, audit ->
             ApproveOverride(versions, authority, decisions(ReleaseOutcome.Released), store, audit)
-                .execute(user, doc, 1, "PAY-011")
+                .execute(user, doc, 1, code)
         }
 
     private fun audits(action: String? = null): Int =
@@ -212,6 +216,37 @@ class OutboxOverrideAuditTest {
                         prior.contains("\"firstApprover\"") shouldBe true
                         prior.contains("U-1") shouldBe true
                     }
+                }
+        }
+    }
+
+    @Test
+    @Suppress("ktlint:standard:max-line-length", "MaxLineLength")
+    fun `INV-AC-2167 the release entry of an MDM-003 override holds actor, document, version, reason and prior state and version 2 has none`() {
+        request(ReleaseOutcome.AwaitsSecond, "U-1", code = "MDM-003").shouldBeInstanceOf<OverrideResult.AwaitsSecond>()
+        approve("U-2", code = "MDM-003").shouldBeInstanceOf<OverrideResult.Released>()
+        PayloadDb.superuser().use { c ->
+            c
+                .prepareStatement(
+                    "select data->>'actor', data->>'reason', data->>'scope', data->'priorState' " +
+                        "from payload.outbox where tenant_id = ? and data->>'action' = 'released'",
+                ).use { p ->
+                    p.setObject(1, tenant)
+                    p.executeQuery().use { r ->
+                        r.next() shouldBe true
+                        r.getString(1) shouldBe "U-2"
+                        r.getString(2) shouldBe "register lag"
+                        r.getString(3) shouldBe "$doc:1"
+                        r.getString(4).orEmpty().contains("U-1") shouldBe true
+                        r.next() shouldBe false
+                    }
+                }
+            c
+                .prepareStatement("select count(*) from payload.outbox where tenant_id = ? and data->>'scope' = ?")
+                .use { p ->
+                    p.setObject(1, tenant)
+                    p.setString(2, "$doc:2")
+                    p.executeQuery().use { r -> r.next().let { r.getInt(1) } shouldBe 0 }
                 }
         }
     }

@@ -46,7 +46,8 @@ class JooqRulePackReplica(
 
     /**
      * Marks exactly the pair active and every other row of the tenant and of [packType] inactive (the others
-     * first). A pair that is not staged is never invented: [IllegalStateException], so the inbox retries it. Returns true when a row changed.
+     * first). A pair that is not staged is never invented: [IllegalStateException], so the inbox retries it.
+     * Returns true when a row changed.
      */
     fun activate(
         packType: String,
