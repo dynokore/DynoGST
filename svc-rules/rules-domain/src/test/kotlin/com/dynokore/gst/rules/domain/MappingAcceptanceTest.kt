@@ -25,31 +25,31 @@ class MappingAcceptanceTest {
     ) = MappingAcceptance.acceptedEntryIds(entries, acceptances.toList(), asOf)
 
     @Test
-    fun `INV-AC-756 an acceptance expiring on asOf no longer counts but the day after does`() {
+    fun `INV-AC-756 INV-AC-15995 an acceptance expiring on asOf no longer counts but the day after does`() {
         accepted(listOf(x), acc(x, expiresOn = asOf)) shouldBe emptySet()
         accepted(listOf(x), acc(x, expiresOn = asOf.minusDays(1))) shouldBe emptySet()
         accepted(listOf(x), acc(x, expiresOn = asOf.plusDays(1))) shouldBe setOf("X")
     }
 
     @Test
-    fun `INV-AC-756 a blank rationale does not accept`() {
+    fun `INV-AC-756 INV-AC-15995 a blank rationale does not accept`() {
         accepted(listOf(x), acc(x, rationale = "")) shouldBe emptySet()
         accepted(listOf(x), acc(x, rationale = "   ")) shouldBe emptySet()
     }
 
     @Test
-    fun `INV-AC-756 a 501-character rationale does not accept and 500 does`() {
+    fun `INV-AC-756 INV-AC-15995 a 501-character rationale does not accept and 500 does`() {
         accepted(listOf(x), acc(x, rationale = "a".repeat(501))) shouldBe emptySet()
         accepted(listOf(x), acc(x, rationale = "a".repeat(500))) shouldBe setOf("X")
     }
 
     @Test
-    fun `INV-AC-756 an acceptance of entry X does not accept entry Y with the same IRAS code`() {
+    fun `INV-AC-756 INV-AC-15995 an acceptance of entry X does not accept entry Y with the same IRAS code`() {
         accepted(listOf(x, y), acc(x)) shouldBe setOf("X")
     }
 
     @Test
-    fun `INV-AC-756 an entry changed to another IRAS code or source class after the acceptance is not in the set`() {
+    fun `INV-AC-756 INV-AC-15995 an entry changed to another IRAS code or source class after the acceptance is not in the set`() {
         val a = acc(x)
         accepted(listOf(x.copy(irasCode = "ZR")), a) shouldBe emptySet()
         accepted(listOf(x.copy(sourceClass = SourceClass.INFERRED)), a) shouldBe emptySet()
