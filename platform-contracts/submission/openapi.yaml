@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: submission API
-  version: 1.22.0
+  version: 1.23.0
   description: >-
     Contract-first source of truth for submission (API-01, STK-44). The
     `submission-contract` module generates its server interfaces and DTOs
@@ -53,7 +53,7 @@ info:
     it is additive (INV-REQ-500, INV-T-21128).
     1.20.0 names the permission key `submission.view-status` and the 403
     refusal SRT-004 on checkSubmissionBoundary (INV-REQ-1005); it is additive.
-    1.22.0 adds the `reporting` reads getExceptionAgeing and
+    1.23.0 adds the `reporting` reads getExceptionAgeing and
     getPackActivationHistory, behind the permission keys
     `exception-ageing.view` and `pack-activation-history.view` (INV-REQ-980,
     INV-T-26743); it is additive.
