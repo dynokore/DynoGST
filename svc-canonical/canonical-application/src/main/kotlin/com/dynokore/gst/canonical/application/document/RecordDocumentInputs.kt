@@ -22,6 +22,16 @@ fun interface PurchaseElections {
     ): DateBasis?
 }
 
+/** Whether the entity has a profile election of [attribute] in force on a date. */
+fun interface ProfileElectionPresence {
+    fun isElected(
+        tenantId: UUID,
+        entityRef: String,
+        attribute: String,
+        on: LocalDate,
+    ): Boolean
+}
+
 /** The answer of the synchronous scope evaluation at rules-svc. */
 sealed interface ScopeAnswer {
     data class Verdict(

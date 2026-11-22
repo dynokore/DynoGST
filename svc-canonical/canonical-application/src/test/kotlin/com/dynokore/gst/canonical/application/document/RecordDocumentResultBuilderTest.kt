@@ -41,6 +41,9 @@ class RecordDocumentResultBuilderTest {
     private val scopeCalls = mutableListOf<Calls>()
     private val maps = mutableListOf<Map<String, Any?>>()
     private var rulesUp = true
+    private var elected = setOf("apportionmentMode", "exchangeRateSource")
+    private var electedFrom: LocalDate? = null
+    private val presenceDates = mutableListOf<LocalDate>()
 
     private val builder =
         RecordDocumentResultBuilder(
@@ -55,6 +58,10 @@ class RecordDocumentResultBuilderTest {
                 electionReads += e
                 electionDates += on
                 if (e == "E1") DateBasis.POSTING_DATE else null
+            },
+            presence = { _, _, attribute, on ->
+                presenceDates += on
+                attribute in elected && (electedFrom?.let { !on.isBefore(it) } ?: true)
             },
             scope = { _, p, d ->
                 scopeCalls += Calls(p, d)
@@ -192,5 +199,63 @@ class RecordDocumentResultBuilderTest {
         built(zoneless.copy(sourceTimeZone = "UTC"))["transactionDate"] shouldBe "2026-04-01"
         val bad = zoneless.copy(sourceTimeZone = "Not/AZone")
         shouldThrow<RecordRefused> { builder.build(bad, d1) }.code shouldBe "SRT-001"
+    }
+
+    private val usd = DocumentContent("USD", null, null, emptyList(), null)
+    private val purchaseE1 = purchase.copy(postingTimestamp = OffsetDateTime.parse("2026-03-20T10:00:00+08:00"))
+
+    private fun codes(m: Map<String, Any?>) = reasons(m).map { it["code"] }
+
+    @Test
+    fun `INV-AC-26626 B1 a purchase without the apportionment election holds PER-012 once with its message`() {
+        elected = setOf("exchangeRateSource")
+        val m = built(purchaseE1)
+        codes(m) shouldBe listOf("PER-012")
+        reasons(m).single()["message"] shouldBe "No apportionment mode election is in force"
+        checkReason(reasons(m).single())
+    }
+
+    @Test
+    fun `INV-AC-26626 B2 a purchase with the apportionment election has no PER-012`() {
+        val m = built(purchaseE1)
+        m.containsKey("reasons") shouldBe false
+    }
+
+    @Test
+    fun `INV-AC-26626 B3 a sale without the apportionment election has no PER-012`() {
+        elected = emptySet()
+        built(c1).containsKey("reasons") shouldBe false
+    }
+
+    @Test
+    fun `INV-AC-26626 B4 foreign currency without the rate source election holds PAY-016 once`() {
+        elected = setOf("apportionmentMode")
+        val m = built(c1.copy(content = usd))
+        codes(m) shouldBe listOf("PAY-016")
+        reasons(m).single()["message"] shouldBe "No exchange rate source election is in force"
+        checkReason(reasons(m).single())
+    }
+
+    @Test
+    fun `INV-AC-26626 B5 USD with the election, SGD content and null content have no PAY-016`() {
+        built(c1.copy(content = usd)).containsKey("reasons") shouldBe false
+        elected = emptySet()
+        built(c1.copy(content = usd.copy(currency = "SGD"))).containsKey("reasons") shouldBe false
+        built(c1.copy(content = null)).containsKey("reasons") shouldBe false
+    }
+
+    @Test
+    fun `INV-AC-26626 B6 a USD purchase with no election at all lists PER-011, PER-012, PAY-016 in order`() {
+        elected = emptySet()
+        val m = built(purchase.copy(entityRef = "E2", content = usd))
+        codes(m) shouldBe listOf("PER-011", "PER-012", "PAY-016")
+    }
+
+    @Test
+    fun `INV-AC-26626 B7 the presence port is asked with the transaction date of the command`() {
+        electedFrom = LocalDate.of(2026, 3, 21)
+        val m = built(purchaseE1)
+        codes(m) shouldBe listOf("PER-012")
+        presenceDates.toSet() shouldBe setOf(LocalDate.of(2026, 3, 20))
     }
 }

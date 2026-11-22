@@ -10,6 +10,7 @@ import com.dynokore.gst.canonical.domain.dating.TransactionDating
 import com.dynokore.gst.canonical.domain.derivation.Dependency
 import com.dynokore.gst.canonical.domain.derivation.DerivationGate
 import com.dynokore.gst.canonical.domain.derivation.DerivationStep
+import com.dynokore.gst.canonical.domain.derivation.ElectionHolds
 import com.dynokore.gst.canonical.domain.derivation.GateDecision
 import com.dynokore.gst.canonical.domain.derivation.StepOutcome
 import java.time.DateTimeException
@@ -37,6 +38,7 @@ class PeriodInconsistent(
 class RecordDocumentResultBuilder(
     private val periods: PeriodSpans,
     private val elections: PurchaseElections,
+    private val presence: ProfileElectionPresence,
     private val scope: ScopeEvaluation,
     private val versions: DocumentVersions,
     private val mapper: ResultJson,
@@ -58,6 +60,7 @@ class RecordDocumentResultBuilder(
             outcomes[DerivationStep.TRANSACTION_DATE] =
                 StepOutcome.HeldBy(dating.code.code)
         }
+        electionHolds(command).forEach { (step, code) -> outcomes[step] = StepOutcome.HeldBy(code) }
         val periodRef = date?.let { assignPeriod(command, it, outcomes) }
         val answered = date?.let { evaluateScope(command, periodRef, it, outcomes) }
         val held = DerivationGate.decide(outcomes) as? GateDecision.Held
@@ -69,6 +72,20 @@ class RecordDocumentResultBuilder(
         result["prescribedPeriodRef"] = periodRef.orEmpty()
         if (held != null) result["reasons"] = held.reasons.map { reasonOf(it) }
         return mapper.toJson(result)
+    }
+
+    private fun electionHolds(command: RecordDocumentCommand): Map<DerivationStep, String> {
+        val direction =
+            when (command.direction ?: DocumentDirection.SALE) {
+                DocumentDirection.SALE -> DatingDirection.SALE
+                DocumentDirection.PURCHASE -> DatingDirection.PURCHASE
+            }
+        return ElectionHolds.decide(
+            direction,
+            command.content?.currency,
+            presence.isElected(command.tenantId, command.entityRef, APPORTIONMENT_MODE, command.transactionDate),
+            presence.isElected(command.tenantId, command.entityRef, EXCHANGE_RATE_SOURCE, command.transactionDate),
+        )
     }
 
     private fun assignPeriod(
@@ -120,6 +137,8 @@ class RecordDocumentResultBuilder(
         when (code) {
             "PER-009" -> "No prescribed period covers the transaction date"
             "PER-011" -> "No purchase date basis election is in force"
+            "PER-012" -> "No apportionment mode election is in force"
+            "PAY-016" -> "No exchange rate source election is in force"
             "ING-016" -> "Derivation incomplete; rules-svc unavailable"
             else -> "Derivation held: $code"
         }
@@ -156,5 +175,7 @@ class RecordDocumentResultBuilder(
 
     private companion object {
         const val PROVISIONAL_VERDICT = "SUBMITTABLE"
+        const val APPORTIONMENT_MODE = "apportionmentMode"
+        const val EXCHANGE_RATE_SOURCE = "exchangeRateSource"
     }
 }

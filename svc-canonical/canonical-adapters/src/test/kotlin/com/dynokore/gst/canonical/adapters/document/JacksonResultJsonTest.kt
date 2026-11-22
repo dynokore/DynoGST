@@ -21,6 +21,7 @@ class JacksonResultJsonTest {
             RecordDocumentResultBuilder(
                 periods = { _, _ -> listOf(q1) },
                 elections = { _, _, _ -> null },
+                presence = { _, _, _, _ -> true },
                 scope = { _, _, _ -> ScopeAnswer.Verdict("SUBMITTABLE") },
                 versions = { 1 },
                 mapper = JacksonResultJson(mapper),
