@@ -43,12 +43,17 @@ class UnboundTriggerCoverage : TriggerCoverage {
     override fun uncovered(entityRef: String): List<String> = throw UnavailableInput(GoLiveGate.COVERAGE_UNKNOWN)
 }
 
-/** Writes the stored lifecycle state of an entity in the caller's transaction (adapter: the boundary slice). */
+/**
+ * Writes the stored lifecycle state of an entity in the caller's transaction (adapter: the boundary slice).
+ * [activatedOn] is the date of a transition to LIVE (null for every other state); the store records it as the
+ * go-live date only where none is recorded, so the first activation date is never overwritten.
+ */
 fun interface EntityLifecycleStore {
     fun setLifecycleState(
         entityRef: String,
         state: LifecycleState,
         structureVersion: Long,
+        activatedOn: LocalDate?,
     )
 }
 
@@ -123,7 +128,7 @@ internal class LifecycleWriter(
     ) {
         val version = structure.nextStructureVersion()
         structure.touchEntity(entity.ref, version)
-        lifecycle.setLifecycleState(entity.ref, to, version)
+        lifecycle.setLifecycleState(entity.ref, to, version, on.takeIf { to == LifecycleState.LIVE })
         val changes =
             listOfNotNull(
                 registrationEnd?.let {

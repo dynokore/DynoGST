@@ -8,6 +8,7 @@ import com.dynokore.gst.tenancy.domain.LifecycleState
 import com.dynokore.gst.tenancy.domain.UnsubmittedOverride
 import com.dynokore.platform.tenancykernel.TenantContext
 import org.jooq.DSLContext
+import org.jooq.impl.DSL
 import java.time.LocalDate
 
 /**
@@ -23,11 +24,19 @@ class JooqEntityLifecycleStore(
         entityRef: String,
         state: LifecycleState,
         structureVersion: Long,
+        activatedOn: LocalDate?,
     ) {
-        dsl
-            .update(ENTITY)
-            .set(ENTITY.LIFECYCLE_STATE, state.name)
-            .where(ENTITY.TENANT_ID.eq(tenants.current().value).and(ENTITY.REF.eq(entityRef)))
+        val update = dsl.update(ENTITY).set(ENTITY.LIFECYCLE_STATE, state.name)
+        // COALESCE(go_live_date, activatedOn): a recorded go-live date is never overwritten.
+        (
+            if (activatedOn ==
+                null
+            ) {
+                update
+            } else {
+                update.set(ENTITY.GO_LIVE_DATE, DSL.coalesce(ENTITY.GO_LIVE_DATE, activatedOn))
+            }
+        ).where(ENTITY.TENANT_ID.eq(tenants.current().value).and(ENTITY.REF.eq(entityRef)))
             .execute()
     }
 

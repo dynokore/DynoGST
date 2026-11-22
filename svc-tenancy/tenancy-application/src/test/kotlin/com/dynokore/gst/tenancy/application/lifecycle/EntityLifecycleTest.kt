@@ -50,6 +50,8 @@ class EntityLifecycleTest {
         EntityRecord(UUID.randomUUID(), "E1", "G1", "Acme", "COMPANY", null, null, "ACME", "DRAFT", false, 1)
 
     private var current = entity
+    private var goLiveDate: LocalDate? = null
+    private var onDate = today
     private val outbox = mutableListOf<EntityProfileChange>()
     private val overrides = mutableListOf<UnsubmittedOverride>()
     private val submissions = mutableListOf("SUB-1", "SUB-2")
@@ -95,8 +97,9 @@ class EntityLifecycleTest {
         }
     private val certifications = Certs()
     private val lifecycleStore =
-        EntityLifecycleStore { ref, state, version ->
+        EntityLifecycleStore { ref, state, version, activatedOn ->
             current = current.copy(lifecycleState = state.name, structureVersion = version)
+            if (activatedOn != null && goLiveDate == null) goLiveDate = activatedOn
             check(ref == current.ref)
         }
     private val statuses =
@@ -173,7 +176,7 @@ class EntityLifecycleTest {
             { emptyList() },
             publisher,
             { tenant },
-            { today },
+            { onDate },
             { tenantState },
         )
 
@@ -298,6 +301,62 @@ class EntityLifecycleTest {
         assertTrue(again.repeated)
         assertEquals("LIVE", current.lifecycleState)
         assertEquals(1, outbox.size)
+    }
+
+    // ---- go-live date (INV-AC-27010) ----
+
+    @Test
+    fun `INV-AC-27010 goLive records the go-live date`() {
+        certify(CertificationOutcome.PASSED)
+        onDate = LocalDate.of(2026, 11, 12)
+        assertInstanceOf(LifecycleOutcome.Done::class.java, live())
+        assertEquals(LocalDate.of(2026, 11, 12), goLiveDate)
+    }
+
+    @Test
+    fun `INV-AC-27010 a repeated goLive keeps the recorded date`() {
+        certify(CertificationOutcome.PASSED)
+        onDate = LocalDate.of(2026, 11, 12)
+        live()
+        onDate = LocalDate.of(2026, 12, 9)
+        assertTrue(assertInstanceOf(LifecycleOutcome.Done::class.java, live()).repeated)
+        assertEquals(LocalDate.of(2026, 11, 12), goLiveDate)
+    }
+
+    @Test
+    fun `INV-AC-27010 resume after suspend keeps the first date`() {
+        certify(CertificationOutcome.PASSED)
+        onDate = LocalDate.of(2026, 11, 12)
+        live()
+        onDate = LocalDate.of(2026, 12, 20)
+        assertInstanceOf(LifecycleOutcome.Done::class.java, suspend().handle("E1"))
+        assertEquals(LocalDate.of(2026, 11, 12), goLiveDate)
+        onDate = LocalDate.of(2027, 1, 5)
+        assertInstanceOf(LifecycleOutcome.Done::class.java, live())
+        assertEquals("LIVE", current.lifecycleState)
+        assertEquals(LocalDate.of(2026, 11, 12), goLiveDate)
+    }
+
+    @Test
+    fun `INV-AC-27010 a refused goLive records no date`() {
+        onDate = LocalDate.of(2026, 11, 12)
+        refused(live())
+        assertEquals(null, goLiveDate)
+    }
+
+    @Test
+    fun `INV-AC-27010 an entity that is not live has no go-live date`() {
+        onDate = LocalDate.of(2026, 11, 12)
+        assertEquals(null, goLiveDate)
+        assertInstanceOf(LifecycleOutcome.Done::class.java, suspend().handle("E1"))
+        assertEquals("SUSPENDED", current.lifecycleState)
+        assertEquals(null, goLiveDate)
+        assertInstanceOf(
+            LifecycleOutcome.Done::class.java,
+            deregister().handle("E1", LocalDate.of(2026, 8, 15), null),
+        )
+        assertEquals("DEREGISTERED", current.lifecycleState)
+        assertEquals(null, goLiveDate)
     }
 
     // ---- second confirmation of go-live (INV-REQ-875) ----
