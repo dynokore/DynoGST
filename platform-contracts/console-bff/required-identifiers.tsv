@@ -106,3 +106,5 @@ correctPersonalData.SRT-007	operation_error_code	openapi.yaml	INV-REQ-886
 correctPersonalData.SRT-008	operation_error_code	openapi.yaml	INV-REQ-886
 correctPersonalData.SRT-009	operation_error_code	openapi.yaml	INV-REQ-886
 correctPersonalData.SRT-013	operation_error_code	openapi.yaml	INV-REQ-886
+ApplyOperatingProfileRequest.relaxationIds	schema_property	openapi.yaml	INV-REQ-1245
+OperatingProfileApplication.pendingAcknowledgements	schema_property	openapi.yaml	INV-REQ-1245

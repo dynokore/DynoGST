@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: console-bff API
-  version: 1.22.0
+  version: 1.23.0
   description: >-
     Contract-first source of truth for console-bff (API-01, STK-44). The
     `console-bff-contract` module generates its server interfaces and DTOs
@@ -2191,6 +2191,13 @@ components:
         profileVersion:
           type: integer
           minimum: 1
+        relaxationIds:
+          type: array
+          uniqueItems: true
+          description: Relaxation ids, one per looser profile value, each obtained beforehand from acknowledgeControlRelaxation by the accountable role of the catalogue row. A looser value without a complete relaxation stays at its default.
+          items:
+            type: string
+            format: uuid
       required: [mode, scope, profileRef, profileVersion]
     ProfileValueChange:
       type: object
@@ -2223,6 +2230,12 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ProfileValueChange'
+        pendingAcknowledgements:
+          type: array
+          description: Variation points whose looser value stayed at its default for want of a complete relaxation.
+          items:
+            type: string
+            pattern: '^VP-\d{2,3}$'
       required: [profileRef, profileVersion, status, mode, changes]
     ResolveGroupRequest:
       type: object
