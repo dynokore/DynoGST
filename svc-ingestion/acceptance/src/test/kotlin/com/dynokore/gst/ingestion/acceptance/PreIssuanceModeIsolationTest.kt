@@ -39,7 +39,16 @@ class PreIssuanceModeIsolationTest {
 
     @Test
     fun `INV-AC-26631 I1 the four real source directories are non-empty and hold no pre-issuance mode text`() {
-        sourceDirs.forEach { assertTrue(kotlinFiles(it).isNotEmpty(), it) }
+        // the four directories of the criterion, spelled out apart from the scan list
+        val expectedDirs =
+            listOf(
+                "ingestion-domain/src/main",
+                "ingestion-application/src/main",
+                "ingestion-adapters/src/main",
+                "ingestion-bootstrap/src/main",
+            )
+        assertEquals(expectedDirs, sourceDirs)
+        expectedDirs.forEach { assertTrue(kotlinFiles(it).isNotEmpty(), it) }
         assertEquals(emptySet<String>(), scan(sourceDirs))
     }
 
@@ -60,7 +69,10 @@ class PreIssuanceModeIsolationTest {
 
     @Test
     fun `INV-AC-26631 I2 each of the four texts in a val initializer is reported`() {
-        texts.forEach { text ->
+        // the four texts of the criterion, spelled out apart from the scan list
+        val expectedTexts = listOf("VP-26", "vp-26", "PreIssuanceMode", "preIssuanceMode")
+        assertEquals(expectedTexts, texts)
+        expectedTexts.forEach { text ->
             val (found, expected) = probe(text)
             assertEquals(setOf(expected), found, text)
         }
