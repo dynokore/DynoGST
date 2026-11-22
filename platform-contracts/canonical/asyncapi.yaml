@@ -1,7 +1,7 @@
 asyncapi: 3.1.0
 info:
   title: canonical events
-  version: 1.20.0
+  version: 1.21.0
   description: >-
     Every event canonical produces or consumes (API-43, STK-45), wrapped at
     publish time in the CloudEvents 1.0.2 envelope every service shares
@@ -210,7 +210,7 @@ components:
         reasons, entityRef, direction, documentDate, and a provisional prescribedPeriodRef — the period of
         the provisional transaction date built from what is known at ingestion, or the earliest candidate
         period where that date cannot yet be determined (FR-AE.9; added 25 Sep 2026, Keel INV-Q-1679).
-        Authored by INV-T-2854 (T10).
+        Authored by INV-T-2854 (T10). The member entityRef is at most 40 characters.
       contentType: application/cloudevents+json
       payload:
         $ref: './schemas/document-held-payload.schema.json'
