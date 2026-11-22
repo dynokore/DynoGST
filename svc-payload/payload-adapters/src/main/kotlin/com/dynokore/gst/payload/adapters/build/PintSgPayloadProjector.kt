@@ -57,12 +57,9 @@ class PintSgPayloadProjector(
         val family = SpecificationFamily.valueOf(families.familyOf(input.familyRequest()))
         val pack = activePack() ?: throw BuildNotReady("no active MDE pack")
         return namingPack(pack.version) {
+            val literal = if (input.aggregateId == null) null else aggregateNote(document, pack.contents)
             val header =
-                if (input.aggregateId == null) {
-                    DocumentFields.header(document)
-                } else {
-                    DocumentFields.header(document, aggregateNote(document, pack.contents))
-                }
+                if (literal == null) DocumentFields.header(document) else DocumentFields.header(document, literal)
             val result =
                 builderOf(BuilderKey(family, typeCode)).build(
                     parties(document),
@@ -70,7 +67,11 @@ class PintSgPayloadProjector(
                     Direction.valueOf(direction),
                     family,
                     SubmissionType.valueOf(submissionType),
-                    EndpointInputs(input.counterpartyOnNetwork, pack.prefix),
+                    EndpointInputs(
+                        input.counterpartyOnNetwork,
+                        pack.prefix,
+                        literal?.takeIf { it == "POS" || it == "STI" },
+                    ),
                 )
             projection(result)
         }

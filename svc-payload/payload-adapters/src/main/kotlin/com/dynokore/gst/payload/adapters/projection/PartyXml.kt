@@ -38,7 +38,7 @@ internal object PartyXml {
         submissionType: SubmissionType,
         endpoint: EndpointInputs,
     ): EndpointIdResult =
-        EndpointId.construct(
+        endpoint.aggregateLiteral?.let { EndpointIdResult.Built(it) } ?: EndpointId.construct(
             endpoint.onNetwork,
             submissionType,
             input.buyer.identifierScheme,

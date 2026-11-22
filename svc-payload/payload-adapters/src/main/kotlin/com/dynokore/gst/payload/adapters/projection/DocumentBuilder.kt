@@ -43,11 +43,13 @@ sealed interface BuildResult {
 
 /**
  * What the endpoint ID (IBT-049) needs besides the buyer and the submission type: `counterpartyOnNetwork` of the
- * canonical version and the off-network prefix source of the active pack version (INV-Q-7189 A).
+ * canonical version and the off-network prefix source of the active pack version (INV-Q-7189 A). A non-null
+ * [aggregateLiteral] (POS or STI of an aggregate, INV-REQ-412) is written as the endpoint ID as it is.
  */
 data class EndpointInputs(
     val onNetwork: Boolean?,
     val offNetworkPrefix: OffNetworkPrefixSource,
+    val aggregateLiteral: String? = null,
 )
 
 /** A hand-written builder that writes the generated JAXB objects of one specification family and document type. */
