@@ -26,7 +26,7 @@ import java.time.LocalDate
 import java.util.UUID
 
 /**
- * The stage half of the pack staging gate (INV-REQ-2662, INV-AC-26354) without a database: the stage runs over fakes
+ * The stage half of the pack staging gate (INV-REQ-2662) without a database: the stage runs over fakes
  * and a jOOQ context over a mock connection that records the bind values of each call of `record_staging_result`.
  * The publish half is proved in PackOperationsTest.
  */
