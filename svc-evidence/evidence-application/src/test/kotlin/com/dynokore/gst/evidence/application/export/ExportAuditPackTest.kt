@@ -10,6 +10,8 @@ import com.dynokore.platform.evidencestore.exportpackage.PackageCandidate
 import com.dynokore.platform.evidencestore.exportpackage.PackageContentClass
 import com.dynokore.platform.evidencestore.exportpackage.PackageFiles
 import com.dynokore.platform.evidencestore.exportpackage.PackageItem
+import com.dynokore.platform.evidencestore.exportpackage.PackageProblem
+import com.dynokore.platform.evidencestore.exportpackage.PackageProblemCode
 import com.dynokore.platform.evidencestore.exportpackage.PackageSource
 import com.dynokore.platform.evidencestore.exportpackage.PackageVerification
 import com.dynokore.platform.evidencestore.exportpackage.PackageVerifier
@@ -103,58 +105,104 @@ class ExportAuditPackTest {
         allows: Boolean = true,
         storeFails: Boolean = false,
         clock: Clock,
+        verifier: ((PackageFiles) -> PackageVerification)? = null,
     ) {
         val jobs = FakeJobs()
         val stored = mutableListOf<PackageFiles>()
         val storedRefs = mutableListOf<String>()
         val useCase =
-            ExportAuditPack(
-                AuditPackClassSources(sources),
-                jobs,
-                { _, ref, files ->
-                    if (storeFails) error("disk full secret")
-                    stored += files
-                    storedRefs += ref
-                    "manifest-ref-1"
-                },
-                object : IntegrityStore {
-                    override fun lock(
-                        tenant: TenantId,
-                        entityRef: String,
-                        period: String,
-                    ) = Unit
+            if (verifier == null) {
+                ExportAuditPack(
+                    AuditPackClassSources(sources),
+                    jobs,
+                    { _, ref, files ->
+                        if (storeFails) error("disk full secret")
+                        stored += files
+                        storedRefs += ref
+                        "manifest-ref-1"
+                    },
+                    object : IntegrityStore {
+                        override fun lock(
+                            tenant: TenantId,
+                            entityRef: String,
+                            period: String,
+                        ) = Unit
 
-                    override fun failureExists(
-                        tenant: TenantId,
-                        row: com.dynokore.gst.evidence.application.integrity.IntegrityFailureRow,
-                    ) = false
+                        override fun failureExists(
+                            tenant: TenantId,
+                            row: com.dynokore.gst.evidence.application.integrity.IntegrityFailureRow,
+                        ) = false
 
-                    override fun insertFailure(
-                        tenant: TenantId,
-                        row: com.dynokore.gst.evidence.application.integrity.IntegrityFailureRow,
-                    ) = Unit
+                        override fun insertFailure(
+                            tenant: TenantId,
+                            row: com.dynokore.gst.evidence.application.integrity.IntegrityFailureRow,
+                        ) = Unit
 
-                    override fun insertRun(
-                        tenant: TenantId,
-                        row: IntegrityRunRow,
-                    ) = Unit
+                        override fun insertRun(
+                            tenant: TenantId,
+                            row: IntegrityRunRow,
+                        ) = Unit
 
-                    override fun latestRun(
-                        tenant: TenantId,
-                        entityRef: String,
-                        period: String,
-                    ) = latest
-                },
-                { allows },
-                clock,
-            )
+                        override fun latestRun(
+                            tenant: TenantId,
+                            entityRef: String,
+                            period: String,
+                        ) = latest
+                    },
+                    { allows },
+                    clock,
+                )
+            } else {
+                ExportAuditPack(
+                    AuditPackClassSources(sources),
+                    jobs,
+                    { _, ref, files ->
+                        if (storeFails) error("disk full secret")
+                        stored += files
+                        storedRefs += ref
+                        "manifest-ref-1"
+                    },
+                    object : IntegrityStore {
+                        override fun lock(
+                            tenant: TenantId,
+                            entityRef: String,
+                            period: String,
+                        ) = Unit
+
+                        override fun failureExists(
+                            tenant: TenantId,
+                            row: com.dynokore.gst.evidence.application.integrity.IntegrityFailureRow,
+                        ) = false
+
+                        override fun insertFailure(
+                            tenant: TenantId,
+                            row: com.dynokore.gst.evidence.application.integrity.IntegrityFailureRow,
+                        ) = Unit
+
+                        override fun insertRun(
+                            tenant: TenantId,
+                            row: IntegrityRunRow,
+                        ) = Unit
+
+                        override fun latestRun(
+                            tenant: TenantId,
+                            entityRef: String,
+                            period: String,
+                        ) = latest
+                    },
+                    { allows },
+                    clock,
+                    verifier,
+                )
+            }
     }
 
     private fun rig(
         sources: Map<PackageContentClass, AuditPackClassSource?> = sources(),
         latest: IntegrityRunRow? = run,
         storeFails: Boolean = false,
-    ) = Rig(sources, latest, true, storeFails, clock)
+        verifier: ((PackageFiles) -> PackageVerification)? = null,
+    ) = Rig(sources, latest, true, storeFails, clock, verifier)
 
     private fun PackageFiles.text(path: String) = String(bytes(path)!!)
 
@@ -167,13 +215,15 @@ class ExportAuditPackTest {
         r.storedRefs shouldBe listOf(packId.toString())
         r.stored.size shouldBe 1
         val files = r.stored[0]
-        (PackageVerifier.verify(
-            object : PackageSource {
-                override fun paths() = files.paths.toSet()
+        (
+            PackageVerifier.verify(
+                object : PackageSource {
+                    override fun paths() = files.paths.toSet()
 
-                override fun read(path: String) = files.bytes(path)!!
-            },
-        ) is PackageVerification.Valid) shouldBe true
+                    override fun read(path: String) = files.bytes(path)!!
+                },
+            ) is PackageVerification.Valid
+        ) shouldBe true
         files.text("verification-report.txt") shouldBe
             "result: VERIFIED\nlastRunAt: 2026-11-14T10:00:00Z\nchainLength: 12\nperiodDigest: ${"ab".repeat(32)}\n"
         files.text("tagmanifest-sha256.txt").contains("verification-report.txt") shouldBe true
@@ -190,16 +240,21 @@ class ExportAuditPackTest {
 
     @Test
     fun `INV-AC-25916 items of another entity or period are left out`() {
-        val r =
-            rig(
-                sources {
+        val calls = mutableListOf<Triple<TenantId, String, String>>()
+        val recording =
+            PackageContentClass.entries.associateWith { cls ->
+                AuditPackClassSource { tenant, entity, period ->
+                    calls += Triple(tenant, entity, period)
                     listOf(
-                        candidate(it, "${it.directory}-other-entity.txt", entity = "E2"),
-                        candidate(it, "${it.directory}-other-period.txt", period = "2026-02"),
+                        candidate(cls, "${cls.directory}-1.txt"),
+                        candidate(cls, "${cls.directory}-other-entity.txt", entity = "E2"),
+                        candidate(cls, "${cls.directory}-other-period.txt", period = "2026-02"),
                     )
-                },
-            )
+                }
+            }
+        val r = rig(recording)
         r.useCase.execute(pending).state shouldBe AuditPackState.READY
+        calls shouldBe List(6) { Triple(t1, "E1", "2026-01") }
         val paths = r.stored[0].paths.filter { it.startsWith("data/") }
         paths.size shouldBe 6
         paths.any { it.contains("other") } shouldBe false
@@ -222,6 +277,43 @@ class ExportAuditPackTest {
         job.state shouldBe AuditPackState.FAILED
         job.failureReason shouldBe "no source for AUDIT_LOG"
         r.stored shouldBe emptyList()
+    }
+
+    @Test
+    fun `INV-AC-25916 an invalid package fails the job with the problem codes`() {
+        val invalid =
+            PackageVerification.Invalid(
+                listOf(
+                    PackageProblem(PackageProblemCode.DIGEST_MISMATCH, "data/a"),
+                    PackageProblem(PackageProblemCode.LISTED_FILE_MISSING, "data/b"),
+                    PackageProblem(PackageProblemCode.MISSING_TAG_MANIFEST, null),
+                    PackageProblem(PackageProblemCode.OXUM_MISMATCH, null),
+                ),
+            )
+        val r = rig(verifier = { invalid })
+        val job = r.useCase.execute(pending)
+        job.state shouldBe AuditPackState.FAILED
+        job.failureReason shouldBe "package invalid: DIGEST_MISMATCH, LISTED_FILE_MISSING, MISSING_TAG_MANIFEST"
+        job.downloadUri shouldBe null
+        r.stored shouldBe emptyList()
+    }
+
+    @Test
+    fun `INV-AC-25916 the production verifier reports a digest mismatch and accepts the stored package`() {
+        val r = rig()
+        r.useCase.execute(pending).state shouldBe AuditPackState.READY
+        val good = r.stored[0]
+        (verifyAuditPack(good) is PackageVerification.Valid) shouldBe true
+        val tampered =
+            PackageFiles(
+                good.paths.associateWith { path ->
+                    good.bytes(path)!!.let { if (path.startsWith("data/")) it + 1 else it }
+                },
+            )
+        val result = verifyAuditPack(tampered)
+        (result as PackageVerification.Invalid).problems.map { it.code }.contains(
+            PackageProblemCode.DIGEST_MISMATCH,
+        ) shouldBe true
     }
 
     @Test
