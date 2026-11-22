@@ -28,6 +28,7 @@ class DocumentIndexWriterTest {
     private val tenant = tenantId.value.toString()
     private val d1 = "00000000-0000-0000-0000-000000000001"
     private val d2 = "00000000-0000-0000-0000-000000000002"
+    private val d3 = "00000000-0000-0000-0000-000000000003"
     private val date = LocalDate.parse("2026-03-20")
     private val transactionDate = LocalDate.parse("2026-03-31")
 
@@ -100,7 +101,7 @@ class DocumentIndexWriterTest {
                     counterpartyName = "C1",
                     counterpartyUen = null,
                     amount = BigDecimal("100.00"),
-                    documentDate = date,
+                    documentDate = date.takeUnless { p[0] == d3 },
                     categoryCodes = setOf("SR"),
                     scopeVerdict = p[3],
                     transactionDate = transactionDate,
@@ -269,6 +270,13 @@ class DocumentIndexWriterTest {
         run(failed, "$d1|1|-") shouldBe HandleOutcome.IGNORED
         row(d1, 1)!!.errorCode shouldBe null
         row(d1, 2)!!.state shouldBe IndexState.READY
+    }
+
+    @Test
+    fun `INV-AC-26807 version event without documentDate keeps document date null and its own transaction date`() {
+        run(version, "$d3|1|E1|SUBMITTABLE") shouldBe HandleOutcome.APPLIED
+        row(d3, 1)!!.documentDate shouldBe null
+        row(d3, 1)!!.transactionDate shouldBe transactionDate
     }
 
     @Test
