@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: rules API
-  version: 2.10.0
+  version: 2.10.1
   description: >-
     Contract-first source of truth for rules (API-01, STK-44). The
     `rules-contract` module generates its server interfaces and DTOs
@@ -1253,7 +1253,7 @@ paths:
       x-error-codes: []
       x-requirements: [INV-REQ-489, INV-REQ-1166]
       x-operation:
-        role: tax.approver
+        role: regulatory.approver
         scope: tenant
         precondition: "The pack is STAGED, its dry-run delta exists and the approver is not the user who staged it."
         reversibility: UNDOABLE

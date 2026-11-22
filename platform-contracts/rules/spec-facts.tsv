@@ -20,3 +20,4 @@ openapi.yaml	/components/schemas/MappingSpreadsheetRow/properties/sourceClass/en
 openapi.yaml	/components/schemas/EvaluationResult/properties/supplyType/type	equals	"string"	INV-REQ-772
 openapi.yaml	/components/schemas/EvaluationResult/properties/supplyType/x-extensible-enum	equals	["STANDARD_RATED","ZERO_RATED","EXEMPT","OUT_OF_SCOPE","IMPORTS"]	INV-REQ-772
 openapi.yaml	/components/schemas/EvaluationResult/properties/supplyType/enum	absent	-	INV-REQ-772
+openapi.yaml	/paths/~1internal~1v1~1rules~1regulatory-packs~1{packType}~1{version}~1approval/post/x-operation/role	equals	"regulatory.approver"	INV-REQ-489
