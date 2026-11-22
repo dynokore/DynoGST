@@ -12,3 +12,6 @@ openapi.yaml	/paths/~1internal~1v1~1submission~1boundary-checks/post/x-operation
 openapi.yaml	/paths/~1internal~1v1~1submission~1boundary-checks/post/x-error-codes	equals	["SRT-004"]	INV-REQ-1005
 schemas/submission-acknowledged-payload.schema.json	/required	equals	["docUuid","version","acknowledgementId","timestamp"]	INV-REQ-740
 schemas/submission-acknowledged-payload.schema.json	/properties/direction/enum	equals	["SALE","PURCHASE"]	INV-REQ-740
+# INV-T-26774 (INV-AC-26773): the IdentityTripleReprocessingRequested payload members and the Doc UUID format of INV-REQ-1006.
+schemas/identity-triple-reprocessing-requested-payload.schema.json	/required	equals	["entityRef","constitution","effectiveFrom","changeRef","docUuids"]	INV-REQ-1006
+schemas/identity-triple-reprocessing-requested-payload.schema.json	/properties/docUuids/items/format	equals	"uuid"	INV-REQ-1006

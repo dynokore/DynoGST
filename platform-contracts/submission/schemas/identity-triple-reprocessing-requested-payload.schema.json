@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://platform-contracts.invoice.internal/submission/schemas/identity-triple-reprocessing-requested-payload.schema.json",
+  "title": "IdentityTripleReprocessingRequestedPayload",
+  "description": "Payload of the IdentityTripleReprocessingRequested event (class: domain), with which submission-svc asks canonical-svc to re-resolve the identity triple of one page of selected documents of one entity after a correction (INV-REQ-1006). The tenant travels in the CloudEvents envelope. The CloudEvents id of the event is the idempotency key of the consumer. Within a major version this schema is additive-only (API-41): a field is never removed, renamed, retyped or made required.",
+  "type": "object",
+  "properties": {
+    "entityRef": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 40,
+      "description": "The entity whose identity triple was corrected; every document of the page belongs to this entity."
+    },
+    "constitution": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 40,
+      "description": "The constitution of the corrected identity triple."
+    },
+    "effectiveFrom": {
+      "type": "string",
+      "format": "date",
+      "description": "The date from which the corrected identity triple takes effect."
+    },
+    "changeRef": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 40,
+      "description": "The reference of the confirmed change that the correction belongs to."
+    },
+    "docUuids": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "The Doc UUIDs of the documents of this page, selected by submission-svc; a consumer reports a Doc UUID and never generates one.",
+      "items": {
+        "type": "string",
+        "format": "uuid"
+      }
+    }
+  },
+  "required": [
+    "entityRef",
+    "constitution",
+    "effectiveFrom",
+    "changeRef",
+    "docUuids"
+  ],
+  "additionalProperties": true
+}

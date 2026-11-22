@@ -1,7 +1,7 @@
 asyncapi: 3.1.0
 info:
   title: submission events
-  version: 1.13.0
+  version: 1.14.0
   description: >-
     Every event submission produces or consumes (API-43, STK-45), wrapped at
     publish time in the CloudEvents 1.0.2 envelope every service shares
@@ -83,6 +83,11 @@ channels:
     messages:
       NetDerivationRequested:
         $ref: '#/components/messages/NetDerivationRequested'
+  submissionIdentityTripleReprocessingRequested:
+    address: 'gst.submission.identity-triple-reprocessing-requested.v1'
+    messages:
+      IdentityTripleReprocessingRequested:
+        $ref: '#/components/messages/IdentityTripleReprocessingRequested'
   submissionExampleHappened:
     address: 'gst.submission.example-happened.v1'
     messages:
@@ -170,6 +175,13 @@ operations:
       $ref: '#/channels/submissionNetDerivationRequested'
     messages:
       - $ref: '#/channels/submissionNetDerivationRequested/messages/NetDerivationRequested'
+  publishIdentityTripleReprocessingRequested:
+    action: send
+    description: IdentityTripleReprocessingRequested — submission-svc asks canonical-svc to re-resolve the identity triple of one page of selected documents (INV-REQ-1006).
+    channel:
+      $ref: '#/channels/submissionIdentityTripleReprocessingRequested'
+    messages:
+      - $ref: '#/channels/submissionIdentityTripleReprocessingRequested/messages/IdentityTripleReprocessingRequested'
   publishExampleHappened:
     action: send
     description: Placeholder operation (INV-T-2849 scaffold) — replace with a real one.
@@ -316,6 +328,20 @@ components:
       contentType: application/cloudevents+json
       payload:
         $ref: './schemas/net-derivation-requested-payload.schema.json'
+    IdentityTripleReprocessingRequested:
+      name: com.dynokore.gst.submission.IdentityTripleReprocessingRequested.v1
+      title: IdentityTripleReprocessingRequested
+      summary: IdentityTripleReprocessingRequested — the request to re-resolve the identity triple of one page of selected documents (INV-REQ-1006).
+      description: >-
+        submission-svc asks canonical-svc to re-resolve the identity triple on the transaction date of each listed
+        document after a correction, carrying entityRef, constitution, effectiveFrom, changeRef and the Doc UUIDs of
+        one page (INV-REQ-1006). The tenant travels in the CloudEvents envelope. The CloudEvents id of the event is the
+        idempotency key of the consumer. A page lists documents of one entityRef, and a consumer reports a Doc UUID
+        and never generates one.
+        Emitted by: submission-svc. Consumed by: canonical-svc. Delivery: At-least-once.
+      contentType: application/cloudevents+json
+      payload:
+        $ref: './schemas/identity-triple-reprocessing-requested-payload.schema.json'
     ExampleHappened:
       name: com.dynokore.gst.submission.ExampleHappened.v1
       title: ExampleHappened

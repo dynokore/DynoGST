@@ -305,3 +305,8 @@ PackActivationEntry.packVersion	schema_property	openapi.yaml	INV-REQ-980
 PackActivationEntry.effectiveFrom	schema_property	openapi.yaml	INV-REQ-980
 PackActivationEntry.activatedBy	schema_property	openapi.yaml	INV-REQ-980
 PackActivationEntry.activatedAt	schema_property	openapi.yaml	INV-REQ-980
+entityRef	property	schemas/identity-triple-reprocessing-requested-payload.schema.json	INV-REQ-1006
+constitution	property	schemas/identity-triple-reprocessing-requested-payload.schema.json	INV-REQ-1006
+effectiveFrom	property	schemas/identity-triple-reprocessing-requested-payload.schema.json	INV-REQ-1006
+changeRef	property	schemas/identity-triple-reprocessing-requested-payload.schema.json	INV-REQ-1006
+docUuids	property	schemas/identity-triple-reprocessing-requested-payload.schema.json	INV-REQ-1006
