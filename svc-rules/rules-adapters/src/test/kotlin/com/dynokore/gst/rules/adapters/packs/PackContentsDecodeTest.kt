@@ -331,6 +331,55 @@ class PackContentsDecodeTest {
         scenario.treatments.single().rate shouldBe "0"
     }
 
+    private fun percentScenario(member: String) =
+        scenario(treatments = "[${treatmentJson(""""rateBasis":"FIXED","rate":"0"$member""")}]")
+
+    private fun percentOf(member: String) =
+        ScenarioPackContents
+            .decode(percentScenario(member).toByteArray())
+            .treatments
+            .single()
+            .gstBasePercent
+
+    @Test
+    fun `INV-AC-26687 a valid gstBasePercent decodes to exactly the pack text`() {
+        listOf("50", "0", "100", "37.5", "100.0", "0.000001").forEach {
+            percentOf(""","gstBasePercent":"$it"""") shouldBe it
+        }
+    }
+
+    @Test
+    fun `INV-AC-26687 a treatment without the member decodes to null`() {
+        percentOf("") shouldBe null
+    }
+
+    @Test
+    fun `INV-AC-26687 an invalid gstBasePercent fails the import and is never defaulted`() {
+        listOf("101", "-1", "50%", "", " 50", "50 ", "50.1234567", "5e1", "+50", "050", "5,0").forEach {
+            val failure =
+                shouldThrow<PackContentsFailure> { percentOf(""","gstBasePercent":"$it"""") }
+            failure.field shouldBe "$.treatments[0].gstBasePercent"
+        }
+        listOf("50", "50.5", "true", "[]", "{}").forEach {
+            shouldThrow<PackContentsFailure> { percentOf(""","gstBasePercent":$it""") }
+        }
+    }
+
+    @Test
+    fun `INV-AC-26687 the decoder and the pinned schema agree on gstBasePercent`() =
+        agree(
+            mapOf(
+                "valid fifty" to percentScenario(""","gstBasePercent":"50""""),
+                "valid fraction" to percentScenario(""","gstBasePercent":"37.5""""),
+                "invalid above 100" to percentScenario(""","gstBasePercent":"101""""),
+                "invalid percent sign" to percentScenario(""","gstBasePercent":"50%""""),
+                "invalid number" to percentScenario(""","gstBasePercent":50"""),
+                "invalid empty" to percentScenario(""","gstBasePercent":"""""),
+            ),
+            "scenario-pack-handlers.schema.json",
+            ScenarioPackContents::decode,
+        )
+
     private fun versionOf(
         type: PackType,
         label: String,

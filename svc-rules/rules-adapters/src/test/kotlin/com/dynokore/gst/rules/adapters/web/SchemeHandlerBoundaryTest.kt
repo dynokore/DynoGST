@@ -32,8 +32,10 @@ import com.dynokore.platform.tenancykernel.TenantContext
 import com.dynokore.platform.tenancykernel.TenantId
 import com.dynokore.platform.tenancykernel.TransactionRunner
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldNotContain
 import org.junit.jupiter.api.Test
 import tools.jackson.databind.DeserializationFeature
+import tools.jackson.databind.JsonNode
 import tools.jackson.databind.json.JsonMapper
 import java.time.Clock
 import java.time.Instant
@@ -217,10 +219,13 @@ class SchemeHandlerBoundaryTest {
     )
 
     @Suppress("LongMethod") // one wiring of the real controller over in-memory packs and replicas
-    private fun fixture(scenarioJson: String = scenario()): Fixture {
+    private fun fixture(
+        scenarioJson: String = scenario(),
+        mappingJson: String = mapping,
+    ): Fixture {
         val held =
             mapOf(
-                PackTypes.MAPPING to (version(PackTypes.MAPPING, "m1") to mapping),
+                PackTypes.MAPPING to (version(PackTypes.MAPPING, "m1") to mappingJson),
                 PackTypes.CODE_CATALOGUE to (version(PackTypes.CODE_CATALOGUE, "c1") to catalogue),
                 PackTypes.SCENARIO to (version(PackTypes.SCENARIO, "s1") to scenarioJson),
                 PackTypes.SCOPE to (version(PackTypes.SCOPE, "sc1") to scopePack),
@@ -608,5 +613,39 @@ class SchemeHandlerBoundaryTest {
             val r = fixture().also { f -> vp21(f, "ON") }.let { f -> eval(f, it, "IGDS", purchase = true) }
             r.scopeVerdict shouldBe EvaluationResult.ScopeVerdict.EXCLUDED_TXN
         }
+    }
+
+    private fun gstBasePercentPack(member: String): String =
+        scenario()
+            .replace(
+                """"treatments":[""",
+                """"treatments":[{"tag":"ZZTEST","side":"SUPPLY","categoryCode":"SR",""" +
+                    """"rateBasis":"FIXED","rate":"9","counterpartyApprovedUnder":["ZZTEST"],$member""" +
+                    """"sourceClass":"INFERRED","sourceReference":"invented"},""",
+            ).replace(
+                """"schemeTagSides":[""",
+                """"schemeTagSides":[${tagSide("ZZTEST", "SUPPLY")},""",
+            )
+
+    private val zzMapping = mapping.replace("""{"entries":[""", """{"entries":[${entry("ZZL", "SR", "ZZTEST")},""")
+
+    private fun gstBasePercentAnswer(member: String): JsonNode {
+        val f = fixture(gstBasePercentPack(member), zzMapping)
+        return JsonMapper().valueToTree(eval(f, "ZZL", "ZZTEST", listOf("ZZTEST")))
+    }
+
+    @Test
+    fun `INV-AC-26687 the answer carries the gstBasePercent text of the chosen pack treatment`() {
+        val answer = gstBasePercentAnswer(""""gstBasePercent":"50",""")
+        answer.get("categoryCode").asString() shouldBe "SR"
+        answer.get("gstBasePercent").asString() shouldBe "50"
+    }
+
+    @Test
+    fun `INV-AC-26687 a treatment without gstBasePercent leaves the member absent from the answer`() {
+        val answer = gstBasePercentAnswer("")
+        answer.get("categoryCode").asString() shouldBe "SR"
+        answer.has("gstBasePercent") shouldBe false
+        answer.toString() shouldNotContain "gstBasePercent"
     }
 }

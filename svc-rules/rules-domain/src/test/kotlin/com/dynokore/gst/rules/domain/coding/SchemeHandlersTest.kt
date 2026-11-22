@@ -5,9 +5,11 @@ import com.dynokore.gst.rules.domain.pack.MappingSignOff
 import com.dynokore.gst.rules.domain.pack.PackEntry
 import com.dynokore.gst.rules.domain.pack.SourceClass
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import org.junit.jupiter.api.Test
 
 /** The scheme handlers over invented pack data: every decision is read from [scenario], none is a constant. */
+@Suppress("LargeClass") // one class keeps the invented scenario and the acceptance keys of the handlers together
 class SchemeHandlersTest {
     private fun cat(
         code: String,
@@ -51,8 +53,8 @@ class SchemeHandlersTest {
         under,
         agreement,
         statement,
-        "INFERRED",
-        "invented",
+        sourceClass = "INFERRED",
+        sourceReference = "invented",
     )
 
     private val a3pl = "Payment of GST is not required under the Approved 3PL Company Scheme"
@@ -400,5 +402,58 @@ class SchemeHandlersTest {
         trace["elections"] shouldBe "ACMT,ARCS"
         trace["electionsSource"] shouldBe "electedSchemes"
         coder.codeWithTrace(LineInput("MESS")).second["electionsSource"] shouldBe "none"
+    }
+
+    private fun fixtureCoder(vararg rows: Treatment) =
+        LineCoder(
+            listOf(MappingEntry("ZZL", "SR", "ZZTEST")),
+            catalogue,
+            ScenarioData(
+                scenario.customerCumIssuer,
+                scenario.supplierCumRecipient,
+                listOf(side("ZZTEST", Side.SUPPLY)),
+                rows.toList(),
+            ),
+        )
+
+    private fun fixtureRow(
+        under: String,
+        percent: String?,
+    ) = Treatment(
+        "ZZTEST",
+        Side.SUPPLY,
+        "SR",
+        RateBasis.FIXED,
+        "9",
+        setOf(under),
+        null,
+        null,
+        percent,
+        sourceClass = "INFERRED",
+        sourceReference = "invented",
+    )
+
+    private fun fixtureLine(approved: String) =
+        LineInput("ZZL", elections = setOf("ZZTEST"), counterpartyApprovedSchemes = setOf(approved))
+
+    @Test
+    fun `INV-AC-26687 the gstBasePercent of the chosen treatment is carried exactly as the pack states it`() {
+        val coded = fixtureCoder(fixtureRow("ZZA", "50")).code(fixtureLine("ZZA")) as LineCoding.Coded
+        coded.gstBasePercent shouldBe "50"
+    }
+
+    @Test
+    fun `INV-AC-26687 a treatment that states no gstBasePercent yields null and never a default`() {
+        val coded = fixtureCoder(fixtureRow("ZZA", null)).code(fixtureLine("ZZA")) as LineCoding.Coded
+        coded.gstBasePercent shouldBe null
+        coded.gstBasePercent shouldNotBe "100"
+        coded.gstBasePercent shouldNotBe "0"
+    }
+
+    @Test
+    fun `INV-AC-26687 the value follows the selected treatment and not the first row of the pair`() {
+        val coder = fixtureCoder(fixtureRow("ZZA", "50"), fixtureRow("ZZB", "37.5"))
+        (coder.code(fixtureLine("ZZA")) as LineCoding.Coded).gstBasePercent shouldBe "50"
+        (coder.code(fixtureLine("ZZB")) as LineCoding.Coded).gstBasePercent shouldBe "37.5"
     }
 }

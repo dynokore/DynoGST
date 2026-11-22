@@ -34,6 +34,7 @@ sealed interface LineCoding {
         val rate: String? = null,
         val prevailingRate: Boolean = false,
         val ibt022Statement: String? = null,
+        val gstBasePercent: String? = null,
         val selfBillingAssignment: SelfBillingAssignment? = null,
     ) : LineCoding
 
@@ -209,6 +210,7 @@ class LineCoder(
                     rate = chosen.rate,
                     prevailingRate = chosen.rateBasis == RateBasis.PREVAILING,
                     ibt022Statement = chosen.ibt022Statement,
+                    gstBasePercent = chosen.gstBasePercent,
                 ) to trace
             }
         }

@@ -22,6 +22,9 @@ object ScenarioPackContents {
     private val SIDES = setOf("SUPPLY", "PURCHASE")
     private val RATE = Regex("^[0-9]{1,3}(\\.[0-9]{1,6})?$")
 
+    /** The contract pattern of `gstBasePercent`: 0 to 100, up to six decimals, no sign, no percent mark. */
+    private val GST_BASE_PERCENT = Regex("^(100|[0-9]{1,2})(\\.[0-9]{1,6})?$")
+
     fun decode(contents: ByteArray): ScenarioData {
         val root = ContentsNode.root(PACK_TYPE, contents)
         val assignment = root.obj("selfBillingAssignment")
@@ -70,6 +73,7 @@ object ScenarioPackContents {
         val agreement = node.optionalText("writtenAgreement", oneOf = setOf("AGREED", "NOT_AGREED"))
         val rate = node.optionalText("rate", pattern = RATE)
         val statement = node.optionalText("ibt022Statement", min = 1, max = 500)
+        val gstBasePercent = node.optionalText("gstBasePercent", pattern = GST_BASE_PERCENT)
         val sourceClass = node.text("sourceClass", oneOf = SOURCE_CLASSES)
         val sourceReference = node.text("sourceReference", min = 1, max = 500)
         if (basis == "FIXED" && rate == null) node.fail("rate", "is required for rateBasis FIXED")
@@ -83,6 +87,7 @@ object ScenarioPackContents {
             counterpartyApprovedUnder = approvedUnder.orEmpty().toSet(),
             writtenAgreement = agreement,
             ibt022Statement = statement,
+            gstBasePercent = gstBasePercent,
             sourceClass = sourceClass,
             sourceReference = sourceReference,
         )

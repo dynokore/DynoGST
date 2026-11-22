@@ -531,6 +531,7 @@ open class EvaluationController(
                     rate = line.rate,
                     supplyType = supplyTypeOf(document.catalogue, answeredCode),
                     ibt022Statement = coding.ibt022Statement,
+                    gstBasePercent = coding.gstBasePercent,
                     disregardedSupplyWarning = warning,
                     decisionTrace = trace,
                     packVersionsApplied = versions,
