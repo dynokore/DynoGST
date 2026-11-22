@@ -44,7 +44,8 @@ class InFlightIndexMigrationTest {
                     sqlState {
                         c.createStatement().use {
                             it.execute(
-                                "insert into submission.submission (tenant_id, doc_uuid, version, state, entity_ref, submission_type) " +
+                                "insert into submission.submission (tenant_id, doc_uuid, version, state, entity_ref, " +
+                                    "submission_type) " +
                                     "values ('$tenant', '$doc', $version, '$state', 'E-001', 'TYPE_1B')",
                             )
                         }
@@ -68,7 +69,8 @@ class InFlightIndexMigrationTest {
             try {
                 c.createStatement().use {
                     it.execute(
-                        "insert into submission.submission (tenant_id, doc_uuid, version, state, entity_ref, submission_type) " +
+                        "insert into submission.submission (tenant_id, doc_uuid, version, state, entity_ref, " +
+                            "submission_type) " +
                             "values ('$tenant', '$doc', 1, '$first', 'E-001', 'TYPE_1B')",
                     )
                 }
@@ -76,7 +78,8 @@ class InFlightIndexMigrationTest {
                     runCatching {
                         c.createStatement().use {
                             it.execute(
-                                "insert into submission.submission (tenant_id, doc_uuid, version, state, entity_ref, submission_type) " +
+                                "insert into submission.submission (tenant_id, doc_uuid, version, state, entity_ref, " +
+                                    "submission_type) " +
                                     "values ('$tenant', '$doc', 2, '$second', 'E-001', 'TYPE_1B')",
                             )
                         }

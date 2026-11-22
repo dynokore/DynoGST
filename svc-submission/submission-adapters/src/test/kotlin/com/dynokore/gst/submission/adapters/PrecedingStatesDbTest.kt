@@ -66,7 +66,8 @@ class PrecedingStatesDbTest {
     ) = SubmissionDb.superuser().use { c ->
         c
             .prepareStatement(
-                "insert into submission.submission (tenant_id, doc_uuid, version, state, entity_ref, submission_type) " +
+                "insert into submission.submission (tenant_id, doc_uuid, version, state, entity_ref, " +
+                    "submission_type) " +
                     "values (?, ?, ?, ?, 'E-001', 'TYPE_1B')",
             ).use {
                 it.setObject(1, tenant)

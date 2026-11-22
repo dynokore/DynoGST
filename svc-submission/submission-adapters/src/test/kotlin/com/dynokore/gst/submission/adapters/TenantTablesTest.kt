@@ -82,7 +82,8 @@ class TenantTablesTest {
         SignedBindings.bind(connection, tenant, signature = signature)
         connection
             .prepareStatement(
-                "insert into submission.submission (doc_uuid, version, tenant_id, state, entity_ref, submission_type) " +
+                "insert into submission.submission (doc_uuid, version, tenant_id, state, entity_ref, " +
+                    "submission_type) " +
                     "values (?, 1, ?, 'READY', 'E-001', 'TYPE_1B')",
             ).use {
                 it.setString(1, UUID.randomUUID().toString())

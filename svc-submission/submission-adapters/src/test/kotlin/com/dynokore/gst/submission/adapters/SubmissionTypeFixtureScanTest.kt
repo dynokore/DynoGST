@@ -15,33 +15,33 @@ import java.nio.file.Path
 class SubmissionTypeFixtureScanTest {
     private val files =
         listOf(
-            "submission-adapters/src/test/kotlin/com/dynokore/gst/submission/adapters/AcknowledgementDeadlineMigrationTest.kt",
-            "submission-adapters/src/test/kotlin/com/dynokore/gst/submission/adapters/AttemptFailureClassMigrationTest.kt",
-            "submission-adapters/src/test/kotlin/com/dynokore/gst/submission/adapters/AttemptFailureClassRetrySuffixMigrationTest.kt",
-            "submission-adapters/src/test/kotlin/com/dynokore/gst/submission/adapters/AttemptOutcomeMigrationTest.kt",
-            "submission-adapters/src/test/kotlin/com/dynokore/gst/submission/adapters/DrainBacklogDbTest.kt",
-            "submission-adapters/src/test/kotlin/com/dynokore/gst/submission/adapters/DrainResidualSourceDbTest.kt",
-            "submission-adapters/src/test/kotlin/com/dynokore/gst/submission/adapters/HoldStoreDbTest.kt",
-            "submission-adapters/src/test/kotlin/com/dynokore/gst/submission/adapters/InFlightIndexMigrationTest.kt",
-            "submission-adapters/src/test/kotlin/com/dynokore/gst/submission/adapters/ObligationRowSourceDbTest.kt",
-            "submission-adapters/src/test/kotlin/com/dynokore/gst/submission/adapters/PrecedingStatesDbTest.kt",
-            "submission-adapters/src/test/kotlin/com/dynokore/gst/submission/adapters/QueuedAtMigrationTest.kt",
-            "submission-adapters/src/test/kotlin/com/dynokore/gst/submission/adapters/ReadinessEntrySourceDbTest.kt",
-            "submission-adapters/src/test/kotlin/com/dynokore/gst/submission/adapters/TenantTablesTest.kt",
-            "submission-adapters/src/test/kotlin/com/dynokore/gst/submission/adapters/UnsubmittedCountMeasurementDbTest.kt",
-            "submission-adapters/src/test/kotlin/com/dynokore/gst/submission/adapters/UnsubmittedDocumentSourceDbTest.kt",
-            "submission-adapters/src/test/kotlin/com/dynokore/gst/submission/adapters/WaitingTenantsMigrationTest.kt",
-            "submission-adapters/src/test/kotlin/com/dynokore/gst/submission/adapters/FailureCodesDbTest.kt",
-            "submission-adapters/src/test/kotlin/com/dynokore/gst/submission/adapters/ReplayInFlightProbeDbTest.kt",
-            "submission-adapters/src/test/kotlin/com/dynokore/gst/submission/adapters/ReplayVersionLookupDbTest.kt",
-            "submission-adapters/src/test/kotlin/com/dynokore/gst/submission/adapters/ScopeStoresDbTest.kt",
+            "AcknowledgementDeadlineMigrationTest.kt",
+            "AttemptFailureClassMigrationTest.kt",
+            "AttemptFailureClassRetrySuffixMigrationTest.kt",
+            "AttemptOutcomeMigrationTest.kt",
+            "DrainBacklogDbTest.kt",
+            "DrainResidualSourceDbTest.kt",
+            "HoldStoreDbTest.kt",
+            "InFlightIndexMigrationTest.kt",
+            "ObligationRowSourceDbTest.kt",
+            "PrecedingStatesDbTest.kt",
+            "QueuedAtMigrationTest.kt",
+            "ReadinessEntrySourceDbTest.kt",
+            "TenantTablesTest.kt",
+            "UnsubmittedCountMeasurementDbTest.kt",
+            "UnsubmittedDocumentSourceDbTest.kt",
+            "WaitingTenantsMigrationTest.kt",
+            "FailureCodesDbTest.kt",
+            "ReplayInFlightProbeDbTest.kt",
+            "ReplayVersionLookupDbTest.kt",
+            "ScopeStoresDbTest.kt",
         )
 
     @Test
     fun `INV-AC-27291 the insert statements of the 20 listed fixture files each name submission_type`() {
         assertEquals(20, files.size)
         assertEquals(20, files.toSet().size)
-        val root = repositoryRoot()
+        val root = repositoryRoot().resolve(DIR)
         val failures =
             files.flatMap { rel ->
                 val path = root.resolve(rel)
@@ -116,6 +116,7 @@ class SubmissionTypeFixtureScanTest {
     }
 
     private companion object {
+        const val DIR = "submission-adapters/src/test/kotlin/com/dynokore/gst/submission/adapters"
         val RAW = Regex("""insert\s+into\s+submission\.submission\s*\(""", RegexOption.IGNORE_CASE)
         val TYPE_RAW = Regex("""\bsubmission_type\b""", RegexOption.IGNORE_CASE)
         val TYPE_JOOQ = Regex("""\bSUBMISSION_TYPE\b""")
