@@ -192,3 +192,12 @@ AuthorityIncarnationResponse.incarnation	schema_property	openapi.yaml	INV-REQ-12
 AuthorityIncarnationResponse.previousIncarnation	schema_property	openapi.yaml	INV-REQ-1201
 templateParameters	property	schemas/message-requested-payload.schema.json	INV-REQ-639
 fallbackRecipient	root_property	schemas/message-requested-payload.schema.json	INV-REQ-2762
+issueFlowContext	operation	openapi.yaml	INV-REQ-1202
+flowContext	property	openapi.yaml	INV-REQ-1202
+expiresAt	property	openapi.yaml	INV-REQ-1202
+issueFlowContext.200	operation_response	openapi.yaml	INV-REQ-1202
+issueFlowContext.400	operation_response	openapi.yaml	INV-REQ-1202
+issueFlowContext.401	operation_response	openapi.yaml	INV-REQ-1202
+issueFlowContext.403	operation_response	openapi.yaml	INV-REQ-1202
+issueFlowContext.503	operation_response	openapi.yaml	INV-REQ-1202
+issueFlowContext.default	operation_response	openapi.yaml	INV-REQ-1202
