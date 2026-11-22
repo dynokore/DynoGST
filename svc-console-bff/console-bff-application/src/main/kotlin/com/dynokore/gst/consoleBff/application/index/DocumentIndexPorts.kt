@@ -29,7 +29,12 @@ interface DocumentIndexStore {
     ): Int
 }
 
-/** Facts of a CanonicalVersionCreated payload the index needs. `entityRef` is null when the payload has none. */
+/**
+ * Facts of a CanonicalVersionCreated payload the index needs. `documentDate` is the canonical `documentDate` (the
+ * document's issue date) and the only source of the document_date column; `transactionDate` is the distinct
+ * `transactionDate` member (period attribution) and feeds only its own column (coordinator ruling 2026-11-22).
+ * `entityRef` is null when the payload has none.
+ */
 data class CanonicalVersionFacts(
     val docUuid: String,
     val version: Long,

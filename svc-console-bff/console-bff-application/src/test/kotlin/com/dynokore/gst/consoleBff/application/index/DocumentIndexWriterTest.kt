@@ -29,6 +29,7 @@ class DocumentIndexWriterTest {
     private val d1 = "00000000-0000-0000-0000-000000000001"
     private val d2 = "00000000-0000-0000-0000-000000000002"
     private val date = LocalDate.parse("2026-03-20")
+    private val transactionDate = LocalDate.parse("2026-03-31")
 
     private class MemoryStore : DocumentIndexStore {
         val rows = linkedMapOf<Triple<String, String, Long>, DocumentIndexRow>()
@@ -102,7 +103,7 @@ class DocumentIndexWriterTest {
                     documentDate = date,
                     categoryCodes = setOf("SR"),
                     scopeVerdict = p[3],
-                    transactionDate = date,
+                    transactionDate = transactionDate,
                 )
             }
         }
@@ -209,6 +210,7 @@ class DocumentIndexWriterTest {
             r.counterpartyName shouldBe "C1"
             r.amount shouldBe BigDecimal("100.00")
             r.documentDate shouldBe date
+            r.transactionDate shouldBe transactionDate
             r.categoryCodes shouldBe setOf("SR")
         }
     }
