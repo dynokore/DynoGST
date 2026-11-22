@@ -114,7 +114,8 @@ class SecurityEventSignInTest {
             BoundaryFixture.asSuperuser { c ->
                 c
                     .prepareStatement(
-                        "select failures from access.break_glass_signin_counter where tenant_id = ?::uuid and unlock_ref = ?",
+                        "select failures from access.break_glass_signin_counter " +
+                            "where tenant_id = ?::uuid and unlock_ref = ?",
                     ).use {
                         it.setString(1, tenant.toString())
                         it.setString(2, unlockRef)
