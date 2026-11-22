@@ -22,8 +22,8 @@ class AttemptFailureClassRetrySuffixMigrationTest {
 
     private fun Connection.seed(doc: UUID) {
         exec(
-            "insert into submission.submission (tenant_id, doc_uuid, version, state, entity_ref) " +
-                "values (gen_random_uuid(), '$doc', 1, 'REJECTED', 'E-001')",
+            "insert into submission.submission (tenant_id, doc_uuid, version, state, entity_ref, submission_type) " +
+                "values (gen_random_uuid(), '$doc', 1, 'REJECTED', 'E-001', 'TYPE_1B')",
         )
         exec(
             "insert into submission.submission_attempt (tenant_id, doc_uuid, version, attempt_number, " +

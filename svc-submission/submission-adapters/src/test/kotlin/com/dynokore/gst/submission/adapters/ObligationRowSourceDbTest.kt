@@ -90,8 +90,8 @@ class ObligationRowSourceDbTest {
             )
             e.states.forEachIndexed { index, state ->
                 dsl.execute(
-                    "insert into submission.submission (tenant_id, doc_uuid, version, state, entity_ref) " +
-                        "values (?, ?, ?, ?, ?)",
+                    "insert into submission.submission (tenant_id, doc_uuid, version, state, entity_ref, submission_type) " +
+                        "values (?, ?, ?, ?, ?, 'TYPE_1B')",
                     tenant,
                     e.doc,
                     index + 1,

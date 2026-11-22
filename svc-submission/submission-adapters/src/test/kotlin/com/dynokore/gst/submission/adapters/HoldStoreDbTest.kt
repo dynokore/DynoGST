@@ -63,8 +63,8 @@ class HoldStoreDbTest {
                 version: Int,
                 state: String,
             ) = c.exec(
-                "insert into submission.submission (tenant_id, doc_uuid, version, state, entity_ref) " +
-                    "values ('$tenant', '$doc', $version, '$state', 'E-001')",
+                "insert into submission.submission (tenant_id, doc_uuid, version, state, entity_ref, submission_type) " +
+                    "values ('$tenant', '$doc', $version, '$state', 'E-001', 'TYPE_1B')",
             )
             entry(t1, c1, p1)
             entry(t1, c2, p1)

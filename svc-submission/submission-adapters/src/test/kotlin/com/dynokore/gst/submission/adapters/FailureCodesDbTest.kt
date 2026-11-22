@@ -56,6 +56,7 @@ class FailureCodesDbTest {
             .set(sub.VERSION, 1)
             .set(sub.STATE, "SENT")
             .set(sub.ENTITY_REF, "E-001")
+            .set(sub.SUBMISSION_TYPE, "TYPE_1B")
             .execute()
         (1..attempts).forEach { n ->
             dsl

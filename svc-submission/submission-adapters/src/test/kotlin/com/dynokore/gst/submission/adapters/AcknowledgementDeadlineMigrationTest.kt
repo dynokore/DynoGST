@@ -60,8 +60,8 @@ class AcknowledgementDeadlineMigrationTest {
                 }
                 c.createStatement().use {
                     it.execute(
-                        "insert into submission.submission (tenant_id, doc_uuid, version, state, entity_ref) " +
-                            "values ('${UUID.randomUUID()}', '$doc', 1, 'SENT', 'E-001')",
+                        "insert into submission.submission (tenant_id, doc_uuid, version, state, entity_ref, submission_type) " +
+                            "values ('${UUID.randomUUID()}', '$doc', 1, 'SENT', 'E-001', 'TYPE_1B')",
                     )
                 }
                 c.createStatement().use { it.execute(migrationSql()) }

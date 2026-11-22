@@ -135,6 +135,7 @@ class ScopeStoresDbTest {
                 .set(sub.VERSION, 1)
                 .set(sub.STATE, state)
                 .set(sub.ENTITY_REF, "E-001")
+                .set(sub.SUBMISSION_TYPE, "TYPE_1B")
                 .execute()
         }
         connection.commit()

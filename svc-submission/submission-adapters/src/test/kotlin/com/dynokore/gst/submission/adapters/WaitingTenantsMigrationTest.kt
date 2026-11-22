@@ -19,8 +19,8 @@ class WaitingTenantsMigrationTest {
         r: Row,
     ) = c.createStatement().use {
         it.execute(
-            "insert into submission.submission (tenant_id, doc_uuid, version, state, entity_ref) " +
-                "values ('${r.tenant}', '${r.doc}', ${r.version}, '${r.state}', 'E-001')",
+            "insert into submission.submission (tenant_id, doc_uuid, version, state, entity_ref, submission_type) " +
+                "values ('${r.tenant}', '${r.doc}', ${r.version}, '${r.state}', 'E-001', 'TYPE_1B')",
         )
     }
 

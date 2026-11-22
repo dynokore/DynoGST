@@ -69,6 +69,7 @@ class ReplayInFlightProbeDbTest {
             .set(sub.VERSION, version)
             .set(sub.STATE, state.name)
             .set(sub.ENTITY_REF, "e-$s")
+            .set(sub.SUBMISSION_TYPE, "TYPE_1B")
             .execute()
     }
 

@@ -44,8 +44,8 @@ class QueuedAtMigrationTest {
         SubmissionDb.superuser().use { c ->
             c.createStatement().use {
                 it.execute(
-                    "insert into submission.submission (tenant_id, doc_uuid, version, state, entity_ref) " +
-                        "values ('${UUID.randomUUID()}', '$doc', 1, 'READY', 'E-001')",
+                    "insert into submission.submission (tenant_id, doc_uuid, version, state, entity_ref, submission_type) " +
+                        "values ('${UUID.randomUUID()}', '$doc', 1, 'READY', 'E-001', 'TYPE_1B')",
                 )
             }
             val nulls =
@@ -99,8 +99,8 @@ class QueuedAtMigrationTest {
         val (withAttempt, queueOnly, neither) = docs
         listOf(withAttempt, queueOnly, neither).forEach {
             c.exec(
-                "insert into submission.submission (tenant_id, doc_uuid, version, state, entity_ref) " +
-                    "values ('$tenant', '$it', 1, 'QUEUED', 'E-001')",
+                "insert into submission.submission (tenant_id, doc_uuid, version, state, entity_ref, submission_type) " +
+                    "values ('$tenant', '$it', 1, 'QUEUED', 'E-001', 'TYPE_1B')",
             )
         }
         listOf(2, 1).forEach { n ->

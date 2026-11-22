@@ -111,8 +111,8 @@ class DrainBacklogDbTest {
         }
         if (withVersion) {
             dsl.execute(
-                "insert into submission.submission (tenant_id, doc_uuid, version, state, entity_ref, queued_at) " +
-                    "values (?, ?, 1, 'QUEUED', ?, ?::timestamptz)",
+                "insert into submission.submission (tenant_id, doc_uuid, version, state, entity_ref, queued_at, submission_type) " +
+                    "values (?, ?, 1, 'QUEUED', ?, ?::timestamptz, 'TYPE_1B')",
                 tenant,
                 doc,
                 entity,

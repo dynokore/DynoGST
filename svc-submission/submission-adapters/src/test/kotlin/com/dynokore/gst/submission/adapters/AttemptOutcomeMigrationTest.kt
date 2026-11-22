@@ -23,9 +23,9 @@ class AttemptOutcomeMigrationTest {
         row: Row,
     ) = connection.createStatement().use {
         it.execute(
-            "insert into submission.submission (tenant_id, doc_uuid, version, state, entity_ref, retry_failures, " +
+            "insert into submission.submission (tenant_id, doc_uuid, version, state, entity_ref, submission_type, retry_failures, " +
                 "retry_first_failure_at, next_attempt_at) values ('${row.tenant}', '${row.doc}', 1, '${row.state}', " +
-                "'E-001', ${row.failures}, ${row.first?.let { v -> "'$v'" }}, ${row.next?.let { v -> "'$v'" }})",
+                "'E-001', 'TYPE_1B', ${row.failures}, ${row.first?.let { v -> "'$v'" }}, ${row.next?.let { v -> "'$v'" }})",
         )
     }
 
