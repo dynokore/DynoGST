@@ -70,6 +70,18 @@ interface SubmissionAcknowledgedReader {
     fun read(dataJson: String): SubmissionVersionFacts
 }
 
+/** Facts of a SubmissionFailed payload the index needs: the required `version` and the optional `code`. */
+data class SubmissionFailedIndexFacts(
+    val docUuid: String,
+    val version: Long,
+    val code: String?,
+)
+
+/** Reads the SubmissionFailed payload; `code` is null when absent (never guessed). Malformed: `ContractViolation`. */
+interface SubmissionFailedIndexReader {
+    fun read(dataJson: String): SubmissionFailedIndexFacts
+}
+
 /**
  * Reads the MasterDataResolved payload for the index: the listed `docUuids` and the value of the first
  * `resolvedIdentifiers` item whose `scheme` equals "UEN". Either is empty or null when absent.

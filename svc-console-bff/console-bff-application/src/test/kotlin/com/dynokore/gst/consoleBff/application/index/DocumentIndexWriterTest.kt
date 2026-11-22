@@ -2,8 +2,6 @@ package com.dynokore.gst.consoleBff.application.index
 
 import com.dynokore.gst.consoleBff.application.exceptions.DocumentHeldReader
 import com.dynokore.gst.consoleBff.application.exceptions.DocumentReleasedReader
-import com.dynokore.gst.consoleBff.application.exceptions.FailureFacts
-import com.dynokore.gst.consoleBff.application.exceptions.SubmissionFailedReader
 import com.dynokore.gst.consoleBff.domain.exceptions.DocumentHeldFacts
 import com.dynokore.gst.consoleBff.domain.exceptions.DocumentReleasedFacts
 import com.dynokore.gst.consoleBff.domain.index.DocumentIndexRow
@@ -129,13 +127,21 @@ class DocumentIndexWriterTest {
             override fun read(dataJson: String) =
                 dataJson.split('|').let { SubmissionVersionFacts(it[0], it[1].toLong(), it[2]) }
         }
+
+    // "doc|version|code-or-dash"; the event's docSequence (1 in every envelope) is deliberately not the version.
     private val failedReader =
-        object : SubmissionFailedReader {
-            override fun read(
-                dataJson: String,
-                envelopeEntityRef: String?,
-                envelopeDocSequence: Long?,
-            ) = dataJson.split('|').let { FailureFacts(it[0], it[1].toLong(), "E1", it[2], "OPS", "MANUAL") }
+        object : SubmissionFailedIndexReader {
+            override fun read(dataJson: String) =
+                dataJson.split('|').let {
+                    SubmissionFailedIndexFacts(
+                        it[0],
+                        it[1].toLong(),
+                        it[2].takeUnless { c ->
+                            c ==
+                                "-"
+                        },
+                    )
+                }
         }
     private val resolvedReader =
         object : MasterDataResolvedUenReader {
@@ -249,6 +255,18 @@ class DocumentIndexWriterTest {
         run(failed, "$d2|1|C-9") shouldBe HandleOutcome.IGNORED
         run(resolved, d2) shouldBe HandleOutcome.IGNORED
         store.rows.isEmpty() shouldBe true
+    }
+
+    @Test
+    fun `INV-AC-26807 failure error code goes to the payload version and a missing code changes nothing`() {
+        run(version, "$d1|1|E1|SUBMITTABLE")
+        run(version, "$d1|2|E1|SUBMITTABLE")
+        run(failed, "$d1|2|C-2") shouldBe HandleOutcome.APPLIED
+        row(d1, 2)!!.errorCode shouldBe "C-2"
+        row(d1, 1)!!.errorCode shouldBe null
+        run(failed, "$d1|1|-") shouldBe HandleOutcome.IGNORED
+        row(d1, 1)!!.errorCode shouldBe null
+        row(d1, 2)!!.state shouldBe IndexState.READY
     }
 
     @Test

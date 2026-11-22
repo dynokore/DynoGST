@@ -2,7 +2,6 @@ package com.dynokore.gst.consoleBff.application.index
 
 import com.dynokore.gst.consoleBff.application.exceptions.DocumentHeldReader
 import com.dynokore.gst.consoleBff.application.exceptions.DocumentReleasedReader
-import com.dynokore.gst.consoleBff.application.exceptions.SubmissionFailedReader
 import com.dynokore.gst.consoleBff.domain.index.DocumentIndexRow
 import com.dynokore.gst.consoleBff.domain.index.IndexState
 import com.dynokore.platform.outboxandqueue.Envelope
@@ -129,17 +128,19 @@ class IndexSubmissionAcknowledgedHandler(
     }
 }
 
-/** SubmissionFailed sets error_code from the member `code` on the row of the version and changes no state. */
+/**
+ * SubmissionFailed sets error_code from the member `code` on the row of the payload's `version` and changes no state;
+ * a payload without `code` changes nothing.
+ */
 class IndexSubmissionFailedHandler(
     private val tenants: TenantContext,
-    private val reader: SubmissionFailedReader,
+    private val reader: SubmissionFailedIndexReader,
     private val store: DocumentIndexStore,
 ) : EventHandler {
     override fun handle(event: Envelope): HandleOutcome {
-        val facts = reader.read(event.dataJson, event.entityRefOrNull(), event.docSequence)
-        val changed =
-            store.update(tenants.tenant(), facts.docUuid, facts.docsequence) { it.copy(errorCode = facts.code) }
-        return outcome(changed > 0)
+        val facts = reader.read(event.dataJson)
+        val code = facts.code ?: return HandleOutcome.IGNORED
+        return outcome(store.update(tenants.tenant(), facts.docUuid, facts.version) { it.copy(errorCode = code) } > 0)
     }
 }
 
