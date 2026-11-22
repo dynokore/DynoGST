@@ -375,17 +375,35 @@ class RetentionRecordsDbTest {
                 "from evidence.retention_notice where partition_id = ?",
             id,
         ) shouldBe "true"
-        shouldThrow<SQLException> {
-            statement(
-                u.tenant,
-                "insert into evidence.retention_notice values (?, ?, ?, 5, ?, '', null)",
-                u.tenant,
-                id,
-                at(clock.instant().plusSeconds(1)),
-                at(clock.instant().plusSeconds(100)),
-            )
-        }
+        // the empty user ID is refused by its own check: the sole-operator value is set, so the pairing check holds
+        shouldThrow<SQLException> { insertAck(u.tenant, id, 1, "''", "true") }
     }
+
+    @Test
+    fun `INV-AC-26255 a user ID without the sole-operator value and the reverse are refused by the pairing check`() {
+        val u = fixture(notice = false)
+        val id = partitionId(u)
+        shouldThrow<SQLException> { insertAck(u.tenant, id, 1, "'user-ack-1'", "null") }
+        shouldThrow<SQLException> { insertAck(u.tenant, id, 2, "null", "false") }
+        insertAck(u.tenant, id, 3, "'user-ack-1'", "false")
+    }
+
+    private fun insertAck(
+        tenant: UUID,
+        id: String,
+        offset: Long,
+        by: String,
+        sole: String,
+    ) = statement(
+        tenant,
+        "insert into evidence.retention_notice " +
+            "(tenant_id, partition_id, notified_at, window_days, window_closes_at, acknowledged_by, " +
+            "acknowledged_sole_operator) values (?, ?, ?, 5, ?, $by, $sole)",
+        tenant,
+        id,
+        at(clock.instant().plusSeconds(offset)),
+        at(clock.instant().plusSeconds(offset + 100)),
+    )
 
     @Test
     fun `INV-AC-22964 a deletion detaches and drops each of the four chain tables once`() {

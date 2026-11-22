@@ -98,7 +98,7 @@ interface PartitionLifecycle {
 /** The recorded acknowledgement behind a shortened notice window: the acknowledging user ID, never a role. */
 data class NoticeAcknowledgement(
     val userId: String,
-    val soleOperator: Boolean?,
+    val soleOperator: Boolean,
 ) {
     init {
         require(userId.isNotBlank()) { "the acknowledging user ID must not be blank" }
@@ -113,10 +113,14 @@ interface NoticeWindowSource {
         on: LocalDate,
     ): NoticeWindow
 
-    /** The first recorded acknowledgement of the value in force, or null when no relaxation backs it. */
+    /**
+     * The first recorded acknowledgement of the value in force at [notifiedAt], or null when no relaxation backs it;
+     * its sole-operator fact is read for the entity [entityRef] (INV-REQ-994).
+     */
     fun acknowledgement(
         tenant: String,
-        on: LocalDate,
+        entityRef: String,
+        notifiedAt: Instant,
     ): NoticeAcknowledgement?
 }
 
