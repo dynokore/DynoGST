@@ -14,6 +14,14 @@ import com.dynokore.platform.tenancykernel.TenantId
 import java.time.Clock
 import java.time.Duration
 
+/** The seam over [AuthorityReplica.decide]; a null answer is treated as a deny. */
+internal fun interface ReplicaDecision {
+    fun decide(
+        request: AuthorizationRequest,
+        deadline: Deadline,
+    ): AuthorityDecision?
+}
+
 /**
  * Answers whether the user may apply an operating profile at the requested scope, decided per request by
  * [AuthorityReplica.decide] on the scoped permission key at the level of the scope, and never cached
@@ -21,10 +29,12 @@ import java.time.Duration
  * decision and a thrown exception give false.
  */
 class ReplicaProfileAuthority internal constructor(
-    private val decide: (AuthorizationRequest) -> AuthorityDecision?,
+    private val decision: ReplicaDecision,
+    private val clock: Clock,
+    private val budget: Duration,
 ) : ProfileAuthority {
     constructor(replica: AuthorityReplica, clock: Clock, budget: Duration) :
-        this({ request -> replica.decide(request, Deadline.after(budget, clock)) })
+        this(ReplicaDecision { request, deadline -> replica.decide(request, deadline) }, clock, budget)
 
     override fun holds(
         tenantId: String,
@@ -33,7 +43,7 @@ class ReplicaProfileAuthority internal constructor(
         scope: ProfileScope,
     ): Boolean =
         runCatching {
-            decide(
+            decision.decide(
                 AuthorizationRequest(
                     TenantId.of(tenantId),
                     Principal(userId, PrincipalKind.HUMAN),
@@ -45,6 +55,7 @@ class ReplicaProfileAuthority internal constructor(
                             ProfileScope.ENTITY -> ScopeLevel.ENTITY
                         },
                 ),
+                Deadline.after(budget, clock),
             )
         }.getOrNull()?.allowed == true
 }

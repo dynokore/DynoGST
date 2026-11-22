@@ -94,7 +94,7 @@ class ReplicaProfileAuthorityTest {
 
     @Test
     fun `INV-AC-27577 a null decision gives false`() {
-        val nullDecision = ReplicaProfileAuthority { null }
+        val nullDecision = ReplicaProfileAuthority(ReplicaDecision { _, _ -> null }, clock, Duration.ofSeconds(1))
         nullDecision.holds(tenant, "u", "E1", ProfileScope.ENTITY) shouldBe false
         nullDecision.holds(tenant, "u", "E1", ProfileScope.TENANT) shouldBe false
     }
