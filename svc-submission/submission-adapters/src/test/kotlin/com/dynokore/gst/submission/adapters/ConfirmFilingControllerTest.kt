@@ -77,7 +77,240 @@ import java.util.UUID
 import java.util.concurrent.atomic.AtomicReference
 
 /** `confirmFiling` over the controller (INV-AC-20947): the real use case over in-memory ports. */
-class ConfirmFilingControllerTest : ConfirmFilingControllerFixture() {
+class ConfirmFilingControllerTest {
+    private val clock = Clock.fixed(Instant.parse("2026-04-10T00:00:00Z"), ZoneOffset.UTC)
+    private val deadline = Deadline.after(Duration.ofSeconds(5), clock)
+    private val tenant = TenantId(UUID.fromString("00000000-0000-0000-0000-00000000000a"))
+    private val zone = ZoneId.of("Asia/Singapore")
+    private val mapper = jacksonObjectMapper()
+
+    private val roleMap =
+        OperationRoleMap { key ->
+            OperationRoles.rolesFor(DeploymentForm.SAAS, key).mapValues { CellAllowance.valueOf(it.value.name) }
+        }
+
+    /** The stored facts; an identical fact is appended once; `recordedAt` is the store's stamp. */
+    private class Store : FilingFactStore {
+        val stored = mutableListOf<FilingFact>()
+        val recordedBy get() = stored.map { it.recordedBy }
+
+        override fun facts(
+            entityRef: String,
+            periodRef: String,
+        ) = stored.filter { it.entityRef == entityRef && it.periodRef == periodRef }
+
+        override fun append(fact: NewFilingFact) {
+            val same =
+                stored.any {
+                    it.entityRef == fact.entityRef && it.periodRef == fact.periodRef && it.filedAt == fact.filedAt &&
+                        it.acknowledgementRef == fact.acknowledgementRef && it.correction == fact.correction
+                }
+            if (!same) {
+                stored +=
+                    FilingFact(
+                        fact.entityRef,
+                        fact.periodRef,
+                        fact.filedAt,
+                        fact.acknowledgementRef,
+                        fact.portalRef,
+                        fact.correction,
+                        fact.recordedBy,
+                        Instant.parse("2026-04-18T08:00:00Z").plusSeconds(stored.size.toLong()),
+                    )
+            }
+        }
+    }
+
+    private val store = Store()
+    private val notReady = LatestCheck("chk-8", CheckVerdict.NOT_READY)
+    private val ready = LatestCheck("chk-7", CheckVerdict.READY)
+    private var transactionEntries = 0
+    private val runner =
+        object : TransactionRunner {
+            override fun <T> inTransaction(block: () -> T): T {
+                transactionEntries++
+                return block()
+            }
+        }
+    private val dueDates =
+        FilingDueDates { _, period ->
+            when (period) {
+                "P2" -> null
+                "P3" -> throw AmbiguousDueDateException("two dates")
+                else -> LocalDate.of(2026, 4, 30)
+            }
+        }
+    private val latest =
+        object : LatestChecks {
+            override fun latest(
+                entityRef: String,
+                periodRef: String,
+            ) = if (periodRef == "P4") notReady else ready
+
+            override fun knownCheckIds(
+                entityRef: String,
+                periodRef: String,
+            ): Set<String> = emptySet()
+        }
+
+    private val agentGrantRole =
+        roleMap
+            .rolesFor(ConfirmFilingActions.PERSON)
+            .keys
+            .sorted()
+            .first()
+
+    private var consentVersion = 10L
+
+    /** The live consent of the client entity "E" listing exactly [items]; the agent holds a CONSENT-scope grant. */
+    private fun consent(vararg items: ConsentScopeItem) {
+        replica.accept(
+            AuthorityChanged(
+                tenant,
+                "agent1",
+                consentVersion++,
+                AuthorityRecord.ConsentRecord(
+                    "E",
+                    ConsentState.LIVE,
+                    items.toSet(),
+                    clock.instant().minusSeconds(60),
+                ),
+            ),
+        )
+    }
+
+    private val replica = replica()
+
+    private fun replica(): AuthorityReplica {
+        val r = AuthorityReplica(clock, roleMap)
+        r.onSnapshotComplete(0)
+        val role =
+            roleMap
+                .rolesFor(ConfirmFilingActions.PERSON)
+                .keys
+                .sorted()
+                .first()
+        val grant = RoleGrant(role, GrantScope.ENTITY, "E", clock.instant().minusSeconds(60))
+        r.accept(
+            AuthorityChanged(
+                tenant,
+                "u1",
+                1,
+                AuthorityRecord.RoleGrantRecord("g1", RoleGrantState.ACTIVE, grant),
+            ),
+        )
+        r.accept(
+            AuthorityChanged(
+                tenant,
+                "agent1",
+                2,
+                AuthorityRecord.RoleGrantRecord(
+                    "g2",
+                    RoleGrantState.ACTIVE,
+                    RoleGrant(agentGrantRole, GrantScope.CONSENT, null, clock.instant().minusSeconds(60)),
+                ),
+            ),
+        )
+        return r
+    }
+
+    private val option =
+        AtomicReference<FilerOption?>(FilerOption.DERIVED)
+
+    private val confirm =
+        ConfirmFiling(
+            replica,
+            dueDates,
+            GateModesAt { _, _ -> GateMode.BLOCKING },
+            latest,
+            ReleasedOverrideChecks { _, _ -> emptySet() },
+            store,
+            FilerOptionsAt { _, _, _ -> option.get() ?: error("the filer option is unreadable") },
+        )
+
+    private fun person(id: String) = EndUserPrincipal(id, tenant, setOf(EntityRef("E")), true)
+
+    private fun machine(coverage: String) =
+        MachinePrincipalFixtures.machine(
+            "m-$coverage",
+            tenant,
+            MachineEntityCoverage.Entity(coverage),
+            "filing-workflow",
+        )
+
+    private fun controller(
+        user: EndUserPrincipal? = null,
+        machine: Principal? = null,
+        confirmUseCase: ConfirmFiling = confirm,
+    ): ReadinessController {
+        val request =
+            Proxy.newProxyInstance(javaClass.classLoader, arrayOf(HttpServletRequest::class.java)) { _, method, args ->
+                check(method.name == "getAttribute") { "unexpected request call ${method.name}" }
+                when (args[0]) {
+                    EndUserPrincipalBindingFilter.PRINCIPAL_ATTRIBUTE -> user
+                    MachineTokenFilter.PRINCIPAL_ATTRIBUTE -> machine
+                    else -> null
+                }
+            } as HttpServletRequest
+        val fixture = DrainFixture()
+        return ReadinessController(
+            GetLatestReadinessCheck(
+                object : ReadinessCheckReader {
+                    override fun latest(
+                        entityRef: String,
+                        periodRef: String,
+                    ): StoredReadinessCheck? = null
+
+                    override fun page(
+                        entityRef: String,
+                        periodRef: String,
+                        limit: Int,
+                        before: Long?,
+                    ): List<StoredReadinessCheck> = emptyList()
+                },
+                OverrideAuthority { _, _, _ -> false },
+            ),
+            object : ObjectProvider<HttpServletRequest> {
+                override fun getObject(): HttpServletRequest = request
+            },
+            fixture.preview(),
+            fixture.drain(),
+            confirmUseCase,
+            runner,
+            zone,
+            unusedFilingGateOverrides(),
+        )
+    }
+
+    private fun body(
+        filedAt: String,
+        ack: String = "A1",
+        correction: Boolean = false,
+    ) = ConfirmFilingRequest(java.time.OffsetDateTime.parse(filedAt), ack, null, correction)
+
+    /** Status and body; a refusal is rendered by the advice of the controller, as the framework does. */
+    private fun post(
+        c: ReadinessController,
+        period: String,
+        request: ConfirmFilingRequest,
+    ): Pair<Int, String> {
+        val thrown = runCatching { CurrentDeadline.callWith(deadline) { c.confirmFiling("E", period, request) } }
+        val failure = thrown.exceptionOrNull()
+        if (failure != null) {
+            val response: ResponseEntity<String> =
+                when (failure) {
+                    is FilingAccessRefusal -> FilingAccessRefusalAdvice().refuse(failure)
+                    is ComplianceRefusal -> ReadinessRefusalAdvice().refuse(failure)
+                    is FilingPeriodRefusal -> FilingRefusalAdvice().refuse(failure)
+                    is AmbiguousDueDateException -> FilingRefusalAdvice().ambiguous(failure)
+                    else -> throw failure
+                }
+            return response.statusCode.value() to response.body!!
+        }
+        val response = thrown.getOrThrow()
+        return response.statusCode.value() to mapper.writeValueAsString(response.body)
+    }
+
     @Test
     fun `INV-AC-20947 the first call answers the business-zone date and the stored recorded instant`() {
         val (status, text) = post(controller(person("u1")), "P", body("2026-04-28T20:00:00Z"))
@@ -182,6 +415,120 @@ class ConfirmFilingControllerTest : ConfirmFilingControllerFixture() {
         json["disposition"].asString() shouldBe "OVERRIDABLE"
         envelopeErrors(text) shouldBe emptyList()
         store.stored.size shouldBe 0
+    }
+
+    /** INV-AC-928: the agent's consent lists everything but FILE_GST_RETURN; the refusal names a party kind. */
+    private fun refusedAgent(): Pair<Int, String> {
+        consent(ConsentScopeItem.SUBMIT_INVOICE_DATA)
+        return post(controller(person("agent1")), "P", body("2026-04-28T20:00:00Z"))
+    }
+
+    private fun mayPerform(json: tools.jackson.databind.JsonNode): List<String> =
+        json["mayPerform"].let { n -> (0 until n.size()).map { n[it].asString() } }
+
+    private fun noFactNoSnapshot() {
+        store.stored.size shouldBe 0
+    }
+
+    @Test
+    fun `INV-AC-928 an agent without FILE_GST_RETURN and option DERIVED is refused 403 SRT-004 naming CLIENT`() {
+        option.set(FilerOption.DERIVED)
+        val (status, text) = refusedAgent()
+        status shouldBe 403
+        val json = mapper.readTree(text)
+        json["code"].asString() shouldBe "SRT-004"
+        mayPerform(json) shouldBe listOf("CLIENT")
+        json["mayPerform"].size() shouldBe 1
+        envelopeErrors(text) shouldBe emptyList()
+        noFactNoSnapshot()
+    }
+
+    @Test
+    fun `INV-AC-928 options ALWAYS_CLIENT and EITHER_PARTY answer mayPerform CLIENT`() {
+        listOf(FilerOption.ALWAYS_CLIENT, FilerOption.EITHER_PARTY).forEach {
+            option.set(it)
+            val (status, text) = refusedAgent()
+            status shouldBe 403
+            mayPerform(mapper.readTree(text)) shouldBe listOf("CLIENT")
+            noFactNoSnapshot()
+        }
+    }
+
+    @Test
+    fun `INV-AC-928 an agent whose consent lists FILE_GST_RETURN is not refused and the 200 body has no mayPerform`() {
+        consent(ConsentScopeItem.FILE_GST_RETURN)
+        val (status, text) = post(controller(person("agent1")), "P", body("2026-04-28T20:00:00Z"))
+        status shouldBe 200
+        mapper.readTree(text).has("mayPerform") shouldBe false
+        text shouldNotContain "mayPerform"
+        store.stored.size shouldBe 1
+    }
+
+    @Test
+    fun `INV-AC-928 a consent listing every item except FILE_GST_RETURN is refused 403 SRT-004 and stores nothing`() {
+        consent(*ConsentScopeItem.entries.filter { it != ConsentScopeItem.FILE_GST_RETURN }.toTypedArray())
+        val (status, text) = post(controller(person("agent1")), "P", body("2026-04-28T20:00:00Z"))
+        status shouldBe 403
+        mapper.readTree(text)["code"].asString() shouldBe "SRT-004"
+        mayPerform(mapper.readTree(text)) shouldBe listOf("CLIENT")
+        noFactNoSnapshot()
+    }
+
+    @Test
+    fun `INV-AC-928 an AUTHORITY_UNAVAILABLE refusal answers 403 SRT-004 with no mayPerform and stores nothing`() {
+        val cold =
+            ConfirmFiling(
+                AuthorityReplica(clock, roleMap),
+                dueDates,
+                GateModesAt { _, _ -> GateMode.BLOCKING },
+                latest,
+                ReleasedOverrideChecks { _, _ -> emptySet() },
+                store,
+                FilerOptionsAt { _, _, _ -> FilerOption.DERIVED },
+            )
+        val (status, text) =
+            post(
+                controller(person("agent1"), confirmUseCase = cold),
+                "P",
+                body("2026-04-28T20:00:00Z"),
+            )
+        status shouldBe 403
+        mapper.readTree(text)["code"].asString() shouldBe "SRT-004"
+        mapper.readTree(text).has("mayPerform") shouldBe false
+        noFactNoSnapshot()
+    }
+
+    @Test
+    fun `INV-AC-928 an unreadable filer option still answers 403 SRT-004 with no mayPerform member`() {
+        option.set(null)
+        val (status, text) = refusedAgent()
+        status shouldBe 403
+        val json = mapper.readTree(text)
+        json["code"].asString() shouldBe "SRT-004"
+        json.has("mayPerform") shouldBe false
+        noFactNoSnapshot()
+    }
+
+    @Test
+    fun `INV-AC-928 a person with no grant and a refused getReadiness carry no mayPerform`() {
+        val (status, text) = post(controller(person("u2")), "P", body("2026-04-28T20:00:00Z"))
+        status shouldBe 403
+        text shouldNotContain "mayPerform"
+        val other = ReadinessRefusalAdvice().refuse(ComplianceRefusal(ClosedErrorCode.ACCESS_DENIED))
+        other.statusCode.value() shouldBe 403
+        other.body!! shouldNotContain "mayPerform"
+    }
+
+    /** The pinned error-envelope schema (unpacked by `unpackClientContracts`); unset or missing fails the case. */
+    private fun envelopeErrors(text: String): List<String> {
+        val dir = checkNotNull(System.getProperty("gst.client-contracts.dir")) { "gst.client-contracts.dir is not set" }
+        val file = File(dir, "service-runtime/schemas/error-envelope.schema.json")
+        check(file.isFile) { "the pinned error-envelope schema is missing: $file" }
+        val schemas =
+            SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12) {
+                it.schemaRegistryConfig(SchemaRegistryConfig.builder().formatAssertionsEnabled(true).build())
+            }
+        return schemas.getSchema(file.readText()).validate(text, InputFormat.JSON).map { it.toString() }
     }
 
     @Test
