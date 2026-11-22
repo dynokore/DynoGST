@@ -43,20 +43,13 @@ object BackfillEffect {
         val lines = mutableListOf<DocumentLine>()
         for (uuid in requested.distinct().sorted()) {
             val doc = byUuid[uuid]
-            if (doc == null) {
-                excluded += ExcludedDocument(uuid, ExclusionReason.NOT_FOUND)
-                continue
+            val current = doc?.versions?.maxByOrNull { it.version }
+            val reason = exclusionOf(doc, current)
+            if (reason != null) {
+                excluded += ExcludedDocument(uuid, reason)
+            } else if (current != null) {
+                lines += ReconciliationRunner.linesOfVersion(uuid, current.version, current)
             }
-            if (doc.versions.any { it.acknowledged }) {
-                excluded += ExcludedDocument(uuid, ExclusionReason.ALREADY_ACKNOWLEDGED)
-                continue
-            }
-            val current = doc.versions.maxByOrNull { it.version } ?: continue
-            if (current.allocation is SgdAllocation.NotReconcilable) {
-                excluded += ExcludedDocument(uuid, ExclusionReason.NOT_RECONCILABLE)
-                continue
-            }
-            lines += ReconciliationRunner.linesOfVersion(uuid, current.version, current)
         }
         val boxes =
             BoxAggregator
@@ -72,4 +65,15 @@ object BackfillEffect {
             excluded = excluded.sortedBy { it.docUuid },
         )
     }
+
+    private fun exclusionOf(
+        doc: RunDocument?,
+        current: RunDocumentVersion?,
+    ): ExclusionReason? =
+        when {
+            doc == null -> ExclusionReason.NOT_FOUND
+            doc.versions.any { it.acknowledged } -> ExclusionReason.ALREADY_ACKNOWLEDGED
+            current?.allocation is SgdAllocation.NotReconcilable -> ExclusionReason.NOT_RECONCILABLE
+            else -> null
+        }
 }

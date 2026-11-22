@@ -94,6 +94,7 @@ class ProjectBackfillEffectTest {
 
     @Test
     fun `INV-AC-27690 an empty requested list gives an empty effect not an error`() {
-        useCase.execute("T1", "E1", "2026-Q1", emptyList()) shouldBe ProjectedEffect(emptyList(), emptyList(), emptyList())
+        useCase.execute("T1", "E1", "2026-Q1", emptyList()) shouldBe
+            ProjectedEffect(emptyList(), emptyList(), emptyList())
     }
 }

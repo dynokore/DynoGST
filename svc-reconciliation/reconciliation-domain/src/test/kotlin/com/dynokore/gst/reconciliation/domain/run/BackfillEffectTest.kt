@@ -19,7 +19,11 @@ class BackfillEffectTest {
 
     private val entries =
         listOf(
-            MappingEntry("SR", Direction.SALE, listOf(BoxFeed("1", Basis.TAXABLE_AMOUNT), BoxFeed("6", Basis.TAX_AMOUNT))),
+            MappingEntry(
+                "SR",
+                Direction.SALE,
+                listOf(BoxFeed("1", Basis.TAXABLE_AMOUNT), BoxFeed("6", Basis.TAX_AMOUNT)),
+            ),
             MappingEntry("ES", Direction.SALE, listOf(BoxFeed("3", Basis.TAXABLE_AMOUNT))),
         )
 
@@ -41,8 +45,10 @@ class BackfillEffectTest {
 
     private fun alloc(vararg lines: SgdLine) = SgdAllocation.Allocated(lines.toList())
 
-    private val d1 = doc("D1", allocation = alloc(line(1, "SR", "100.00", "9.00"), line(2, "ES", "50.00"), line(3, "ZZ", "1.00")))
-    private val d2 = doc("D2", allocation = alloc(line(1, "SR", "-30.00", "-2.70"), line(2, "ES", "-50.00"), line(3, "AA", "1.00")))
+    private val d1 =
+        doc("D1", allocation = alloc(line(1, "SR", "100.00", "9.00"), line(2, "ES", "50.00"), line(3, "ZZ", "1.00")))
+    private val d2 =
+        doc("D2", allocation = alloc(line(1, "SR", "-30.00", "-2.70"), line(2, "ES", "-50.00"), line(3, "AA", "1.00")))
     private val d3 = doc("D3", acknowledged = true, allocation = alloc(line(1, "SR", "999.00", "89.00")))
     private val d4 = doc("D4", allocation = SgdAllocation.NotReconcilable(NotReconcilableReason.NO_LINES))
     private val docs = listOf(d1, d2, d3, d4)
@@ -117,6 +123,7 @@ class BackfillEffectTest {
 
     @Test
     fun `INV-AC-27690 an empty requested list gives an empty effect`() {
-        BackfillEffect.project(entries, docs, emptyList()) shouldBe ProjectedEffect(emptyList(), emptyList(), emptyList())
+        BackfillEffect.project(entries, docs, emptyList()) shouldBe
+            ProjectedEffect(emptyList(), emptyList(), emptyList())
     }
 }
