@@ -153,10 +153,16 @@ object ReconciliationRunner {
             }
         }
 
-    private fun linesOf(c: Chosen): List<DocumentLine> =
-        when (val allocation = c.data.allocation) {
+    private fun linesOf(c: Chosen): List<DocumentLine> = linesOfVersion(c.docUuid, c.version, c.data)
+
+    internal fun linesOfVersion(
+        docUuid: String,
+        version: Int,
+        data: RunDocumentVersion,
+    ): List<DocumentLine> =
+        when (val allocation = data.allocation) {
             is SgdAllocation.Allocated -> {
-                allocation.lines.map { DocumentLine(c.docUuid, c.version, c.data.direction, it) }
+                allocation.lines.map { DocumentLine(docUuid, version, data.direction, it) }
             }
 
             is SgdAllocation.NotReconcilable -> {
