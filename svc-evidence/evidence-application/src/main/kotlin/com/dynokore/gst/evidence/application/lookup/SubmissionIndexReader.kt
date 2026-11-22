@@ -49,4 +49,16 @@ fun interface SubmissionIndexReader {
         after: ReverseLookupKey?,
         limit: Int,
     ): List<ReverseLookupRow>
+
+    /**
+     * As [read], restricted to rows whose entity is in [entities] (exact case-sensitive match, INV-REQ-710).
+     * The default fails closed: an implementer that has not overridden it throws and returns no rows.
+     */
+    fun readScoped(
+        tenant: TenantId,
+        entities: Set<String>,
+        filter: ReverseLookupFilter,
+        after: ReverseLookupKey?,
+        limit: Int,
+    ): List<ReverseLookupRow> = error("readScoped is not implemented by this reader")
 }

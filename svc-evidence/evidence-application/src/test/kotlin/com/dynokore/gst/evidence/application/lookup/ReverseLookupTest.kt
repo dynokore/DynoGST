@@ -29,6 +29,7 @@ import com.dynokore.platform.serviceruntime.replica.ReplicaFallback
 import com.dynokore.platform.serviceruntime.replica.RoleGrant
 import com.dynokore.platform.serviceruntime.replica.RoleGrantState
 import com.dynokore.platform.tenancykernel.TenantId
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.types.shouldBeInstanceOf
@@ -345,6 +346,137 @@ class ReverseLookupTest {
         lookup(limit = 0, rows = listOf(r1)) shouldBe ReverseLookupResult.InvalidRequest
         lookup(cursor = "!!!", rows = listOf(r1)) shouldBe ReverseLookupResult.InvalidRequest
         store.asked shouldBe emptyList()
+    }
+
+    // INV-AC-27666: the entity-scoped lookup
+    private val scopedSeen = mutableListOf<Set<String>>()
+
+    private inner class ScopedRows : SubmissionIndexReader {
+        override fun read(
+            tenant: TenantId,
+            filter: ReverseLookupFilter,
+            after: ReverseLookupKey?,
+            limit: Int,
+        ): List<ReverseLookupRow> = error("unscoped read must not be used")
+
+        override fun readScoped(
+            tenant: TenantId,
+            entities: Set<String>,
+            filter: ReverseLookupFilter,
+            after: ReverseLookupKey?,
+            limit: Int,
+        ): List<ReverseLookupRow> {
+            calls += "readScoped"
+            scopedSeen += entities
+            return listOf(row)
+        }
+    }
+
+    private fun entityGrant(
+        version: Long,
+        role: String,
+        entity: String?,
+    ) = AuthorityChanged(
+        t1,
+        user.id,
+        version,
+        AuthorityRecord.RoleGrantRecord(
+            "e$version",
+            RoleGrantState.ACTIVE,
+            RoleGrant(
+                role,
+                if (entity == null) GrantScope.TENANT else GrantScope.ENTITY,
+                entity ?: t1.value.toString(),
+                Instant.parse(SINCE),
+                null,
+            ),
+        ),
+    )
+
+    private fun entityReplica(vararg grants: Pair<String, String?>): AuthorityReplica {
+        val roles =
+            OperationRoleMap {
+                when (it) {
+                    ENQUIRY_LOOKUP_REVERSE -> mapOf("auditor" to CellAllowance.PERMITTED)
+                    else -> mapOf("other" to CellAllowance.PERMITTED)
+                }
+            }
+        val unavailable = ReplicaFallback<AuthorizationRequest, AuthorityVerdict> { _, _ -> FallbackResult.Unavailable }
+        val replica = AuthorityReplica(clock, roles, fallback = unavailable)
+        grants.forEachIndexed { i, (role, entity) -> replica.accept(entityGrant(i + 1L, role, entity)) }
+        replica.onSnapshotComplete(grants.size.toLong())
+        replica.observeHead(grants.size.toLong())
+        return replica
+    }
+
+    private fun scoped(
+        replica: AuthorityReplica,
+        reader: SubmissionIndexReader = ScopedRows(),
+        limit: Int = 100,
+        cursor: String? = null,
+    ) = ReverseLookup(replica, reader, IntegrityStatusQueryHandler(store), AuditedReads(audit), clock)
+        .lookupScoped(t1, user, ReverseLookupFilter(), limit, cursor, context)
+
+    @Test
+    fun `INV-AC-27666 case 1 the reader receives exactly the entities held with the key`() {
+        val r = entityReplica("auditor" to "E1", "auditor" to "E2", "other" to "E3")
+        scoped(r).shouldBeInstanceOf<ReverseLookupResult.Page>()
+        scopedSeen.single() shouldBe setOf("E1", "E2")
+        scopedSeen.single() shouldNotBe setOf("E1", "E2", "E3")
+        scopedSeen.single().contains("E") shouldBe false
+        scopedSeen.single().contains("e1") shouldBe false
+    }
+
+    @Test
+    fun `INV-AC-27666 case 2 an entity grant of the key plus a tenant grant of another key gives E1 only`() {
+        val r = entityReplica("auditor" to "E1", "other" to null)
+        scoped(r).shouldBeInstanceOf<ReverseLookupResult.Page>()
+        scopedSeen.single() shouldBe setOf("E1")
+    }
+
+    @Test
+    fun `INV-AC-27666 case 3 no allowed entity is Forbidden and neither reader nor audit is called`() {
+        scoped(entityReplica("other" to "E3")) shouldBe ReverseLookupResult.Forbidden
+        scoped(entityReplica()) shouldBe ReverseLookupResult.Forbidden
+        calls shouldBe emptyList()
+        audit.entries shouldBe emptyList()
+    }
+
+    @Test
+    fun `INV-AC-27666 case 4 a throwing entity decision is Forbidden and the reader is never called`() {
+        // AuthorityReplica is final: the failure is injected through the role map, inside the same runCatching
+        val roles = OperationRoleMap { error("boom") }
+        val unavailable = ReplicaFallback<AuthorizationRequest, AuthorityVerdict> { _, _ -> FallbackResult.Unavailable }
+        val throwing = AuthorityReplica(clock, roles, fallback = unavailable)
+        throwing.accept(entityGrant(1, "auditor", "E1"))
+        throwing.onSnapshotComplete(1)
+        throwing.observeHead(1)
+        scoped(throwing) shouldBe ReverseLookupResult.Forbidden
+        calls shouldBe emptyList()
+    }
+
+    @Test
+    fun `INV-AC-27666 case 5 a reader of read only makes readScoped throw and no rows are returned`() {
+        val readOnly = SubmissionIndexReader { _, _, _, _ -> listOf(row) }
+        shouldThrow<IllegalStateException> {
+            readOnly.readScoped(t1, setOf("E1"), ReverseLookupFilter(), null, 1)
+        }
+        shouldThrow<IllegalStateException> { scoped(entityReplica("auditor" to "E1"), readOnly) }
+    }
+
+    @Test
+    fun `INV-AC-27666 case 6 limit 0 and 501 and an undecodable cursor are InvalidRequest`() {
+        val r = entityReplica("auditor" to "E1")
+        scoped(r, limit = 0) shouldBe ReverseLookupResult.InvalidRequest
+        scoped(r, limit = 501) shouldBe ReverseLookupResult.InvalidRequest
+        scoped(r, cursor = "!!!") shouldBe ReverseLookupResult.InvalidRequest
+        calls shouldBe emptyList()
+    }
+
+    @Test
+    fun `INV-AC-27666 case 7 lookup with a tenant grant still answers a page as on main`() {
+        lookup().shouldBeInstanceOf<ReverseLookupResult.Page>().items shouldBe listOf(row)
+        calls shouldBe listOf("read")
     }
 
     private companion object {

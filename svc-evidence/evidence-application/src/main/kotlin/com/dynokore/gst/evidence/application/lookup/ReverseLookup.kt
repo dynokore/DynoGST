@@ -8,8 +8,12 @@ import com.dynokore.gst.evidence.domain.auditedread.ReverseLookupParameter
 import com.dynokore.gst.evidence.domain.integrity.IntegrityState
 import com.dynokore.platform.outboxandqueue.EventContext
 import com.dynokore.platform.serviceruntime.replica.AuthorityReplica
+import com.dynokore.platform.serviceruntime.replica.AuthorizationRequest
 import com.dynokore.platform.serviceruntime.replica.Principal
+import com.dynokore.platform.serviceruntime.resilience.Deadline
 import com.dynokore.platform.tenancykernel.TenantId
+import java.time.Clock
+import java.time.Duration
 import java.time.LocalDate
 import java.util.Base64
 import java.util.UUID
@@ -45,6 +49,7 @@ class ReverseLookup(
     private val reader: SubmissionIndexReader,
     private val integrity: IntegrityStatusQueryHandler,
     private val audited: AuditedReads,
+    private val clock: Clock = Clock.systemUTC(),
 ) {
     @Suppress("LongParameterList") // the request of the operation: caller, filters, page, audit context
     fun lookup(
@@ -63,6 +68,54 @@ class ReverseLookup(
         }
     }
 
+    /**
+     * Entity-scoped lookup (INV-REQ-710 behavior 3): the entities held by the caller and allowed the key per request;
+     * none (or any failure) is Forbidden before any read, so the answer fails closed.
+     */
+    @Suppress("LongParameterList") // the request of the operation: caller, filters, page, audit context
+    fun lookupScoped(
+        tenant: TenantId,
+        principal: Principal,
+        filter: ReverseLookupFilter,
+        limit: Int,
+        cursor: String?,
+        context: EventContext,
+    ): ReverseLookupResult {
+        val entities = allowedEntities(tenant, principal)
+        val after = cursor?.let { decode(it) }
+        return when {
+            entities.isEmpty() -> {
+                ReverseLookupResult.Forbidden
+            }
+
+            limit !in 1..MAX_LIMIT || (cursor != null && after == null) -> {
+                ReverseLookupResult.InvalidRequest
+            }
+
+            else -> {
+                read(tenant, principal, filter, limit, after, context) { rows ->
+                    reader.readScoped(tenant, entities, filter, after, rows)
+                }
+            }
+        }
+    }
+
+    private fun allowedEntities(
+        tenant: TenantId,
+        principal: Principal,
+    ): Set<String> =
+        runCatching {
+            replica
+                .heldEntities(tenant, principal.id)
+                .filter { entity ->
+                    replica
+                        .decide(
+                            AuthorizationRequest(tenant, principal, entity, ENQUIRY_LOOKUP_REVERSE),
+                            Deadline.after(DECIDE_BUDGET, clock),
+                        ).allowed
+                }.toSet()
+        }.getOrDefault(emptySet())
+
     @Suppress("LongParameterList") // one audited read of one page
     private fun read(
         tenant: TenantId,
@@ -71,9 +124,10 @@ class ReverseLookup(
         limit: Int,
         after: ReverseLookupKey?,
         context: EventContext,
+        fetch: (Int) -> List<ReverseLookupRow> = { rows -> reader.read(tenant, filter, after, rows) },
     ): ReverseLookupResult =
         audited.perform(AuditedCall.ReverseLookup(parametersOf(filter)), principal.id, context) {
-            val rows = reader.read(tenant, filter, after, limit + 1)
+            val rows = fetch(limit + 1)
             val page = rows.take(limit)
             ReverseLookupResult.Page(
                 page,
@@ -115,6 +169,7 @@ class ReverseLookup(
         /** The contract's `limit` maximum (`reverseLookup`). */
         const val MAX_LIMIT = 500
 
+        private val DECIDE_BUDGET: Duration = Duration.ofSeconds(1)
         private const val PARTS = 3
         private const val SEPARATOR = '|'
 
