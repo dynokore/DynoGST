@@ -78,3 +78,7 @@ setThroughputCeiling.400	operation_response	openapi.yaml	INV-REQ-1317
 setThroughputCeiling.404	operation_response	openapi.yaml	INV-REQ-1317
 setThroughputCeiling.422	operation_response	openapi.yaml	INV-REQ-1317
 setThroughputCeiling.default	operation_response	openapi.yaml	INV-REQ-1317
+setThroughputCeiling.SRT-001	operation_error_code	openapi.yaml	INV-REQ-1317
+setThroughputCeiling.SRT-005	operation_error_code	openapi.yaml	INV-REQ-1317
+setThroughputCeiling.POL-008	operation_error_code	openapi.yaml	INV-REQ-1317
+setThroughputCeiling.POL-010	operation_error_code	openapi.yaml	INV-REQ-1317
