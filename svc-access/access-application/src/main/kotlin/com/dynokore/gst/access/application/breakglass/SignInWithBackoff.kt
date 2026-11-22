@@ -28,10 +28,10 @@ sealed interface SignInWithBackoffOutcome {
 
 /**
  * `signInBreakGlass` with back-off (INV-REQ-896, INV-Q-9107 A, INV-AC-9184). The unlock must exist and be open; that is
- * decided before the counter. While the back-off runs every sign-in answers [SignInWithBackoffOutcome.Waiting]
- * without a credential check or a change of the back-off. Otherwise the credential is checked and the next state saved
- * either way; the failure counts of [SignInBackoff.isAlertCount] raise the ACC-002 alert. Every outcome writes one
- * audit entry (action `signInBreakGlass`, detail the outcome name).
+ * decided before the counter. While the back-off runs every sign-in answers [SignInWithBackoffOutcome.Waiting] without
+ * a credential check or a change of the back-off. Otherwise the credential is checked and the next state saved either way; the failure
+ * counts of [SignInBackoff.isAlertCount] raise the ACC-002 alert. Every outcome writes one audit entry (action
+ * `signInBreakGlass`, detail the outcome name).
  * [handle]'s `actor` is the caller's user ID (INV-Q-16511 A).
  */
 @Suppress("LongParameterList") // one collaborator per port
