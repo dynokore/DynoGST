@@ -57,6 +57,13 @@ class SubmissionIndexScopedReaderDbTest {
                 .also { c.commit() }
         }
 
+    /** Reads as the superuser, which bypasses row-level security, so only the reader's own tenant condition filters. */
+    private fun scopedWithoutRls(entities: Set<String>): List<ReverseLookupRow> =
+        EvidenceDb.superuser().use { c ->
+            JooqSubmissionIndexReader(DSL.using(c, SQLDialect.POSTGRES))
+                .readScoped(TenantId(tenant), entities, ReverseLookupFilter(), null, 100)
+        }
+
     private fun docs(
         entities: Set<String>,
         filter: ReverseLookupFilter = ReverseLookupFilter(),
@@ -84,6 +91,8 @@ class SubmissionIndexScopedReaderDbTest {
         val theirs = put("E1", tenantId = other)
         docs(setOf("E1")) shouldBe setOf(mine)
         scoped(setOf("E1"), tenantId = other).map { it.key.docUuid } shouldBe listOf(theirs)
+        // Row-level security is bypassed here: the other tenant's E1 row exists and only the tenant condition hides it.
+        scopedWithoutRls(setOf("E1")).map { it.key.docUuid }.toSet() shouldBe setOf(mine)
     }
 
     @Test
