@@ -341,4 +341,33 @@ class ReconciliationRunnerTest {
             .single { it.key == "1" }
             .variance shouldBe d("-10.00")
     }
+
+    @Test
+    @Suppress("MaxLineLength", "ktlint:standard:max-line-length")
+    fun `INV-AC-2289 a Box variance matching no taxonomy class stays unexplained, large or small, and the run takes no tolerance`() {
+        for (amount in listOf("1000.00", "0.01")) {
+            val outcome =
+                completed(
+                    mapOf("3" to amount),
+                    doc("U", version(1, false, lines("ES", amount), "UNMATCHED_VERDICT")),
+                )
+            outcome.result.lines
+                .single()
+                .classified shouldBe emptyList()
+            outcome.result.lines
+                .single()
+                .unexplainedResidual shouldBe d(amount)
+            outcome.result.unexplained
+                .single()
+                .key shouldBe "3"
+            outcome.raisesPer003 shouldBe true
+        }
+        VarianceClasses.derive(facts("UNMATCHED_VERDICT")) shouldBe null
+        (VarianceClass.UNEXPLAINED in VarianceClasses.assignable) shouldBe false
+        (VarianceClass.UNEXPLAINED in VarianceClasses.derived) shouldBe false
+        val run = ReconciliationRunner::class.java.methods.single { it.name == "run" }
+        run.parameterCount shouldBe 3
+        run.parameterTypes.toList() shouldBe
+            listOf(ReturnFigures::class.java, List::class.java, List::class.java)
+    }
 }
