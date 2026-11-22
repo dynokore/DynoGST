@@ -50,6 +50,12 @@ data class OperatorAccess(
     companion object {
         /** The one permission key that only an approved, unexpired elevation of the operator can open. */
         const val CONTENT_KEY = "doc.view.content"
+
+        /**
+         * Every permission key that only an approved, unexpired elevation window opens, never the record's
+         * permissions list: invoice content and the evidence store content (INV-AC-24920).
+         */
+        val ELEVATION_KEYS: Set<String> = setOf(CONTENT_KEY, "evidence.view.content")
     }
 }
 

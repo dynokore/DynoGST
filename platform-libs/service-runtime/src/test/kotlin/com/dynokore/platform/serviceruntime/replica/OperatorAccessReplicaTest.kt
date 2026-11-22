@@ -208,6 +208,71 @@ class OperatorAccessReplicaTest {
         ask(metadataKey) shouldBe granted
     }
 
+    private val evidenceKey = "evidence.view.content"
+
+    @Test
+    @DisplayName("INV-AC-24920 evidence.view.content GRANTED inside the window, NO_GRANT 1s after")
+    fun evidenceInsideWindow() {
+        publish(1)
+        ask(evidenceKey) shouldBe granted
+        clock.advance(Duration.ofSeconds(299))
+        ask(evidenceKey) shouldBe granted
+        clock.advance(Duration.ofSeconds(2))
+        ask(evidenceKey) shouldBe noGrant
+    }
+
+    @Test
+    @DisplayName("INV-AC-24920 evidence.view.content before the window opens is NO_GRANT")
+    fun evidenceBeforeWindow() {
+        publish(1, access(elevation = OperatorElevation("e1", now.plusSeconds(5), now.plusSeconds(300))))
+        ask(evidenceKey) shouldBe noGrant
+    }
+
+    @Test
+    @DisplayName("INV-AC-24920 evidence.view.content with no elevation is NO_GRANT")
+    fun evidenceNoElevation() {
+        publish(1, access(elevation = null))
+        ask(evidenceKey) shouldBe noGrant
+    }
+
+    @Test
+    @DisplayName("INV-AC-24920 evidence.view.content listed in permissions with no elevation is NO_GRANT")
+    fun evidenceInPermissions() {
+        publish(1, access(permissions = setOf(evidenceKey, metadataKey), elevation = null))
+        ask(evidenceKey) shouldBe noGrant
+        ask(metadataKey) shouldBe granted
+    }
+
+    @Test
+    @DisplayName("INV-AC-24920 evidence.view.content listed in permissions is not opened outside the window")
+    fun evidenceInPermissionsOutsideWindow() {
+        publish(
+            1,
+            access(
+                permissions = setOf(evidenceKey, metadataKey),
+                elevation = OperatorElevation("e1", now.plusSeconds(5), now.plusSeconds(300)),
+            ),
+        )
+        ask(evidenceKey) shouldBe noGrant
+    }
+
+    @Test
+    @DisplayName("INV-AC-24920 look-alikes of evidence.view.content are NO_GRANT inside the window")
+    fun evidenceLookAlikes() {
+        publish(1)
+        ask("evidence.view.contents") shouldBe noGrant
+        ask("Evidence.view.content") shouldBe noGrant
+        ask("evidence.view.content ") shouldBe noGrant
+        ask(evidenceKey) shouldBe granted
+    }
+
+    @Test
+    @DisplayName("INV-AC-24920 ELEVATION_KEYS equals doc.view.content and evidence.view.content")
+    fun elevationKeys() {
+        OperatorAccess.ELEVATION_KEYS shouldBe setOf("doc.view.content", "evidence.view.content")
+        OperatorAccess.CONTENT_KEY shouldBe "doc.view.content"
+    }
+
     @Test
     @DisplayName("INV-AC-16965 a machine principal with a session is NO_GRANT")
     fun machineWithSession() {

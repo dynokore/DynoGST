@@ -689,7 +689,7 @@ class AuthorityReplica(
         now: Instant,
     ): DecisionReason {
         val allowed =
-            if (action == OperatorAccess.CONTENT_KEY) {
+            if (action in OperatorAccess.ELEVATION_KEYS) {
                 access.elevation?.isOpenAt(now) == true
             } else {
                 action in access.permissions

@@ -6,6 +6,10 @@ train is its own (README.md: "own version and changelog").
 
 ## [Unreleased]
 
+## [13.27.0] - 2026-11-22
+### Added
+- `OperatorAccess.ELEVATION_KEYS` (`doc.view.content`, `evidence.view.content`): the authority replica opens `evidence.view.content` for an operator session only inside the approved, unexpired elevation window, exactly as `doc.view.content`; `CONTENT_KEY` is unchanged and the record's `permissions` never open either key. Owner ruling of 2026-11-18 option (A) (INV-T-24921, INV-AC-24920).
+
 ## [13.26.0] - 2026-11-22
 ### Added
 - `MessageContent` gains a third member, `TemplateValuesContent(values: Map<String, String>)` (non-empty map, every key and value non-blank), additive and EMAIL only; the SMS rule stays (SMS carries `PasscodeContent` only). Ruled in tooling/ansq1121f-gap.md (INV-T-27031, INV-REQ-817, INV-AC-27029).
