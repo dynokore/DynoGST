@@ -4,7 +4,7 @@
 # new since the base commit, a line whose response now has a row or no longer exists, and a duplicate or malformed line.
 # Columns, tab separated: directory, operation_id, status, owner_task (the owning service's later pinning task, or unassigned).
 # A task that pins a listed response adds its row and deletes its line in the same merge request.
-# Sorted by directory, operation_id, status. Generated from origin/main 49696d9e0cb18f15562b874b7a0fd242223664e4.
+# Sorted by directory, operation_id, status. Generated from origin/main ad5f6eb6d4a53a324440f0d61b8e8c3f210099a8.
 directory	operation_id	status	owner_task
 access	acceptFirstAdministratorInvitation	200	unassigned
 access	acceptFirstAdministratorInvitation	400	unassigned
@@ -1213,6 +1213,12 @@ tenancy	getPlatformElection	401	unassigned
 tenancy	getPlatformElection	403	unassigned
 tenancy	getPlatformElection	404	unassigned
 tenancy	getPlatformElection	default	unassigned
+tenancy	getSubmissionScope	200	unassigned
+tenancy	getSubmissionScope	400	unassigned
+tenancy	getSubmissionScope	401	unassigned
+tenancy	getSubmissionScope	403	unassigned
+tenancy	getSubmissionScope	404	unassigned
+tenancy	getSubmissionScope	default	unassigned
 tenancy	getUsageCounters	200	unassigned
 tenancy	getUsageCounters	400	unassigned
 tenancy	getUsageCounters	401	unassigned
