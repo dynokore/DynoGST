@@ -54,7 +54,7 @@ object NotificationEventCatalogue {
                         contentTopic = false,
                     )
                 }
-        return EventCatalogue(own + consumed + platform + backlogValuesMeasured + feedHealthChanged)
+        return EventCatalogue(own + consumed + platform + backlogValuesMeasured + feedHealthChanged + accessAlertRaised)
     }
 
     /** The consumed BacklogValuesMeasured event (INV-REQ-1370); its producer is submission-svc. */
@@ -72,6 +72,15 @@ object NotificationEventCatalogue {
             FeedHealthChangedHandler.EVENT_TYPE,
             FeedHealthChangedHandler.TOPIC,
             setOf("ingestion-svc"),
+            contentTopic = false,
+        )
+
+    /** The consumed AccessAlertRaised event (INV-REQ-895); its producer is access-svc. */
+    private val accessAlertRaised =
+        CatalogueEntry(
+            AccessAlertRaisedHandler.EVENT_TYPE,
+            AccessAlertRaisedHandler.TOPIC,
+            setOf("access-svc"),
             contentTopic = false,
         )
 

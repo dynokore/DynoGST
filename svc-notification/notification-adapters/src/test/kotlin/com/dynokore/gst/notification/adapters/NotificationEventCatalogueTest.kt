@@ -143,4 +143,22 @@ class NotificationEventCatalogueTest {
             .map { it.eventType }
             .toSet() shouldBe messageNames(asyncApi)
     }
+
+    @Test
+    fun `INV-AC-27270 the catalogue lists the type for the topic with producer access-svc and all existing entries are unchanged`() {
+        val entries = NotificationEventCatalogue.load().entries()
+        val entry = entries.single { it.eventType == "com.dynokore.gst.access.AccessAlertRaised.v1" }
+        entry.topic shouldBe "gst.access.access-alert-raised.v1"
+        entry.producers shouldBe setOf("access-svc")
+        entry.contentTopic shouldBe false
+        entries.any { it.eventType == "com.dynokore.gst.access.AccessAlertRaised.v2" } shouldBe false
+        entries.any { it.eventType == "com.dynokore.gst.submission.AccessAlertRaised.v1" } shouldBe false
+        entries.any { it.eventType == "com.dynokore.gst.submission.BacklogValuesMeasured.v1" } shouldBe true
+        entries.any { it.eventType == "com.dynokore.gst.ingestion.FeedHealthChanged.v1" } shouldBe true
+        entries.any { it.eventType == "com.dynokore.gst.platform.PackCurrencyChanged.v1" } shouldBe true
+        entries
+            .filter { it.producers == setOf(NotificationEventCatalogue.SERVICE) }
+            .map { it.eventType }
+            .toSet() shouldBe messageNames(asyncApi)
+    }
 }
