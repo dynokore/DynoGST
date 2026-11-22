@@ -21,6 +21,7 @@ import java.time.Clock
  * reason and nothing stored. A job that is not PENDING is returned unchanged. The actor is the job's `requestedBy`
  * user ID; no role is checked here.
  */
+@Suppress("LongParameterList") // the use case, its ports and the verifier test seam (ruled 2026-11-22)
 class ExportAuditPack(
     private val sources: AuditPackClassSources,
     private val jobs: AuditPackJobs,
