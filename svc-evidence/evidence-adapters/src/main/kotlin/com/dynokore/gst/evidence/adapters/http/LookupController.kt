@@ -5,14 +5,21 @@ import com.dynokore.gst.evidence.application.lookup.ChainCursor
 import com.dynokore.gst.evidence.application.lookup.ChainItem
 import com.dynokore.gst.evidence.application.lookup.ChainItemKind
 import com.dynokore.gst.evidence.application.lookup.ChainLookupResult
+import com.dynokore.gst.evidence.application.lookup.DecisionEntry
+import com.dynokore.gst.evidence.application.lookup.DecisionTraceLookup
+import com.dynokore.gst.evidence.application.lookup.DecisionTraceResult
 import com.dynokore.gst.evidence.application.lookup.ReverseLookup
 import com.dynokore.gst.evidence.application.lookup.ReverseLookupFilter
 import com.dynokore.gst.evidence.application.lookup.ReverseLookupResult
 import com.dynokore.gst.evidence.application.lookup.ReverseLookupRow
 import com.dynokore.gst.evidence.contract.api.LookupApi
+import com.dynokore.gst.evidence.contract.model.DecisionTraceEntry
+import com.dynokore.gst.evidence.contract.model.DecisionTraceInput
+import com.dynokore.gst.evidence.contract.model.DecisionTraceView
 import com.dynokore.gst.evidence.contract.model.EvidenceChain
 import com.dynokore.gst.evidence.contract.model.EvidenceChainItem
 import com.dynokore.gst.evidence.contract.model.IntegrityResult
+import com.dynokore.gst.evidence.contract.model.PackVersion
 import com.dynokore.gst.evidence.contract.model.ReverseLookupItem
 import com.dynokore.gst.evidence.contract.model.ReverseLookupPage
 import com.dynokore.platform.outboxandqueue.CausationId
@@ -75,6 +82,7 @@ class LookupRefusalAdvice {
 open class LookupController(
     private val acknowledgementChain: AcknowledgementChainLookup,
     private val reverseLookup: ReverseLookup,
+    private val decisionTrace: DecisionTraceLookup,
     private val requests: ObjectProvider<HttpServletRequest>,
 ) : LookupApi {
     override fun getAcknowledgementChain(
@@ -167,6 +175,54 @@ open class LookupController(
             }
         }
     }
+
+    /**
+     * `getDecisionTrace` (INV-T-20778; INV-REQ-942): tenant 401, version below 1 400 SRT-001 with no store read, then
+     * the use case: Found 200, NotFound 404 SRT-005, Forbidden 403 SRT-004, Malformed 500 SRT-010 (no partial body).
+     */
+    override fun getDecisionTrace(
+        docUuid: UUID,
+        version: Int,
+    ): ResponseEntity<DecisionTraceView> {
+        val caller =
+            requests.getObject().getAttribute(EndUserPrincipalBindingFilter.PRINCIPAL_ATTRIBUTE) as? EndUserPrincipal
+        val tenant = caller?.tenant ?: throw LookupRefusal(ClosedErrorCode.UNAUTHENTICATED)
+        if (version < 1) throw LookupRefusal(ClosedErrorCode.CONTRACT_VIOLATION)
+        return when (
+            val result = decisionTrace.lookup(tenant, Principal(caller.actor, PrincipalKind.HUMAN), docUuid, version)
+        ) {
+            is DecisionTraceResult.Found -> {
+                ResponseEntity.ok(
+                    DecisionTraceView(
+                        docUuid = result.docUuid,
+                        version = result.version,
+                        recordedAt = result.recordedAt.atOffset(ZoneOffset.UTC),
+                        decisions = result.decisions.map(::entry),
+                    ),
+                )
+            }
+
+            DecisionTraceResult.NotFound -> {
+                refuse(ClosedErrorCode.NOT_FOUND)
+            }
+
+            DecisionTraceResult.Forbidden -> {
+                refuse(ClosedErrorCode.ACCESS_DENIED)
+            }
+
+            DecisionTraceResult.Malformed -> {
+                refuse(ClosedErrorCode.INTERNAL_ERROR)
+            }
+        }
+    }
+
+    private fun entry(entry: DecisionEntry) =
+        DecisionTraceEntry(
+            code = entry.code,
+            ruleId = entry.ruleId,
+            packVersions = entry.packVersions.map { PackVersion(it.packIdentifier, it.version) },
+            inputs = entry.inputs.map { DecisionTraceInput(it.name, it.value, it.businessTermId) },
+        )
 
     private fun reverseContext(tenant: TenantId) =
         EventContext(

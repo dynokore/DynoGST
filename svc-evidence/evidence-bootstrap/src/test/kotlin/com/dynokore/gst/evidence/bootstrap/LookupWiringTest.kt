@@ -224,6 +224,7 @@ class LookupWiringTest {
                     IntegrityStatusQueryHandler(noIntegrity),
                     configuration.auditedReads(operations),
                 ),
+                configuration.decisionTraceLookup(replica(), dsl(recorded)),
                 object : ObjectProvider<HttpServletRequest> {
                     override fun getObject(): HttpServletRequest = request
                 },

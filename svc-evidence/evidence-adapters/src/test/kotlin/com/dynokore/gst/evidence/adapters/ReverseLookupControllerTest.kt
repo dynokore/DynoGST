@@ -12,6 +12,8 @@ import com.dynokore.gst.evidence.application.integrity.IntegrityStore
 import com.dynokore.gst.evidence.application.lookup.AcknowledgementChainLookup
 import com.dynokore.gst.evidence.application.lookup.ChainRecordReader
 import com.dynokore.gst.evidence.application.lookup.ChainRecords
+import com.dynokore.gst.evidence.application.lookup.DecisionTraceLookup
+import com.dynokore.gst.evidence.application.lookup.DecisionTraceReader
 import com.dynokore.gst.evidence.application.lookup.ENQUIRY_LOOKUP_REVERSE
 import com.dynokore.gst.evidence.application.lookup.ReverseLookup
 import com.dynokore.gst.evidence.application.lookup.ReverseLookupFilter
@@ -148,6 +150,7 @@ class ReverseLookupControllerTest {
         return LookupController(
             chain,
             ReverseLookup(replica(granted), reader, IntegrityStatusQueryHandler(runs(integrity)), AuditedReads(audit)),
+            DecisionTraceLookup(replica(granted), DecisionTraceReader { _, _, _ -> error("not used") }),
             object : ObjectProvider<HttpServletRequest> {
                 override fun getObject(): HttpServletRequest = request
             },

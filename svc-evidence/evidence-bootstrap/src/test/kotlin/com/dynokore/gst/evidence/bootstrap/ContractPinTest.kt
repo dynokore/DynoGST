@@ -37,7 +37,7 @@ class ContractPinTest {
     @Test
     @DisplayName("INV-AC-20713 operations.tsv has one UNASSIGNED row each for the two operations")
     fun operationsTsvNamesBoth() {
-        operationRows("getDecisionTrace") shouldBe listOf(listOf("operation", "getDecisionTrace", "UNASSIGNED"))
+        operationRows("getDecisionTrace") shouldBe listOf(listOf("operation", "getDecisionTrace", "INV-T-20778"))
         operationRows("generateSubjectAccessExport") shouldBe
             listOf(listOf("operation", "generateSubjectAccessExport", "UNASSIGNED"))
     }

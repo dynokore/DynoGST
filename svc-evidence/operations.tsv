@@ -20,7 +20,7 @@ operation	closePrivacyCase	INV-T-6842
 operation	appendEvidenceAnnotation	UNASSIGNED
 operation	getEvidenceAnnotation	UNASSIGNED
 operation	getMaxEvidenceRetention	INV-T-6540
-operation	getDecisionTrace	UNASSIGNED
+operation	getDecisionTrace	INV-T-20778
 operation	generateSubjectAccessExport	UNASSIGNED
 channel	gst.evidence.evidence-integrity-failed.v1	UNASSIGNED
 channel	gst.evidence.prior-submission-evidence-imported.v1	UNASSIGNED

@@ -123,6 +123,7 @@ class ReverseLookupWiringTest {
                     audited,
                 ),
                 configuration.reverseLookup(replica, dsl, IntegrityStatusQueryHandler(unusedStore), audited),
+                configuration.decisionTraceLookup(replica, dsl),
                 object : ObjectProvider<HttpServletRequest> {
                     override fun getObject(): HttpServletRequest = request
                 },

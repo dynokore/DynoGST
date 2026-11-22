@@ -2,10 +2,12 @@ package com.dynokore.gst.evidence.bootstrap
 
 import com.dynokore.gst.evidence.adapters.persistence.ChainWiring
 import com.dynokore.gst.evidence.adapters.persistence.JooqAcknowledgementLocatorStore
+import com.dynokore.gst.evidence.adapters.persistence.JooqDecisionTraceReader
 import com.dynokore.gst.evidence.adapters.persistence.JooqSubmissionIndexReader
 import com.dynokore.gst.evidence.application.auditedread.AuditedReads
 import com.dynokore.gst.evidence.application.integrity.IntegrityStatusQueryHandler
 import com.dynokore.gst.evidence.application.lookup.AcknowledgementChainLookup
+import com.dynokore.gst.evidence.application.lookup.DecisionTraceLookup
 import com.dynokore.gst.evidence.application.lookup.ReverseLookup
 import com.dynokore.platform.auditlog.AuditedOperations
 import com.dynokore.platform.serviceruntime.replica.AuthorityReplica
@@ -48,4 +50,10 @@ class LookupConfiguration {
         integrityStatusQuery: IntegrityStatusQueryHandler,
         audited: AuditedReads,
     ): ReverseLookup = ReverseLookup(replica, JooqSubmissionIndexReader(dsl), integrityStatusQuery, audited)
+
+    @Bean
+    fun decisionTraceLookup(
+        replica: AuthorityReplica,
+        dsl: DSLContext,
+    ): DecisionTraceLookup = DecisionTraceLookup(replica, JooqDecisionTraceReader(dsl))
 }
