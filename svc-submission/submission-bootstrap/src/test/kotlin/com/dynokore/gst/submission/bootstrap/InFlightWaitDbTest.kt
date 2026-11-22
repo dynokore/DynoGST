@@ -60,6 +60,7 @@ class InFlightWaitDbTest {
         doc: String,
         version: Int,
         state: String,
+        type: String = "TYPE_1B",
     ) = asTenant(tenant) {
         dsl
             .insertInto(Submission.SUBMISSION_)
@@ -68,7 +69,7 @@ class InFlightWaitDbTest {
             .set(Submission.SUBMISSION_.VERSION, version)
             .set(Submission.SUBMISSION_.STATE, state)
             .set(Submission.SUBMISSION_.ENTITY_REF, "E-001")
-            .set(Submission.SUBMISSION_.SUBMISSION_TYPE, "TYPE_1B")
+            .set(Submission.SUBMISSION_.SUBMISSION_TYPE, type)
             .execute()
     }
 
@@ -254,6 +255,44 @@ class InFlightWaitDbTest {
 
         b.states(tenant, doc) shouldBe mapOf(1 to "ACKNOWLEDGED", 2 to "QUEUED")
         (TenantId(tenant) in source.tenants()) shouldBe false
+    }
+
+    @Test
+    fun `INV-AC-112 waitingDocUuids omits the Type 1A Doc UUID, so a sweep leaves it READY and writes nothing`(
+        @TempDir dir: Path,
+    ) = run(dir) { b ->
+        val tenant = UUID.randomUUID()
+        val oneA = UUID.randomUUID().toString()
+        b.seed(tenant, oneA, 1, "READY", "TYPE_1A")
+        val oneB = UUID.randomUUID().toString()
+        b.seed(tenant, oneB, 1, "READY")
+        val sweeper = WaitingSweeper({ listOf(TenantId(tenant)) }, b.scope, b.versions, b.queue)
+
+        val waiting = b.asTenant(tenant) { b.versions.waitingDocUuids(TenantId(tenant), WaitingSweeper.BATCH) }
+        waiting.contains(oneA) shouldBe false
+        waiting.contains(oneB) shouldBe true
+
+        sweeper.sweep() shouldBe 1
+
+        b.states(tenant, oneA) shouldBe mapOf(1 to "READY")
+        b.itemVersions(tenant, oneA) shouldBe emptyList()
+        b.states(tenant, oneB) shouldBe mapOf(1 to "QUEUED")
+        b.itemVersions(tenant, oneB) shouldBe listOf(1)
+    }
+
+    @Test
+    fun `INV-AC-112 releaseNext skips a READY Type 1A version and releases the next eligible version`(
+        @TempDir dir: Path,
+    ) = run(dir) { b ->
+        val tenant = UUID.randomUUID()
+        val doc = UUID.randomUUID().toString()
+        b.seed(tenant, doc, 1, "READY", "TYPE_1A")
+        b.seed(tenant, doc, 2, "READY")
+
+        b.asTenant(tenant) { b.queue.releaseNext(doc) } shouldBe ReleaseResult.Released(2)
+
+        b.states(tenant, doc) shouldBe mapOf(1 to "READY", 2 to "QUEUED")
+        b.itemVersions(tenant, doc) shouldBe listOf(2)
     }
 
     @Test

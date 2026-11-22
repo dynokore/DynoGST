@@ -1,7 +1,12 @@
 package com.dynokore.gst.submission.application.queue
 
+import com.dynokore.gst.submission.domain.listing.SubmissionKind
 import com.dynokore.gst.submission.domain.ordering.InFlight
 import com.dynokore.gst.submission.domain.ordering.LifecycleState
+import com.dynokore.gst.submission.domain.schedule.ScheduleEligibility
+import com.dynokore.gst.submission.domain.schedule.ScheduledPathEligibility
+import com.dynokore.gst.submission.domain.typing.SubmissionType
+import com.dynokore.gst.submission.domain.typing.TypeDecision
 import com.dynokore.platform.outboxandqueue.Lane
 import com.dynokore.platform.outboxandqueue.QueueEntry
 import com.dynokore.platform.outboxandqueue.WorkQueue
@@ -24,6 +29,12 @@ sealed interface EnqueueResult {
     data class Waiting(
         val blockingVersion: Int,
     ) : EnqueueResult
+
+    /**
+     * The version is not on the scheduled path (Type 1A, INV-REQ-74, INV-AC-112): nothing was written, the row keeps
+     * its state and no queue item exists.
+     */
+    data object NotScheduled : EnqueueResult
 }
 
 /** The result of [SubmissionQueue.releaseNext]. */
@@ -88,7 +99,7 @@ class SubmissionQueue(
                 throw VersionNotReady(doc, version)
             }
             val blocking = rows.firstOrNull { it.version != version && InFlight.isInFlight(it.state) }
-            if (blocking != null) EnqueueResult.Waiting(blocking.version) else queueLocked(doc, version, lane)
+            if (blocking != null) EnqueueResult.Waiting(blocking.version) else queueLocked(doc, version, lane, rows)
         }
     }
 
@@ -100,12 +111,14 @@ class SubmissionQueue(
         val doc = UUID.fromString(docUuid).toString()
         return transactions.inTransaction {
             val rows = versions.lockVersions(tenants.current(), doc)
-            val next = rows.firstOrNull { it.state == LifecycleState.READY }
+            val next = rows.firstOrNull { it.state == LifecycleState.READY && isScheduled(it.submissionType) }
             if (next == null || rows.any { InFlight.isInFlight(it.state) }) {
                 ReleaseResult.NothingToRelease
             } else {
-                queueLocked(doc, next.version, Lane.LIVE)
-                ReleaseResult.Released(next.version)
+                when (queueLocked(doc, next.version, Lane.LIVE, rows)) {
+                    EnqueueResult.Queued -> ReleaseResult.Released(next.version)
+                    else -> ReleaseResult.NothingToRelease
+                }
             }
         }
     }
@@ -115,13 +128,21 @@ class SubmissionQueue(
         doc: String,
         version: Int,
         lane: Lane,
+        rows: List<VersionState>,
     ): EnqueueResult {
+        val row = rows.firstOrNull { it.version == version } ?: throw VersionNotReady(doc, version)
+        if (!isScheduled(row.submissionType)) return EnqueueResult.NotScheduled
         if (store.moveReadyToQueued(tenants.current(), doc, version) != 1) throw VersionNotReady(doc, version)
         queue.enqueue(QueueEntry(partitionKey = doc, lane = lane, payloadJson = itemPayload(doc, version)))
         return EnqueueResult.Queued
     }
 
     private companion object {
+        /** True when the scheduled path takes the kind; Type 1A (and any undecided kind) is refused (INV-REQ-74). */
+        fun isScheduled(kind: SubmissionKind): Boolean =
+            ScheduledPathEligibility.decide(TypeDecision.Decided(SubmissionType.valueOf(kind.name))) is
+                ScheduleEligibility.Eligible
+
         /** The JSON object with exactly the members `docUuid` and `version` (a UUID text holds nothing to escape). */
         fun itemPayload(
             docUuid: String,

@@ -3,8 +3,11 @@ package com.dynokore.gst.submission.bootstrap
 import com.dynokore.gst.submission.adapters.SubmissionDb
 import com.dynokore.gst.submission.adapters.persistence.jooq.tables.Submission
 import com.dynokore.gst.submission.adapters.persistence.jooq.tables.WorkQueue
+import com.dynokore.gst.submission.application.queue.EnqueueResult
+import com.dynokore.gst.submission.application.queue.ReleaseResult
 import com.dynokore.gst.submission.application.queue.SubmissionQueue
 import com.dynokore.gst.submission.application.queue.VersionNotReady
+import com.dynokore.platform.outboxandqueue.Lane
 import com.dynokore.platform.tenancykernel.TenantContext
 import com.dynokore.platform.tenancykernel.TenantId
 import com.dynokore.platform.tenancykernel.TransactionRunner
@@ -51,6 +54,7 @@ class SubmissionQueueDbTest {
         tenant: UUID,
         docUuid: String,
         state: String = "READY",
+        type: String = "TYPE_1B",
     ) = asTenant(tenant) {
         dsl
             .insertInto(Submission.SUBMISSION_)
@@ -59,7 +63,7 @@ class SubmissionQueueDbTest {
             .set(Submission.SUBMISSION_.VERSION, 1)
             .set(Submission.SUBMISSION_.STATE, state)
             .set(Submission.SUBMISSION_.ENTITY_REF, "E-001")
-            .set(Submission.SUBMISSION_.SUBMISSION_TYPE, "TYPE_1B")
+            .set(Submission.SUBMISSION_.SUBMISSION_TYPE, type)
             .execute()
     }
 
@@ -198,6 +202,44 @@ class SubmissionQueueDbTest {
         shouldThrow<VersionNotReady> { boundary.asTenant(tenant) { boundary.queue.enqueue(doc, 1) } }
 
         boundary.itemsOf(tenant, doc).size shouldBe 1
+    }
+
+    @Test
+    fun `INV-AC-112 enqueue of a READY Type 1A version returns NotScheduled and leaves state READY and no queue item`(
+        @TempDir dir: Path,
+    ) = run(dir) { boundary ->
+        val tenant = UUID.randomUUID()
+        val doc = UUID.randomUUID().toString()
+        boundary.seed(tenant, doc, type = "TYPE_1A")
+
+        boundary.asTenant(tenant) { boundary.queue.enqueue(doc, 1) } shouldBe EnqueueResult.NotScheduled
+
+        boundary.stateOf(tenant, doc) shouldBe "READY"
+        boundary.itemsOf(tenant, doc) shouldBe emptyList()
+    }
+
+    /** Paths driven: `enqueue` (PayloadReadyHandler, HeldCreditNoteSweeper, HeldRelease call it), `releaseNext`. */
+    @Test
+    fun `INV-AC-112 the five enqueue paths cannot queue a Type 1A version`(
+        @TempDir dir: Path,
+    ) = run(dir) { boundary ->
+        val tenant = UUID.randomUUID()
+        val doc = UUID.randomUUID().toString()
+        boundary.seed(tenant, doc, type = "TYPE_1A")
+        val other = UUID.randomUUID().toString()
+        boundary.seed(tenant, other, type = "TYPE_1B")
+
+        boundary.asTenant(tenant) { boundary.queue.enqueue(doc, 1) } shouldBe EnqueueResult.NotScheduled
+        boundary.asTenant(tenant) { boundary.queue.enqueue(doc, 1, Lane.REPLAY) } shouldBe EnqueueResult.NotScheduled
+        boundary.asTenant(tenant) { boundary.queue.releaseNext(doc) } shouldBe ReleaseResult.NothingToRelease
+
+        boundary.stateOf(tenant, doc) shouldBe "READY"
+        boundary.itemsOf(tenant, doc) shouldBe emptyList()
+
+        // the look-alike that must differ: a READY Type 1B version of another Doc UUID is queued as before
+        boundary.asTenant(tenant) { boundary.queue.enqueue(other, 1) } shouldBe EnqueueResult.Queued
+        boundary.stateOf(tenant, other) shouldBe "QUEUED"
+        boundary.itemsOf(tenant, other).size shouldBe 1
     }
 
     private companion object {
