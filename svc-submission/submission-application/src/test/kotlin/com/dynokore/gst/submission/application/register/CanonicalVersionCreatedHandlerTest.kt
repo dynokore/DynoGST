@@ -31,6 +31,7 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 import org.junit.jupiter.api.Test
+import java.lang.reflect.Modifier
 import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
@@ -520,5 +521,98 @@ class CanonicalVersionCreatedHandlerTest {
             shouldThrow<ContractViolation> { f.handler.handle(envelope()) }
             f.store.entries shouldBe emptyList()
         }
+    }
+
+    private fun withPaymentDate(): Map<String, Any?> {
+        val base = payload()
+
+        @Suppress("UNCHECKED_CAST")
+        val doc = base["canonicalDocument"] as Map<String, Any?>
+
+        @Suppress("UNCHECKED_CAST")
+        val routing = base["routingFacts"] as Map<String, Any?>
+        return base +
+            mapOf(
+                "canonicalDocument" to (doc + ("paymentDate" to "2026-05-10")),
+                "routingFacts" to (routing + ("paymentDate" to "2026-05-10")),
+            )
+    }
+
+    /** Runs the handler with a source that records each period it is asked for. */
+    private fun runRecording(
+        inputs: FilingDeadlineInputs,
+        data: CanonicalVersionCreatedData = data(),
+    ): Pair<List<String>, RegisterEntry> {
+        val asked = mutableListOf<String>()
+        val store = Store(ArrayDeque(listOf(UpsertResult.INSERTED)))
+        val handler =
+            CanonicalVersionCreatedHandler(
+                tenants,
+                { data },
+                { _, _, period ->
+                    asked += period
+                    inputs
+                },
+                { RowKind.INVOICE },
+                store,
+                recordingCorrections(mutableListOf()),
+                proceedGuard,
+            )
+        handler.handle(envelope())
+        return asked to store.entries.single()
+    }
+
+    @Test
+    fun `INV-AC-27680 the deadline source is asked for 2026-Q1 only and the entry carries 2026-04-30`() {
+        val (asked, entry) = runRecording(FilingDeadlineInputs(due, emptyList()))
+        asked shouldBe listOf("2026-Q1")
+        entry.periodRef shouldBe "2026-Q1"
+        entry.dueDate shouldBe due
+    }
+
+    @Test
+    fun `INV-AC-27680 a payment date of 10 May in the payload changes nothing`() {
+        val without = runRecording(FilingDeadlineInputs(due, emptyList())).second
+        val with = runRecording(FilingDeadlineInputs(due, emptyList()), data(payload = withPaymentDate())).second
+        with shouldBe without
+    }
+
+    @Test
+    fun `INV-AC-27680 filed on 10 Apr gives the due date 2026-04-10`() {
+        val (_, entry) = runRecording(FilingDeadlineInputs(due, listOf(LocalDate.of(2026, 4, 10))))
+        entry.dueDate shouldBe LocalDate.of(2026, 4, 10)
+    }
+
+    @Test
+    fun `INV-AC-27680 filed on 12 May gives the due date 2026-04-30`() {
+        val (_, entry) = runRecording(FilingDeadlineInputs(due, listOf(LocalDate.of(2026, 5, 12))))
+        entry.dueDate shouldBe due
+    }
+
+    private val paymentTokens = setOf("pay", "paid", "payment", "payments")
+
+    private fun tokens(name: String): List<String> =
+        name
+            .replace(Regex("(?<=[a-z0-9])(?=[A-Z])"), " ")
+            .split(Regex("[^A-Za-z0-9]+"))
+            .filter { it.isNotEmpty() }
+            .map { it.lowercase() }
+
+    private fun hasPaymentToken(name: String) = tokens(name).any { it in paymentTokens }
+
+    private fun fieldNames(type: Class<*>) =
+        type.declaredFields.filter { !Modifier.isStatic(it.modifiers) }.map { it.name }
+
+    @Test
+    fun `INV-AC-27680 neither the event data nor the register entry has a payment member`() {
+        val names = fieldNames(CanonicalVersionCreatedData::class.java) + fieldNames(RegisterEntry::class.java)
+        names.contains("payload") shouldBe true
+        names.filter { hasPaymentToken(it) } shouldBe emptyList()
+    }
+
+    @Test
+    fun `INV-AC-27680 the payment name check splits whole tokens`() {
+        listOf("payload", "payloadSize").forEach { hasPaymentToken(it) shouldBe false }
+        listOf("paymentDate", "paidOn", "PAYMENT_DATE", "payDate").forEach { hasPaymentToken(it) shouldBe true }
     }
 }

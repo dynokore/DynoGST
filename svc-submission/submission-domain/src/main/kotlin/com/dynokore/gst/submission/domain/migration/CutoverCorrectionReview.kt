@@ -36,7 +36,12 @@ object CutoverCorrectionReview {
         val to = if (oldDate.isBefore(newDate)) newDate else oldDate
         return candidates
             .filter { it.matchedOrTransmitted }
-            .map { ReviewEntry(it.documentRef, it.transactionDate, !it.transactionDate.isBefore(from) && it.transactionDate.isBefore(to)) }
-            .sortedWith(compareBy<ReviewEntry> { it.transactionDate }.thenBy { it.documentRef })
+            .map {
+                ReviewEntry(
+                    it.documentRef,
+                    it.transactionDate,
+                    !it.transactionDate.isBefore(from) && it.transactionDate.isBefore(to),
+                )
+            }.sortedWith(compareBy<ReviewEntry> { it.transactionDate }.thenBy { it.documentRef })
     }
 }
