@@ -73,3 +73,8 @@ rotateCredential.SUB-028	operation_error_code	openapi.yaml	INV-REQ-957
 setThroughputCeiling	operation	openapi.yaml	INV-REQ-1317
 SetThroughputCeilingRequest.throughputCeiling	schema_property	openapi.yaml	INV-REQ-1317
 ApConnection.agreedRate	schema_property	openapi.yaml	INV-REQ-1317
+setThroughputCeiling.200	operation_response	openapi.yaml	INV-REQ-1317
+setThroughputCeiling.400	operation_response	openapi.yaml	INV-REQ-1317
+setThroughputCeiling.404	operation_response	openapi.yaml	INV-REQ-1317
+setThroughputCeiling.422	operation_response	openapi.yaml	INV-REQ-1317
+setThroughputCeiling.default	operation_response	openapi.yaml	INV-REQ-1317
