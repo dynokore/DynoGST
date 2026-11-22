@@ -240,6 +240,16 @@ class BreakGlassEffects(
         audit.record(GrantAuditEntry(actor, operation, "break-glass:$unlockRef", detail, null))
     }
 
+    /** The audit entry alone, with no alert: the one entry of an outcome that raises no ACC-002 alert. */
+    fun recordAudit(
+        actor: String,
+        operation: String,
+        unlockRef: String,
+        detail: String,
+    ) {
+        audit.record(GrantAuditEntry(actor, operation, "break-glass:$unlockRef", detail, null))
+    }
+
     /** The alert and the audit entry of an unlock; [overrideReason] is both the audit detail and an alert property. */
     fun recordUnlock(
         actor: String,

@@ -80,6 +80,9 @@ class BreakGlassSignInBackoffTest {
             .filter { it.type == auditType && it.dataJson.contains("\"signInBreakGlass\"") }
             .map { it.dataJson }
 
+    /** The `WRONG_CREDENTIAL` entries (INV-T-24873: every answered call writes one entry of its outcome). */
+    private fun ServedContext.wrongAudits() = audits().filter { it.contains("\"WRONG_CREDENTIAL\"") }
+
     private fun retryAfter(response: MockHttpServletResponse): String? = response.getHeader("Retry-After")
 
     private fun counter(
@@ -218,14 +221,16 @@ class BreakGlassSignInBackoffTest {
             val ok = served.signIn(s.tenant, s.bg1, s.credential)
             assertThat(ok.status).describedAs(ok.contentAsString).isEqualTo(200)
             assertThat(counter(s.tenant, s.bg1)).isEqualTo(0)
-            // the audit entries: one per alert count, the count as detail, the bound user as actor
+            // INV-T-24873: one entry per answered call, the closed outcome name as detail, the bound user as actor;
+            // at an alert count the alert call is that entry (one entry per wrong credential, never two)
             val audits = served.audits()
-            assertThat(audits).hasSize(10)
+            assertThat(audits.count { it.contains("\"WRONG_CREDENTIAL\"") }).isEqualTo(100)
+            assertThat(audits.count { it.contains("\"SIGNED_IN\"") }).isEqualTo(1)
+            assertThat(audits.count { it.contains("\"WAITING\"") }).isEqualTo(audits.size - 101)
             val nodes = audits.map { json(it) }
             assertThat(nodes.map { it.toString() }).allSatisfy {
                 assertThat(it).doesNotContain(wrong).doesNotContain(s.credential)
             }
-            assertThat(audits.joinToString()).contains("failures=5", "failures=15", "failures=25", "failures=95")
             nodes.forEach { node ->
                 val actor = node.findValue("actor")?.asString()
                 assertThat(actor).isEqualTo(SealFixture.ADMIN)
@@ -293,10 +298,10 @@ class BreakGlassSignInBackoffTest {
             val k5 = UUID.randomUUID()
             assertThat(served.signInAs(s, SealFixture.ADMIN, s.bg1, wrong, k5).status).isEqualTo(403)
             assertThat(served.alerts()).hasSize(1)
-            assertThat(served.audits()).hasSize(1)
+            assertThat(served.wrongAudits()).hasSize(5)
             assertThat(served.signInAs(s, SealFixture.ADMIN, s.bg1, wrong, k5).status).isEqualTo(403)
             assertThat(served.alerts()).hasSize(1)
-            assertThat(served.audits()).hasSize(1)
+            assertThat(served.wrongAudits()).hasSize(5)
             assertThat(counter(s.tenant, s.bg1)).isEqualTo(5)
             // (e) while the back-off waits the key answers 429 SRT-012 and stores nothing; after the wait it works
             val k3 = UUID.randomUUID()

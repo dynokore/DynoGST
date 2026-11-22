@@ -188,6 +188,7 @@ class SecurityEventMappingTest {
                         "unlockBreakGlass" to "break_glass",
                         "recordBreakGlassAction" to "break_glass",
                         "openOperatorSession" to "elevation",
+                        "signInBreakGlass" to "sign_in",
                     ),
                 )
         }

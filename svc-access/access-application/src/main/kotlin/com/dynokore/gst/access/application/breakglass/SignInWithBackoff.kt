@@ -30,7 +30,7 @@ sealed interface SignInWithBackoffOutcome {
  * `signInBreakGlass` with back-off (INV-REQ-896, INV-Q-9107 A, INV-AC-9184). The unlock must exist and be open; that is
  * decided before the counter. While the back-off runs every sign-in answers [SignInWithBackoffOutcome.Waiting] without
  * a credential check or a write. Otherwise the credential is checked and the next state saved either way; the failure
- * counts of [SignInBackoff.isAlertCount] raise the ACC-002 alert with the count (never the credential) as detail.
+ * counts of [SignInBackoff.isAlertCount] raise the ACC-002 alert. Every outcome writes one audit entry (`signInBreakGlass`, detail the outcome name).
  * [handle]'s `actor` is the caller's user ID (INV-Q-16511 A).
  */
 @Suppress("LongParameterList") // one collaborator per port
@@ -48,24 +48,52 @@ class SignInWithBackoffUseCase(
         sealingCredential: String,
     ): SignInWithBackoffOutcome =
         tx.inTransaction {
-            val session = sessions.find(unlockRef) ?: return@inTransaction SignInWithBackoffOutcome.NotFound
+            val session = sessions.find(unlockRef)
+            if (session == null) {
+                // the supplied reference is never written: a caller cannot choose a string for the log
+                audited(actor, UNKNOWN_REF, OUTCOME_NOT_FOUND)
+                return@inTransaction SignInWithBackoffOutcome.NotFound
+            }
             val now = clock.instant()
-            if (!session.isOpenAt(now)) return@inTransaction SignInWithBackoffOutcome.NotOpen
+            if (!session.isOpenAt(now)) {
+                audited(actor, unlockRef, OUTCOME_NOT_OPEN)
+                return@inTransaction SignInWithBackoffOutcome.NotOpen
+            }
             val state = attempts.readForUpdate(unlockRef)
             if (state.isWaitingAt(now)) {
+                audited(actor, unlockRef, OUTCOME_WAITING)
                 return@inTransaction SignInWithBackoffOutcome.Waiting(state.remainingSecondsAt(now))
             }
             val right = keeper.matches(sealingCredential)
             val next = state.after(right, now)
             attempts.save(unlockRef, next)
             if (right) {
+                audited(actor, unlockRef, OUTCOME_SIGNED_IN)
                 SignInWithBackoffOutcome.SignedIn(session)
             } else {
                 if (SignInBackoff.isAlertCount(next.failures)) {
-                    val detail = "failures=${next.failures}"
-                    effects.record(actor, "signInBreakGlass", unlockRef, SIGN_IN_FAILED_ACTION, detail)
+                    // the alert call is the one entry of this call
+                    effects.record(actor, SIGN_IN_OPERATION, unlockRef, SIGN_IN_FAILED_ACTION, OUTCOME_WRONG_CREDENTIAL)
+                } else {
+                    audited(actor, unlockRef, OUTCOME_WRONG_CREDENTIAL)
                 }
                 SignInWithBackoffOutcome.WrongCredential
             }
         }
+
+    private fun audited(
+        actor: String,
+        ref: String,
+        outcome: String,
+    ) = effects.recordAudit(actor, SIGN_IN_OPERATION, ref, outcome)
+
+    private companion object {
+        const val SIGN_IN_OPERATION = "signInBreakGlass"
+        const val UNKNOWN_REF = "unknown"
+        const val OUTCOME_SIGNED_IN = "SIGNED_IN"
+        const val OUTCOME_NOT_FOUND = "NOT_FOUND"
+        const val OUTCOME_NOT_OPEN = "NOT_OPEN"
+        const val OUTCOME_WRONG_CREDENTIAL = "WRONG_CREDENTIAL"
+        const val OUTCOME_WAITING = "WAITING"
+    }
 }
