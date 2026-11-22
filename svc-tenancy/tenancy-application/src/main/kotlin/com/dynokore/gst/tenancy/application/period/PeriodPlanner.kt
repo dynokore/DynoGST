@@ -79,8 +79,18 @@ class PeriodPlanner(
         deregistrationDate: LocalDate?,
         explicitPack: CalendarPack? = null,
     ): Plan {
-        val unadjusted = planWith(entity, entries, packOn, deregistrationDate, null, explicitPack, NonBusinessDayRule.NO_MOVE)
-        val moved = planWith(entity, entries, packOn, deregistrationDate, null, explicitPack, NonBusinessDayRule.NEXT_WORKING_DAY)
+        val unadjusted =
+            planWith(entity, entries, packOn, deregistrationDate, null, explicitPack, NonBusinessDayRule.NO_MOVE)
+        val moved =
+            planWith(
+                entity,
+                entries,
+                packOn,
+                deregistrationDate,
+                null,
+                explicitPack,
+                NonBusinessDayRule.NEXT_WORKING_DAY,
+            )
         return when {
             unadjusted !is Plan.Periods -> unadjusted
             moved !is Plan.Periods -> moved
@@ -97,10 +107,16 @@ class PeriodPlanner(
         val chosen =
             unadjusted.periods.map { base ->
                 when (rules.resolve(entity.groupRef, entity.ref, base.dueDate)) {
-                    NonBusinessDayRule.NO_MOVE -> base
-                    NonBusinessDayRule.NEXT_WORKING_DAY ->
+                    NonBusinessDayRule.NO_MOVE -> {
+                        base
+                    }
+
+                    NonBusinessDayRule.NEXT_WORKING_DAY -> {
                         movedByStart[base.start]
-                            ?: return Plan.Invalid("the period starting ${base.start} is missing from the plan under the moving rule")
+                            ?: return Plan.Invalid(
+                                "the period starting ${base.start} is missing from the plan under the moving rule",
+                            )
+                    }
                 }
             }
         return Plan.Periods(chosen)

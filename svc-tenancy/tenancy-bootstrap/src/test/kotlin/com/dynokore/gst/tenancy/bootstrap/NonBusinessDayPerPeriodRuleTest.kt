@@ -9,8 +9,10 @@ import org.junit.jupiter.api.Test
  * (INV-REQ-82 behavior 4 and 5, INV-AC-27793).
  */
 internal class NonBusinessDayPerPeriodRuleTest : Vp62TestSupport() {
-    private val settled = mapOf("2026-06-01" to "2026-08-01", "2026-09-01" to "2026-11-02", "2026-11-01" to "2026-12-07")
-    private val reverted = mapOf("2026-06-01" to "2026-08-01", "2026-09-01" to "2026-11-02", "2026-11-01" to "2026-12-05")
+    private val settled =
+        mapOf("2026-06-01" to "2026-08-01", "2026-09-01" to "2026-11-02", "2026-11-01" to "2026-12-07")
+    private val reverted =
+        mapOf("2026-06-01" to "2026-08-01", "2026-09-01" to "2026-11-02", "2026-11-01" to "2026-12-05")
 
     @Test
     fun `INV-AC-27793 a recomputation from before the setting changes nothing`() {
