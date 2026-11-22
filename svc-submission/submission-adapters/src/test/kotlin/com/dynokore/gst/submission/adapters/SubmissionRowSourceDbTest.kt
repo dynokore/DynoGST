@@ -1,8 +1,12 @@
 package com.dynokore.gst.submission.adapters
 
+import com.dynokore.gst.submission.adapters.persistence.JooqDueDateExtensionStore
 import com.dynokore.gst.submission.adapters.persistence.JooqSubmissionRowSource
 import com.dynokore.gst.submission.adapters.persistence.jooq.tables.ObligationRegisterEntry
 import com.dynokore.gst.submission.adapters.persistence.jooq.tables.Submission
+import com.dynokore.gst.submission.application.extension.DueDateExtension
+import com.dynokore.gst.submission.application.extension.ExtensionScopeKind
+import com.dynokore.gst.submission.application.extension.ExtensionTarget
 import com.dynokore.gst.submission.application.listing.SourceRead
 import com.dynokore.gst.submission.domain.listing.SubmissionRow
 import com.dynokore.gst.submission.domain.ordering.LifecycleState
@@ -317,5 +321,139 @@ class SubmissionRowSourceDbTest {
         val rows = read(a, e, p).rows.associateBy { it.docUuid }
         rows.getValue("with-$s").acknowledgementDeadline shouldBe deadline
         rows.getValue("without-$s").acknowledgementDeadline shouldBe null
+    }
+
+    private val store = JooqDueDateExtensionStore(dsl, runner)
+
+    private class Ext(
+        val period: Pair<String, String>,
+        val target: ExtensionTarget,
+        val scope: ExtensionScopeKind,
+        val scopeRef: String?,
+        val extended: LocalDate,
+        val event: String,
+    )
+
+    private fun extend(
+        tenant: UUID,
+        x: Ext,
+    ) {
+        bound.set(tenant)
+        try {
+            store.insert(
+                TenantId(tenant),
+                DueDateExtension(
+                    entityRef = x.period.first,
+                    periodRef = x.period.second,
+                    target = x.target,
+                    scopeKind = x.scope,
+                    scopeRef = x.scopeRef,
+                    originalDueDate = null,
+                    extendedDueDate = x.extended,
+                    extendedFilingDueDate = null,
+                    irasReference = "IRAS-${x.event}",
+                    sourceEventId = x.event,
+                ),
+            ) shouldBe true
+        } finally {
+            bound.remove()
+        }
+    }
+
+    private fun seedOne(
+        tenant: UUID,
+        doc: String,
+        entity: String,
+        period: String,
+        txn: LocalDate = txDate,
+    ) {
+        seedEntry(tenant, doc, entity, period)
+        seedVersion(tenant, doc, 1, LifecycleState.READY, Extras(entity, transactionDate = txn))
+    }
+
+    @Test
+    @Suppress("ktlint:standard:max-line-length", "MaxLineLength") // the mandated case name is longer than 120
+    fun `INV-AC-26157 listing item of a document in an extended period shows original and extended dates and no SUB-010`() {
+        val a = UUID.randomUUID()
+        val s = ids()
+        val e = "e-$s"
+        val p = "p-$s"
+        val other = "q-$s"
+        seedOne(a, "in-$s", e, p)
+        seedOne(a, "out-$s", e, other)
+        val extended = due.plusDays(14)
+        extend(a, Ext(e to p, ExtensionTarget.SUBMISSION_DUE_DATE, ExtensionScopeKind.PERIOD, null, extended, "ev-$s"))
+        val row = read(a, e, p).rows.single()
+        row.dueDate shouldBe extended
+        row.originalDueDate shouldBe due
+        row.extendedDueDate shouldBe extended
+    }
+
+    @Test
+    fun `INV-AC-26157 a document of another period shows neither extension member`() {
+        val a = UUID.randomUUID()
+        val s = ids()
+        val e = "e-$s"
+        seedOne(a, "in-$s", e, "p-$s")
+        seedOne(a, "out-$s", e, "q-$s")
+        extend(a, Ext(e to "p-$s", ExtensionTarget.BOTH, ExtensionScopeKind.PERIOD, null, due.plusDays(14), "ev-$s"))
+        val row = read(a, e, "q-$s").rows.single()
+        row.dueDate shouldBe due
+        row.originalDueDate shouldBe null
+        row.extendedDueDate shouldBe null
+    }
+
+    @Test
+    fun `INV-AC-26158 a document submitted between the original and the new date shows both dates`() {
+        val a = UUID.randomUUID()
+        val s = ids()
+        val e = "e-$s"
+        val p = "p-$s"
+        seedOne(a, "late-$s", e, p)
+        val extended = due.plusDays(14)
+        extend(a, Ext(e to p, ExtensionTarget.BOTH, ExtensionScopeKind.DOCUMENT_SET, "late-$s", extended, "ev-$s"))
+        // submittedAt (2026-11-01) is before the register due date, the stored dates are what the item shows
+        val row = read(a, e, p).rows.single()
+        row.originalDueDate shouldBe due
+        row.extendedDueDate shouldBe extended
+        row.dueDate shouldBe extended
+    }
+
+    @Test
+    fun `INV-AC-26161 a DATE_RANGE extension shows the new date inside the window and not outside it`() {
+        val a = UUID.randomUUID()
+        val s = ids()
+        val e = "e-$s"
+        val p = "p-$s"
+        seedOne(a, "in-$s", e, p, LocalDate.of(2026, 10, 15))
+        seedOne(a, "out-$s", e, p, LocalDate.of(2026, 10, 25))
+        val extended = due.plusDays(7)
+        val window = "2026-10-10/2026-10-20"
+        val range = ExtensionScopeKind.DATE_RANGE
+        extend(a, Ext(e to p, ExtensionTarget.SUBMISSION_DUE_DATE, range, window, extended, "ev-$s"))
+        val rows = read(a, e, p).rows.associateBy { it.docUuid }
+        val inside = checkNotNull(rows["in-$s"])
+        inside.dueDate shouldBe extended
+        inside.originalDueDate shouldBe null
+        inside.extendedDueDate shouldBe extended
+        val outside = checkNotNull(rows["out-$s"])
+        outside.dueDate shouldBe due
+        outside.originalDueDate shouldBe null
+        outside.extendedDueDate shouldBe null
+    }
+
+    @Test
+    fun `INV-AC-26157 an extension of target FILING_DUE_DATE leaves dueDate and adds no extension member`() {
+        val a = UUID.randomUUID()
+        val s = ids()
+        val e = "e-$s"
+        val p = "p-$s"
+        seedOne(a, "doc-$s", e, p)
+        val filing = ExtensionTarget.FILING_DUE_DATE
+        extend(a, Ext(e to p, filing, ExtensionScopeKind.PERIOD, null, due.plusDays(14), "ev-$s"))
+        val row = read(a, e, p).rows.single()
+        row.dueDate shouldBe due
+        row.originalDueDate shouldBe null
+        row.extendedDueDate shouldBe null
     }
 }

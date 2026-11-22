@@ -510,4 +510,83 @@ class SubmissionListingHandlerTest {
         sources.flatMap { file -> roles.filter { file.readText().contains("\"$it\"") }.map { file to it } } shouldBe
             emptyList()
     }
+
+    private fun summaryJson(
+        original: LocalDate?,
+        extended: LocalDate?,
+    ): tools.jackson.databind.JsonNode {
+        val facts =
+            MaskedListFacts(
+                documentNumber = "N-1",
+                documentTypeCode = "380",
+                direction = Direction.SALE,
+                counterpartyName = "Acme",
+                counterpartyUen = "UEN-Acme",
+                taxableAmount = BigDecimal("200.00"),
+                gstAmount = BigDecimal("18.00"),
+                categoryCodes = setOf("SR"),
+            )
+        val row =
+            ListSubmissionsRow(
+                docUuid = doc1,
+                version = 1,
+                submissionType = SubmissionKind.TYPE_1A,
+                state = LifecycleState.ACKNOWLEDGED,
+                dueDate = extended ?: LocalDate.of(2026, 4, 30),
+                transactionDate = LocalDate.of(2026, 5, 2),
+                facts = facts,
+                submittedAt = Instant.parse("2026-05-10T00:00:00Z"),
+                acknowledgedAt = null,
+                acknowledgementId = null,
+                originalDueDate = original,
+                extendedDueDate = extended,
+            )
+        val handler = SubmissionListingHandler(ListSubmissions(replica(), RecordingSource(emptyList())), clock)
+        val mapper = JsonMapper.builder().build()
+        return mapper.readTree(mapper.writeValueAsString(handler.summary(row)))
+    }
+
+    @Test
+    @Suppress("ktlint:standard:max-line-length", "MaxLineLength") // the mandated case name is longer than 120
+    fun `INV-AC-26157 listing item of a document in an extended period shows original and extended dates and no SUB-010`() {
+        val json = summaryJson(LocalDate.of(2026, 4, 30), LocalDate.of(2026, 5, 14))
+        json.get("originalDueDate").asString() shouldBe "2026-04-30"
+        json.get("extendedDueDate").asString() shouldBe "2026-05-14"
+        json.get("dueDate").asString() shouldBe "2026-05-14"
+        json.toString().contains("SUB-010") shouldBe false
+    }
+
+    @Test
+    fun `INV-AC-26157 a document of another period shows neither extension member`() {
+        val json = summaryJson(null, null)
+        json.has("originalDueDate") shouldBe false
+        json.has("extendedDueDate") shouldBe false
+    }
+
+    @Test
+    fun `INV-AC-26158 a document submitted between the original and the new date shows both dates`() {
+        val json = summaryJson(LocalDate.of(2026, 5, 1), LocalDate.of(2026, 5, 20))
+        json.get("originalDueDate").asString() shouldBe "2026-05-01"
+        json.get("extendedDueDate").asString() shouldBe "2026-05-20"
+        json.get("dueDate").asString() shouldBe "2026-05-20"
+    }
+
+    @Test
+    fun `INV-AC-26161 a DATE_RANGE extension shows the new date inside the window and not outside it`() {
+        val inside = summaryJson(null, LocalDate.of(2026, 5, 20))
+        inside.has("originalDueDate") shouldBe false
+        inside.get("extendedDueDate").asString() shouldBe "2026-05-20"
+        inside.get("dueDate").asString() shouldBe "2026-05-20"
+        val outside = summaryJson(null, null)
+        outside.has("extendedDueDate") shouldBe false
+        outside.get("dueDate").asString() shouldBe "2026-04-30"
+    }
+
+    @Test
+    fun `INV-AC-26157 an extension of target FILING_DUE_DATE leaves dueDate and adds no extension member`() {
+        val json = summaryJson(null, null)
+        json.get("dueDate").asString() shouldBe "2026-04-30"
+        json.has("originalDueDate") shouldBe false
+        json.has("extendedDueDate") shouldBe false
+    }
 }

@@ -110,6 +110,8 @@ class SubmissionListingHandler(
             submissionType = SubmissionSummary.SubmissionType.valueOf(row.submissionType.name),
             state = contractState(row.state),
             dueDate = row.dueDate,
+            originalDueDate = row.originalDueDate,
+            extendedDueDate = row.extendedDueDate,
             totalAmount = if (taxable != null && gst != null) taxable.add(gst) else null,
             documentNumber = facts.documentNumber,
             documentTypeCode = facts.documentTypeCode,
