@@ -31,6 +31,8 @@ internal object OperationOwners {
             "operation\tdryRun\tINV-T-4974",
             "operation\tgetDryRun\tINV-T-4974",
             "operation\tlistActiveRegulatoryPacks\tINV-T-9880",
+            "operation\tdiffMappingPackBundle\tINV-T-26960",
+            "operation\tgetPackDeltaAcknowledgement\tINV-T-26212",
             "channel\tgst.rules.rule-pack-staged.v1\tINV-T-4976",
             "channel\tgst.rules.pack-currency-changed.v1\tINV-T-4976",
             "channel\tgst.rules.example-happened.v1\tnone",

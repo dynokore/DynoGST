@@ -2,7 +2,6 @@ package com.dynokore.gst.rules.bootstrap
 
 import com.dynokore.gst.catalogue.DeploymentForm
 import com.dynokore.gst.catalogue.OperationRoles
-import com.dynokore.gst.rules.application.CodeCataloguePort
 import com.dynokore.gst.rules.served.MovableClock
 import com.dynokore.gst.rules.served.PolicyFixtures
 import com.dynokore.gst.rules.served.ReplicaFallbackDouble
@@ -20,7 +19,6 @@ import io.kotest.matchers.string.shouldNotContain
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.beans.factory.config.BeanPostProcessor
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.boot.test.web.server.LocalServerPort
@@ -33,7 +31,6 @@ import java.time.Duration
 import java.time.LocalDate
 import java.time.ZoneOffset
 import java.util.UUID
-import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 
 private const val AUTHOR_KEY = "mapping-pack.author"
@@ -42,32 +39,10 @@ private const val DIFFS = "/internal/v1/rules/mapping-pack-diffs"
 private const val PACK_ENTITY = "E-1"
 private val DIFF_TENANT: TenantId = TenantId.of("0a000000-0000-0000-0000-000000026960")
 
-/** Counts the catalogue reads: the active pack is read, and then the use case runs, only after the permission passed. */
+/** The fixtures of the boundary test: the build properties of the mapping pack ports. */
 @TestConfiguration(proxyBeanMethods = false)
 @Import(MappingAllowingPorts::class)
-class MappingPackBundleDiffFixtures {
-    companion object {
-        val catalogueReads = AtomicInteger(0)
-
-        @Bean
-        @JvmStatic
-        fun countingCatalogues(): BeanPostProcessor =
-            object : BeanPostProcessor {
-                override fun postProcessAfterInitialization(
-                    bean: Any,
-                    beanName: String,
-                ): Any =
-                    if (bean is CodeCataloguePort) {
-                        CodeCataloguePort { tenant, date ->
-                            catalogueReads.incrementAndGet()
-                            bean.catalogueAt(tenant, date)
-                        }
-                    } else {
-                        bean
-                    }
-            }
-    }
-}
+class MappingPackBundleDiffFixtures
 
 /**
  * INV-AC-26951 (INV-REQ-1128 behaviour 4): `diffMappingPackBundle` answers the diff of a bundle part against the
@@ -86,7 +61,6 @@ class MappingPackBundleDiffBoundaryTest
         private val clock: MovableClock,
     ) : MappingPackSupport(port) {
         private val tenant = DIFF_TENANT
-        private val reads = MappingPackBundleDiffFixtures.catalogueReads
 
         @BeforeEach
         fun freshReplica() {
@@ -95,6 +69,7 @@ class MappingPackBundleDiffBoundaryTest
             replica.onSnapshotComplete(0)
             replica.tracker.onApplied(versions.get())
             activePack()
+            draftPack()
         }
 
         private fun bearer(user: String) = "Bearer $user|$tenant|"
@@ -133,12 +108,12 @@ class MappingPackBundleDiffBoundaryTest
             value(
                 tenant,
                 "insert into rules.pack_registry (id, tenant_id, pack_id, pack_type, pack_version, layer, status, " +
-                    "effective_from, effective_to, min_engine_version, supersedes, registered_by, entity_ref) " +
-                    "values (?::uuid, ?::uuid, 'MAP-act-26951', 'MAPPING', 'act-26951', 'TENANT_MAPPING', 'ARMED', " +
-                    "?::date, null, '1.0.0', null, 'tenancy-probe', '$PACK_ENTITY') returning id",
+                    "min_engine_version, registered_by, label, entity_ref) values (?::uuid, ?::uuid, " +
+                    "'MAP-act-26951', 'MAPPING', 'act-26951', 'TENANT_MAPPING', 'DRAFT', '1.0.0', 'tenancy-probe', " +
+                    "'act-26951', " +
+                    "'$PACK_ENTITY') returning id",
                 UUID.randomUUID().toString(),
                 tenant.toString(),
-                yesterday,
             )
             listOf("STD" to "SR", "ZER" to "ZR").forEach { (code, iras) ->
                 value(
@@ -153,6 +128,40 @@ class MappingPackBundleDiffBoundaryTest
                     iras,
                 )
             }
+            listOf("SUBMITTED", "APPROVED").forEach {
+                value(
+                    tenant,
+                    "update rules.pack_registry set status = '$it' where pack_version = 'act-26951' returning id",
+                )
+            }
+            value(
+                tenant,
+                "update rules.pack_registry set status = 'ARMED', effective_from = ?::date " +
+                    "where pack_version = 'act-26951' returning id",
+                yesterday,
+            )
+        }
+
+        /** A DRAFT mapping pack of the same tenant whose entries differ from the active one: it must never be read. */
+        private fun draftPack() {
+            if (value(tenant, "select count(*) from rules.pack_registry where pack_version = 'dra-26951'") == 1L) return
+            value(
+                tenant,
+                "insert into rules.pack_registry (id, tenant_id, pack_id, pack_type, pack_version, layer, status, " +
+                    "min_engine_version, registered_by, label, entity_ref) values (?::uuid, ?::uuid, " +
+                    "'MAP-dra-26951', 'MAPPING', 'dra-26951', 'TENANT_MAPPING', 'DRAFT', '1.0.0', 'tenancy-probe', " +
+                    "'dra-26951', '$PACK_ENTITY') returning id",
+                UUID.randomUUID().toString(),
+                tenant.toString(),
+            )
+            value(
+                tenant,
+                "insert into rules.pack_entry_source (id, tenant_id, pack_type, pack_version, entry_id, " +
+                    "source_class, internal_tax_code, iras_code) values (?::uuid, ?::uuid, 'MAPPING', " +
+                    "'dra-26951', 'STD', 'SECONDARY', 'STD', 'ZR') returning id",
+                UUID.randomUUID().toString(),
+                tenant.toString(),
+            )
         }
 
         private fun rule(
@@ -179,7 +188,7 @@ class MappingPackBundleDiffBoundaryTest
             Regex(""""code"\s*:\s*"([^"]*)"""").find(answer.body())?.groupValues?.get(1)
 
         @Test
-        fun `INV-AC-26951 a part differing in one rule answers 200 with one CHANGED change and the active pack is equal`() {
+        fun `INV-AC-26951 a part differing in one rule answers 200 with one CHANGED change and no pack change`() {
             val before = activeState()
             val answer = diff(part(rule("STD", "SR", "8"), rule("ZER", "ZR", "9")), newUser(withKey = true))
             withClue(answer.body()) { answer.statusCode() shouldBe 200 }
@@ -193,14 +202,19 @@ class MappingPackBundleDiffBoundaryTest
         @Test
         fun `INV-AC-26951 a caller without mapping-pack author is refused 403 SRT-004 and the use case is not run`() {
             val before = activeState()
-            val readsBefore = reads.get()
-            val answer = diff(part(rule("STD", "SR", "8"), rule("ZER", "ZR", "9")), newUser(withKey = false))
+            val user = newUser(withKey = false)
+            val answer = diff(part(rule("STD", "SR", "8"), rule("ZER", "ZR", "9")), user)
             withClue(answer.body()) {
                 answer.statusCode() shouldBe 403
                 code(answer) shouldBe "SRT-004"
             }
             answer.body() shouldNotContain "changes"
-            reads.get() shouldBe readsBefore
+            // the duplicate check is the use case's: a refusal 403 instead of 400 shows that the use case did not run
+            val duplicate = diff(part(rule("STD", "SR", "8"), rule("STD", "SR", "9")), user)
+            withClue(duplicate.body()) {
+                duplicate.statusCode() shouldBe 403
+                code(duplicate) shouldBe "SRT-004"
+            }
             activeState() shouldBe before
         }
 
@@ -223,9 +237,7 @@ class MappingPackBundleDiffBoundaryTest
             @DynamicPropertySource
             fun properties(registry: DynamicPropertyRegistry) {
                 registerCatalogue(registry)
-                registry.add("service-runtime.modules.schema") { "rules" }
                 registry.add("service-runtime.idempotency.schema") { "rules" }
-                registry.add("inv.tenancy.reference-tables") { "rules.pack_registry,rules.pack_entry_source" }
                 registry.add("service-runtime.workload-identity.callers[0].service") { CALLER }
                 registry.add("service-runtime.workload-identity.callers[0].subject") { subjectOf(CALLER) }
                 registry.add("gst.form") { "saas" }

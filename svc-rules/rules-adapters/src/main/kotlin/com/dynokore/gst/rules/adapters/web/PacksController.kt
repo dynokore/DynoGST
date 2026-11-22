@@ -2,9 +2,9 @@ package com.dynokore.gst.rules.adapters.web
 
 import com.dynokore.gst.catalogue.ErrorCode
 import com.dynokore.gst.rules.adapters.packs.EngineVersion
+import com.dynokore.gst.rules.adapters.persistence.ArmedPackLookup
 import com.dynokore.gst.rules.adapters.persistence.IMPORT_REJECTED_CODE
 import com.dynokore.gst.rules.adapters.persistence.JooqMappingImportRecordStore
-import com.dynokore.gst.rules.adapters.persistence.ArmedPackLookup
 import com.dynokore.gst.rules.adapters.persistence.JooqMappingPackStore
 import com.dynokore.gst.rules.adapters.persistence.JooqPackCorrectionStore
 import com.dynokore.gst.rules.adapters.persistence.MappingImportRecordRow
@@ -33,9 +33,9 @@ import com.dynokore.gst.rules.application.MappingPackAuthoring
 import com.dynokore.gst.rules.application.MappingPackBundleDiff
 import com.dynokore.gst.rules.application.MappingPackBundleDiffResult
 import com.dynokore.gst.rules.application.MappingPackChange
-import com.dynokore.gst.rules.application.PackCorrectionPermissionPort
 import com.dynokore.gst.rules.application.MappingPackResult
 import com.dynokore.gst.rules.application.PackActionCommand
+import com.dynokore.gst.rules.application.PackCorrectionPermissionPort
 import com.dynokore.gst.rules.application.PackCurrencyMonitor
 import com.dynokore.gst.rules.application.RefusalReason
 import com.dynokore.gst.rules.application.ReprocessPopulation
@@ -64,8 +64,8 @@ import com.dynokore.gst.rules.contract.model.MappingPackBundlePart
 import com.dynokore.gst.rules.contract.model.MappingPackDiff
 import com.dynokore.gst.rules.contract.model.RegulatoryPack
 import com.dynokore.gst.rules.contract.model.ReprocessingRun
-import com.dynokore.gst.rules.domain.pack.PackStatus
 import com.dynokore.gst.rules.domain.pack.PackLayers.MAPPING_PACK_TYPE
+import com.dynokore.gst.rules.domain.pack.PackStatus
 import com.dynokore.gst.rules.domain.pack.SourceClass
 import com.dynokore.gst.rules.domain.resolution.TransactionDate
 import com.dynokore.platform.rulepackkernel.PackType
@@ -566,7 +566,9 @@ open class PacksController(
     private fun changeOf(change: MappingPackChange) =
         com.dynokore.gst.rules.contract.model.MappingPackChange(
             path = change.path,
-            change = com.dynokore.gst.rules.contract.model.MappingPackChange.Change.forValue(change.change.name),
+            change =
+                com.dynokore.gst.rules.contract.model.MappingPackChange.Change
+                    .forValue(change.change.name),
             current = change.current,
             proposed = change.proposed,
         )
