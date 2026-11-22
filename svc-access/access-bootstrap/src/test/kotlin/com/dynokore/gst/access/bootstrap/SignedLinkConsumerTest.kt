@@ -141,7 +141,7 @@ class SignedLinkConsumerTest {
             BoundaryFixture.asSuperuser { c ->
                 c
                     .prepareStatement(
-                        "select data from access.outbox where tenant_id = ?::uuid and type = ? order by id",
+                        "select data from access.outbox where tenant_id = ?::uuid and type = ? order by seq",
                     ).use { s ->
                         s.setString(1, tenant.toString())
                         s.setString(2, messageType)

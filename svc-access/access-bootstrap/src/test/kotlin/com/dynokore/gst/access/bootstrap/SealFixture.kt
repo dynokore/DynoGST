@@ -163,7 +163,13 @@ object SealFixture {
     /** Runs [block] and returns the log lines (message and exception text) every logger wrote during it, at DEBUG. */
     fun <T> logged(block: () -> T): Pair<T, List<String>> {
         val root = LoggerFactory.getLogger(Logger.ROOT_LOGGER_NAME) as Logger
-        val appender = ListAppender<ILoggingEvent>().also { it.start() }
+        // a thread-safe list: the stepped service-runtime logs from background threads while the block runs
+        val appender =
+            ListAppender<ILoggingEvent>()
+                .also {
+                    it.list = java.util.concurrent.CopyOnWriteArrayList()
+                    it.start()
+                }
         val before = root.level
         root.addAppender(appender)
         root.level = Level.DEBUG
