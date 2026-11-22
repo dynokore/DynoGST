@@ -56,8 +56,11 @@ class AccessAlertAdaptersDbTest {
     private fun alertRows(
         c: Connection,
         entity: String,
-    ) = strings(c, "select alert_class || '/' || state || '/' || \"trigger\" || '/' || coalesce(period_ref, '-') " +
-        "from notification.alert where entity_ref = '$entity'")
+    ) = strings(
+        c,
+        "select alert_class || '/' || state || '/' || \"trigger\" || '/' || coalesce(period_ref, '-') " +
+            "from notification.alert where entity_ref = '$entity'",
+    )
 
     private fun recipientRows(
         c: Connection,

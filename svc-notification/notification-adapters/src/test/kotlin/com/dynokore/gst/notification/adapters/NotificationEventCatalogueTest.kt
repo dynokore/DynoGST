@@ -145,7 +145,7 @@ class NotificationEventCatalogueTest {
     }
 
     @Test
-    fun `INV-AC-27270 the catalogue lists the type for the topic with producer access-svc and all existing entries are unchanged`() {
+    fun `INV-AC-27270 the catalogue lists the type for the topic with producer access-svc, others unchanged`() {
         val entries = NotificationEventCatalogue.load().entries()
         val entry = entries.single { it.eventType == "com.dynokore.gst.access.AccessAlertRaised.v1" }
         entry.topic shouldBe "gst.access.access-alert-raised.v1"
