@@ -218,7 +218,11 @@ class SubmissionQueueDbTest {
         boundary.itemsOf(tenant, doc) shouldBe emptyList()
     }
 
-    /** Paths driven: `enqueue` (PayloadReadyHandler, HeldCreditNoteSweeper, HeldRelease call it), `releaseNext`. */
+    /**
+     * The five callers of `SubmissionQueue`: `enqueue` is the entry of PayloadReadyHandler, HeldCreditNoteSweeper and
+     * HeldRelease; `releaseNext` is the entry of WaitingSweeper and AttemptOutcomeApplier (the sweeper itself is driven
+     * in InFlightWaitDbTest). RetryDueScan and JooqReplayRequeue are not callers (INV-T-27416).
+     */
     @Test
     fun `INV-AC-112 the five enqueue paths cannot queue a Type 1A version`(
         @TempDir dir: Path,
