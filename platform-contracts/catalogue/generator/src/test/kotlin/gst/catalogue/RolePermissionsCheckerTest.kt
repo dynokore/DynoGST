@@ -45,7 +45,7 @@ class RolePermissionsCheckerTest {
             real.permissions.map { it.row }.toSet(),
         )
         assertEquals(34, RolePermissionsChecker.publishedRows.toSet().size)
-        assertEquals(59, RolePermissionsChecker.addedRows.toSet().size)
+        assertEquals(60, RolePermissionsChecker.addedRows.toSet().size)
         assertTrue(RolePermissionsChecker.addedRows.none { it in RolePermissionsChecker.publishedRows })
     }
 
@@ -3208,5 +3208,75 @@ class RolePermissionsCheckerTest {
     fun `INV-AC-27598 the label removed from addedRows while its key stays fails naming the key`() {
         val v = RolePermissionsChecker.check(real, added = RolePermissionsChecker.addedRows - revRow)
         assertTrue(v.any { "key $rev" in it && "row '$revRow'" in it }, "$v")
+    }
+
+    private val opa = "operating-profile.apply"
+    private val opaRow = "Apply an operating profile"
+
+    @Test
+    fun `INV-AC-27576 the operating profile apply key is WRITE with its row and exactly four cells`() {
+        assertEquals(mapOf(opa to opaRow), RolePermissionsChecker.operatingProfilePairs)
+        assertEquals(1, RolePermissionsChecker.addedRows.count { it == opaRow })
+        assertEquals(PermissionKind.WRITE, permission(real, opa).kind)
+        assertEquals(opaRow, permission(real, opa).row)
+        assertEquals(
+            setOf(
+                CellRow("tenant.admin", saasF, RoleAllowance.PERMITTED),
+                CellRow("tenant.admin", privF, RoleAllowance.PERMITTED),
+                CellRow("entity.admin", saasF, RoleAllowance.WITHIN_SCOPE),
+                CellRow("entity.admin", privF, RoleAllowance.WITHIN_SCOPE),
+            ),
+            permission(real, opa).cells.toSet(),
+        )
+        assertEquals(4, permission(real, opa).cells.size)
+        assertEquals(emptyList<String>(), RolePermissionsChecker.check(real))
+    }
+
+    @Test
+    fun `INV-AC-27576 probe a tax approver or auditor cell on the operating profile apply key is reported`() {
+        listOf("tax.approver", "auditor").forEach { r ->
+            listOf(saasF, privF).forEach { f -> assertReported(cellAdd(opa, r, f), "role $r key $opa form $f", "extra") }
+        }
+    }
+
+    @Test
+    fun `INV-AC-27576 probe entity admin PERMITTED instead of WITHIN_SCOPE is reported`() {
+        val t = withPermission(opa) { p -> p.copy(cells = p.cells.map { if (it.role == "entity.admin" && it.form == saasF) it.copy(allowance = RoleAllowance.PERMITTED) else it }) }
+        assertReported(t, "key $opa")
+    }
+
+    @Test
+    fun `INV-AC-27576 probe the tenant admin PRIVATE cell removed is reported`() {
+        assertReported(cellRemove(opa, "tenant.admin", privF), "role tenant.admin key $opa form PRIVATE", "missing")
+    }
+
+    @Test
+    fun `INV-AC-27576 probe the kind changed to READ is reported`() {
+        assertReported(withKind(opa, PermissionKind.READ), "key $opa")
+    }
+
+    @Test
+    fun `INV-AC-27576 probe a renamed or re-cased operating profile apply key is reported`() {
+        listOf("$opa ", "operating-profiles.apply", "Operating-profile.apply", "$opa.entity").forEach { k ->
+            assertReported(withPermission(opa) { it.copy(key = k) }, "key $opa: missing")
+            assertReported(withPermission(opa) { it.copy(key = k) }, "key $k")
+        }
+    }
+
+    @Test
+    fun `INV-AC-27576 probe the operating profile apply key removed is reported`() {
+        assertReported(real.copy(permissions = real.permissions.filter { it.key != opa }), "key $opa: missing")
+    }
+
+    @Test
+    fun `INV-AC-27576 probe a second key on the same row is reported`() {
+        val dup = permission(real, opa).copy(key = "operating-profile.apply-second")
+        assertReported(real.copy(permissions = real.permissions + dup), "key operating-profile.apply-second")
+    }
+
+    @Test
+    fun `INV-AC-27576 the label removed from addedRows while its key stays fails naming the key`() {
+        val v = RolePermissionsChecker.check(real, added = RolePermissionsChecker.addedRows - opaRow)
+        assertTrue(v.any { "key $opa" in it && "row '$opaRow'" in it }, "$v")
     }
 }

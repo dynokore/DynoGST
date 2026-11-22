@@ -905,3 +905,28 @@ class RenditionEvidenceKeyTest {
         }
     }
 }
+
+class OperatingProfileApplyKeyTest {
+    @Test
+    fun `INV-AC-27576 operating-profile apply is WRITE held by tenant admin PERMITTED and entity admin WITHIN_SCOPE`() {
+        val key = "operating-profile.apply"
+        assertEquals(PermissionKind.WRITE, RolePermissions.kind(key))
+        listOf(DeploymentForm.SAAS, DeploymentForm.PRIVATE).forEach { form ->
+            val held =
+                RolePermissions
+                    .cells(form)
+                    .filter { (_, perms) -> perms[key] != null }
+                    .mapValues { (_, perms) -> perms.getValue(key) }
+            assertEquals(mapOf("tenant.admin" to RoleAllowance.PERMITTED, "entity.admin" to RoleAllowance.WITHIN_SCOPE), held, "$key $form")
+            assertEquals(held, OperationRoles.rolesFor(form, key), "$key $form")
+        }
+        listOf(
+            "operating-profile.apply ",
+            "Operating-profile.apply",
+            "operating-profiles.apply",
+            "operating-profile.apply.entity",
+        ).forEach {
+            assertNull(RolePermissions.kind(it), it)
+        }
+    }
+}

@@ -1523,3 +1523,11 @@ permissions:
       - {role: tax.approver, form: PRIVATE, allowance: PERMITTED}
       - {role: tax.operator, form: SAAS, allowance: PERMITTED}
       - {role: tax.operator, form: PRIVATE, allowance: PERMITTED}
+  - key: operating-profile.apply
+    kind: WRITE
+    row: "Apply an operating profile"
+    cells:
+      - {role: tenant.admin, form: SAAS, allowance: PERMITTED}
+      - {role: tenant.admin, form: PRIVATE, allowance: PERMITTED}
+      - {role: entity.admin, form: SAAS, allowance: WITHIN_SCOPE}
+      - {role: entity.admin, form: PRIVATE, allowance: WITHIN_SCOPE}
