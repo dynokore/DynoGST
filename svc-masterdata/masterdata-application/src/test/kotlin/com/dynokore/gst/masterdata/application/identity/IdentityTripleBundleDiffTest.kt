@@ -89,6 +89,27 @@ class IdentityTripleBundleDiffTest {
     }
 
     @Test
+    fun `INV-AC-26952 two active triples of one entity and constitution are refused with side ACTIVE naming them`() {
+        val active = IdentityTripleBundleDiff.diff(emptyList(), listOf(version(), version(from = "2026-03-01")))
+        val part = IdentityTripleBundleDiff.diff(listOf(version(), version()), emptyList())
+        assertEquals(IdentityTripleBundleDiffResult.AmbiguousTriples(DiffSide.ACTIVE, "E-001", "PTE_LTD"), active)
+        assertEquals(IdentityTripleBundleDiffResult.AmbiguousTriples(DiffSide.PART, "E-001", "PTE_LTD"), part)
+    }
+
+    @Test
+    fun `INV-AC-26952 ADDED and REMOVED carry no values and CHANGED carries its property`() {
+        val added = diff(listOf(version(entity = "E-002")), listOf(version(entity = "E-003")))
+        assertEquals(2, added.size)
+        added.forEach {
+            assertEquals(null, it.currentValue)
+            assertEquals(null, it.proposedValue)
+        }
+        val changed = diff(listOf(version(gstn = "201912399B")), listOf(version())).single()
+        assertEquals("201912345A", changed.currentValue)
+        assertEquals("201912399B", changed.proposedValue)
+    }
+
+    @Test
     fun `INV-AC-26952 the function takes no store`() {
         val methods = IdentityTripleBundleDiff::class.java.declaredMethods.filter { it.name == "diff" }
         assertEquals(1, methods.size)
