@@ -105,6 +105,7 @@ class ExportTenantEvidence(
                     PackageScope.WholeTenant(job.tenant),
                     candidates,
                     clock.instant(),
+                    null,
                 )
         ) {
             is AssemblyResult.Refused -> throw Stop("assembly refused: ${result.reason} ${result.itemName}")
