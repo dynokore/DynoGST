@@ -242,7 +242,7 @@ class PayloadReadyAggregateIdBoundaryTest {
         val xmlE = String(Base64.getDecoder().decode(re["payloadBytes"].asString()), Charsets.UTF_8)
         note.findAll(xmlD).count() shouldBe 1
         note.findAll(xmlE).count() shouldBe 0
-        // INV-REQ-412: the aggregate also writes its literal as the buyer endpoint ID (IBT-049), the other one difference
+        // INV-REQ-412: the aggregate also writes its literal as the buyer endpoint ID (IBT-049)
         val endpoint = Regex("(<(?:\\w+:)?EndpointID(?:\\s[^>]*)?>)([^<]*)(</)")
         endpoint.findAll(xmlD).map { it.groupValues[2] }.toList() shouldBe listOf("POS")
         val endpointE = endpoint.findAll(xmlE).map { it.groupValues[2] }.toList()
