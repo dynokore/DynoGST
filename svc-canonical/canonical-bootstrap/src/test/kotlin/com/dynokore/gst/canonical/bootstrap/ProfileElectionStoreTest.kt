@@ -231,6 +231,9 @@ class ProfileElectionStoreTest {
         val a = UUID.randomUUID()
         val other = UUID.randomUUID()
         b.applyAs(a, 1, mode("CLAIMABLE_PORTION", jan)) shouldBe true
+        // the other tenant holds the same entity and attribute, so only the tenant predicate keeps A's row apart
+        b.applyAs(other, 1, mode("CLAIMABLE_PORTION", jan)) shouldBe true
+        b.electedAs(other, other, "E1", "apportionmentMode", jul) shouldBe true
         b.electedAs(a, a, "E1", "apportionmentMode", jul) shouldBe true
         b.electedAs(a, a, "E2", "apportionmentMode", jul) shouldBe false
         b.electedAs(a, a, "E1", "exchangeRateSource", jul) shouldBe false

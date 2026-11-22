@@ -64,7 +64,7 @@ class ProfileElectionReader {
                 when (attribute) {
                     BASIS -> value in BASES
                     APPORTIONMENT -> value in MODES
-                    RATE_SOURCE -> true
+                    RATE_SOURCE -> value.isNotBlank()
                     else -> SCHEME_KEY.matches(attribute)
                 }
         if (!valid) throw ContractViolation("$PROFILE item $attribute has no usable attribute or value")

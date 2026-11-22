@@ -211,7 +211,8 @@ class ProfileElectionFeedTest {
             listOf(
                 item("apportionmentMode", "BOTH", "2026-03-01"),
                 item("exchangeRateSource", "X".repeat(41), "2026-03-01"),
-                item("exchangeRateSource", " ", "2026-03-01").replace("\" \"", "\"\""),
+                item("exchangeRateSource", "", "2026-03-01"),
+                item("exchangeRateSource", " ", "2026-03-01"),
             )
         bad.forEach { b.handle(data(listOf(it))).exceptionOrNull() as? ContractViolation shouldNotBe null }
         bad.forEach { assertThrows<ContractViolation> { reader.read(data(listOf(it)), t1) } }
