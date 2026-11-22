@@ -193,7 +193,7 @@ class PackOperationsTest {
     }
 
     @Test
-    fun `publishPack with a FAILED record is refused`() {
+    fun `INV-AC-26354 publishPack with a FAILED record is refused`() {
         authorAs("alice")
         signAs("bob")
         evidence.add(StagingEvidence(ref, StagingResult.FAILED, ContentHash(sha(content))))
@@ -232,7 +232,7 @@ class PackOperationsTest {
     }
 
     @Test
-    fun `publishPack with a PASSED record over the current content publishes and releases once`() {
+    fun `INV-AC-26354 publishPack with a PASSED record over the current content publishes and releases once`() {
         authorAs("alice")
         signAs("bob")
         passed()
