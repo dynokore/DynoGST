@@ -62,7 +62,59 @@ data class PayloadRejectedFacts(
     val code: String?,
     val validationTrace: String?,
     val packVersions: List<PackVersionFact>? = null,
+    val decisions: List<RejectionDecision>? = null,
 )
+
+/**
+ * One decision entry of the optional `decisions` member of `PayloadRejected`. The bounds are those of the payload
+ * contract; an entry that breaks one is refused when it is built. [inputs] may be empty (the contract states no
+ * minimum).
+ */
+data class RejectionDecision(
+    val code: String,
+    val ruleId: String,
+    val packVersions: List<DecisionPackVersion>,
+    val inputs: List<DecisionInputFact>,
+    val assertionText: String? = null,
+) {
+    init {
+        require(CODE_PATTERN.matches(code)) { "decision code must match ^[A-Z]{3}-[0-9]{3}\$" }
+        require(ruleId.length in 1..RULE_ID_MAX) { "decision ruleId must be 1 to $RULE_ID_MAX characters" }
+        require(packVersions.isNotEmpty()) { "decision packVersions must not be empty" }
+        require(assertionText == null || assertionText.length in 1..ASSERTION_MAX) {
+            "decision assertionText must be 1 to $ASSERTION_MAX characters"
+        }
+    }
+
+    private companion object {
+        val CODE_PATTERN = Regex("^[A-Z]{3}-[0-9]{3}$")
+        const val RULE_ID_MAX = 80
+        const val ASSERTION_MAX = 500
+    }
+}
+
+/** The pack identifier and version a decision was taken under. */
+data class DecisionPackVersion(
+    val packIdentifier: String,
+    val version: String,
+)
+
+/** One input of a decision; [value] is at most 500 characters. */
+data class DecisionInputFact(
+    val name: String,
+    val value: String,
+    val businessTermId: String? = null,
+) {
+    init {
+        require(name.length in 1..NAME_MAX) { "decision input name must be 1 to $NAME_MAX characters" }
+        require(value.length <= VALUE_MAX) { "decision input value must be at most $VALUE_MAX characters" }
+    }
+
+    private companion object {
+        const val NAME_MAX = 100
+        const val VALUE_MAX = 500
+    }
+}
 
 /** Stages a `PayloadRejected` event for release in the caller's transaction. */
 fun interface PayloadRejectedPublisher {

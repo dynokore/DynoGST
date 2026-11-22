@@ -21,7 +21,8 @@ import java.util.UUID
  * `appendSequenced` reserves for the same row. `validationTrace` is an object (published schema): an opaque trace that
  * is a JSON object is embedded as given, any other text is wrapped as `{"reason": <text>}`, and a catalogue code
  * without a trace gives `{"code": <code>}`; `code` is written only when set.
- * `packVersions` (additive, API-41) is written only when [PayloadRejectedFacts.packVersions] is non-empty.
+ * `packVersions` (additive, API-41) is written only when [PayloadRejectedFacts.packVersions] is non-empty; so is
+ * `decisions` for [PayloadRejectedFacts.decisions].
  */
 class OutboxPayloadRejectedPublisher(
     private val outbox: OutboxWriter,
@@ -59,6 +60,28 @@ class OutboxPayloadRejectedPublisher(
         facts.packVersions?.takeIf { it.isNotEmpty() }?.let { packs ->
             val array = node.putArray("packVersions")
             packs.forEach { array.addObject().put("packType", it.packType).put("version", it.version) }
+        }
+        facts.decisions?.takeIf { it.isNotEmpty() }?.let { decisions ->
+            val array = node.putArray("decisions")
+            decisions.forEach { d ->
+                val entry = array.addObject()
+                entry.put("code", d.code).put("ruleId", d.ruleId)
+                val packs = entry.putArray("packVersions")
+                d.packVersions.forEach {
+                    packs
+                        .addObject()
+                        .put(
+                            "packIdentifier",
+                            it.packIdentifier,
+                        ).put("version", it.version)
+                }
+                val inputs = entry.putArray("inputs")
+                d.inputs.forEach { i ->
+                    val input = inputs.addObject().put("name", i.name).put("value", i.value)
+                    i.businessTermId?.let { input.put("businessTermId", it) }
+                }
+                d.assertionText?.let { entry.put("assertionText", it) }
+            }
         }
         return mapper.writeValueAsString(node)
     }
