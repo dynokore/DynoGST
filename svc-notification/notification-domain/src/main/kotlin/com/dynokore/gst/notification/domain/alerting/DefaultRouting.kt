@@ -9,7 +9,7 @@ const val ROLE_BILLING_CONTACT = "billing.contact"
 /** Fallback role when a default role has no holder in the tenant (INV-REQ-910 handling). */
 const val ROLE_TENANT_ADMIN = "tenant.admin"
 
-/** The 18 alert kinds that INV-REQ-910 gives a default recipient role. */
+/** The 19 alert kinds that INV-REQ-910 gives a default recipient role. */
 enum class DefaultAlertKind {
     EXCEPTION_GROUP_DUE_WITHIN_3_DAYS,
     READINESS_AT_RISK,
@@ -29,6 +29,7 @@ enum class DefaultAlertKind {
     ACC_003,
     EVIDENCE_INTEGRITY_FAILURE,
     PLAN_LIMIT,
+    DEADLINE,
 }
 
 /** INV-REQ-910 behavior 1: the default role of [kind]. Exhaustive, so a kind without a role cannot compile. */
@@ -37,6 +38,7 @@ fun defaultRole(kind: DefaultAlertKind): String =
         DefaultAlertKind.EXCEPTION_GROUP_DUE_WITHIN_3_DAYS -> ROLE_TAX_OPERATOR
 
         DefaultAlertKind.READINESS_AT_RISK,
+        DefaultAlertKind.DEADLINE,
         DefaultAlertKind.PACK_AWAITING_REVIEW,
         DefaultAlertKind.ACC_001,
         -> ROLE_TAX_APPROVER
@@ -61,4 +63,17 @@ fun defaultRole(kind: DefaultAlertKind): String =
         -> ROLE_SECURITY_OFFICER
 
         DefaultAlertKind.PLAN_LIMIT -> ROLE_BILLING_CONTACT
+    }
+
+/** The default kind of [alertClass]: only the deadline class has one; every other class gains no default. */
+fun defaultKindOf(alertClass: AlertClass): DefaultAlertKind? =
+    when (alertClass) {
+        AlertClass.DEADLINE -> DefaultAlertKind.DEADLINE
+
+        AlertClass.COVERAGE,
+        AlertClass.BACKLOG,
+        AlertClass.MISSING_ACKNOWLEDGEMENT,
+        AlertClass.PACK_STALENESS,
+        AlertClass.SECURITY,
+        -> null
     }

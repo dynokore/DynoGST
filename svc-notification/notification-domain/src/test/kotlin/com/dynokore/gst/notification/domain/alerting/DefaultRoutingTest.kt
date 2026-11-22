@@ -26,8 +26,9 @@ class DefaultRoutingTest {
                 DefaultAlertKind.ACC_003 to "security.officer",
                 DefaultAlertKind.EVIDENCE_INTEGRITY_FAILURE to "security.officer",
                 DefaultAlertKind.PLAN_LIMIT to "billing.contact",
+                DefaultAlertKind.DEADLINE to "tax.approver",
             )
-        expected.size shouldBe 18
+        expected.size shouldBe 19
         DefaultAlertKind.entries.associateWith { defaultRole(it) } shouldBe expected
         DefaultAlertKind.entries.map { defaultRole(it) }.toSet() shouldBe
             setOf(
@@ -38,5 +39,12 @@ class DefaultRoutingTest {
                 "security.officer",
                 "billing.contact",
             )
+    }
+
+    @Test
+    fun `INV-AC-27583 default kind of alert class`() {
+        defaultKindOf(AlertClass.DEADLINE) shouldBe DefaultAlertKind.DEADLINE
+        AlertClass.entries.filter { it != AlertClass.DEADLINE }.forEach { defaultKindOf(it) shouldBe null }
+        defaultRole(DefaultAlertKind.DEADLINE) shouldBe "tax.approver"
     }
 }

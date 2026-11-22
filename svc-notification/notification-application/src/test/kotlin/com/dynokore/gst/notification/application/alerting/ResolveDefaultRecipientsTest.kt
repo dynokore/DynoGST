@@ -14,6 +14,10 @@ class ResolveDefaultRecipientsTest {
     private val t3 = TenantId(UUID.fromString("00000000-0000-0000-0000-000000000003"))
     private val t4 = TenantId(UUID.fromString("00000000-0000-0000-0000-000000000004"))
 
+    private val t5 = TenantId(UUID.fromString("00000000-0000-0000-0000-000000000005"))
+    private val t6 = TenantId(UUID.fromString("00000000-0000-0000-0000-000000000006"))
+    private val t7 = TenantId(UUID.fromString("00000000-0000-0000-0000-000000000007"))
+
     private class FakeHolders(
         private val table: Map<Pair<TenantId, String>, List<String>>,
     ) : RoleHolders {
@@ -36,6 +40,9 @@ class ResolveDefaultRecipientsTest {
                 (t2 to "integration.engineer") to listOf("z"),
                 (t2 to "tenant.admin") to listOf("other"),
                 (t3 to "tenant.admin") to listOf("t"),
+                (t5 to "tax.approver") to listOf("u2", "u1"),
+                (t5 to "tenant.admin") to listOf("u9"),
+                (t6 to "tenant.admin") to listOf("u9"),
             ),
         )
     private val service = ResolveDefaultRecipients(port)
@@ -62,5 +69,20 @@ class ResolveDefaultRecipientsTest {
     fun `INV-AC-26001 duplicates collapse and order is ascending`() {
         val dup = ResolveDefaultRecipients { _, _ -> listOf("b", "a", "b") }
         dup.resolve(t1, DefaultAlertKind.PLAN_LIMIT) shouldBe Recipients(listOf("a", "b"))
+    }
+
+    @Test
+    fun `INV-AC-27583 deadline reaches tax approver holders sorted`() {
+        service.resolve(t5, DefaultAlertKind.DEADLINE) shouldBe Recipients(listOf("u1", "u2"))
+    }
+
+    @Test
+    fun `INV-AC-27583 deadline without approver falls back to tenant admin`() {
+        service.resolve(t6, DefaultAlertKind.DEADLINE) shouldBe Recipients(listOf("u9"))
+    }
+
+    @Test
+    fun `INV-AC-27583 deadline with no holder is NoRecipient`() {
+        service.resolve(t7, DefaultAlertKind.DEADLINE) shouldBe NoRecipient(DefaultAlertKind.DEADLINE)
     }
 }
