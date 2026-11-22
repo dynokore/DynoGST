@@ -11,6 +11,7 @@ import com.dynokore.platform.serviceruntime.binding.MessageChannel
 import com.dynokore.platform.serviceruntime.binding.MessageDelivery
 import com.dynokore.platform.serviceruntime.binding.OutboundMessage
 import com.dynokore.platform.serviceruntime.binding.PasscodeContent
+import com.dynokore.platform.serviceruntime.binding.TemplateValuesContent
 import com.dynokore.platform.tenancykernel.TenantId
 import java.time.Clock
 
@@ -118,10 +119,10 @@ class DeliverRequestedMessage(
         templateId = request.template,
         templateVersion = version,
         content =
-            if (clearPasscode != null) {
-                PasscodeContent(clearPasscode)
-            } else {
-                LinkContent(requireNotNull(request.linkReference))
+            when {
+                request.values != null -> TemplateValuesContent(request.values)
+                clearPasscode != null -> PasscodeContent(clearPasscode)
+                else -> LinkContent(requireNotNull(request.linkReference))
             },
     )
 
@@ -166,28 +167,62 @@ private class Request(
     val recipients: List<String>,
     val linkReference: String?,
     val sealedPasscode: String?,
+    val values: Map<String, String>?,
 )
+
+/** The templates whose content is a closed set of template values: template id to its exact key set. */
+val TEMPLATE_VALUE_KEYS: Map<String, Set<String>> =
+    mapOf("retention-notice" to setOf("periodStart", "periodEnd", "noticeWindowEndsAt"))
 
 // Messages name the field only, never a value.
 private fun parse(payload: Map<String, Any?>): Request {
     val channel = channelOf(requiredText(payload, "channel"))
     val recipients = recipientsOf(payload)
+    val template = requiredText(payload, "template")
     val link = optional(payload, "linkReference")
     val passcode = optional(payload, "sealedPasscode")
-    checkContent(link, passcode)
+    val raw = payload["templateParameters"]
+    checkContent(link, passcode, raw)
     checkShape(channel, passcode, recipients.size)
-    return Request(requiredText(payload, "template"), channel, recipients, link, passcode)
+    val values = if (raw != null) valuesOf(template, raw, channel, recipients.size) else null
+    if (values == null && template in TEMPLATE_VALUE_KEYS) {
+        throw ContractViolation("this template takes templateParameters only")
+    }
+    return Request(template, channel, recipients, link, passcode, values)
 }
 
 private fun checkContent(
     link: String?,
     passcode: String?,
+    parameters: Any?,
 ) {
-    if (link == null && passcode == null) {
-        throw ContractViolation("neither linkReference nor sealedPasscode is present")
+    if (listOf(link, passcode, parameters).count { it != null } != 1) {
+        throw ContractViolation("exactly one of linkReference, sealedPasscode and templateParameters is required")
     }
-    if (link != null && passcode != null) {
-        throw ContractViolation("linkReference and sealedPasscode are both present")
+}
+
+private fun valuesOf(
+    template: String,
+    raw: Any,
+    channel: DeliveryChannel,
+    recipientCount: Int,
+): Map<String, String> {
+    val keys = TEMPLATE_VALUE_KEYS[template] ?: throw ContractViolation("this template takes no templateParameters")
+    if (channel != DeliveryChannel.EMAIL || recipientCount != 1) {
+        throw ContractViolation("templateParameters are carried on EMAIL to one recipient only")
+    }
+    return textValues(raw as? Map<*, *>, keys)
+}
+
+private fun textValues(
+    map: Map<*, *>?,
+    keys: Set<String>,
+): Map<String, String> {
+    if (map == null || map.keys != keys) {
+        throw ContractViolation("templateParameters is not an object with the key set of the template")
+    }
+    return map.entries.associate { (k, v) ->
+        (k as String) to ((v as? String)?.takeIf { it.isNotBlank() } ?: throw ContractViolation("a value is not text"))
     }
 }
 

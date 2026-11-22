@@ -12,6 +12,7 @@ import com.dynokore.platform.serviceruntime.binding.MessageChannel
 import com.dynokore.platform.serviceruntime.binding.MessageDelivery
 import com.dynokore.platform.serviceruntime.binding.OutboundMessage
 import com.dynokore.platform.serviceruntime.binding.PasscodeContent
+import com.dynokore.platform.serviceruntime.binding.TemplateValuesContent
 import com.dynokore.platform.tenancykernel.TenantId
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
@@ -74,7 +75,7 @@ class DeliverRequestedMessageTest {
     private fun fixture(
         email: FakeChannel? = FakeChannel(MessageChannel.EMAIL),
         sms: FakeChannel? = FakeChannel(MessageChannel.SMS),
-        known: Set<String> = setOf("signed-link", "signed-link-passcode"),
+        known: Set<String> = setOf("signed-link", "signed-link-passcode", "retention-notice"),
     ): Fixture {
         val records = FakeRecords()
         val channels =
@@ -295,6 +296,128 @@ class DeliverRequestedMessageTest {
         }
         for (t in texts + lines) {
             for (secret in listOf(address, address2, mobile, passcode)) (secret in t) shouldBe false
+        }
+    }
+
+    private val retentionValues =
+        mapOf("periodStart" to "2026-01-01", "periodEnd" to "2026-12-31", "noticeWindowEndsAt" to "2027-01-31")
+
+    private fun retentionPayload(vararg to: String = arrayOf(address)) =
+        mapOf(
+            "template" to "retention-notice",
+            "channel" to "EMAIL",
+            "recipients" to to.toList(),
+            "templateParameters" to retentionValues,
+        )
+
+    @Test
+    @DisplayName("INV-AC-27030 a conforming retention-notice gives one TemplateValuesContent send, one SENT record")
+    fun retentionConforming() {
+        val f = fixture()
+        f.twice(retentionPayload())
+        f.records.rows.values
+            .toList() shouldBe
+            listOf(sent(0, DeliveryChannel.EMAIL, "retention-notice", "d-1"))
+        f.email!!.sent.size shouldBe 1
+        val m = f.email.sent[0]
+        m.templateId shouldBe "retention-notice"
+        m.templateVersion shouldBe "1"
+        m.channel shouldBe MessageChannel.EMAIL
+        m.to shouldBe address
+        m.content shouldBe TemplateValuesContent(retentionValues)
+    }
+
+    private fun valueDeviations(): Map<String, Map<String, Any?>> {
+        val ok = retentionPayload()
+        return mapOf(
+            "missing key" to ok + ("templateParameters" to retentionValues - "periodEnd"),
+            "extra key" to ok + ("templateParameters" to retentionValues + ("extra" to "x")),
+            "other case" to
+                ok + ("templateParameters" to (retentionValues - "periodStart") + ("periodstart" to "2026-01-01")),
+            "number value" to ok + ("templateParameters" to retentionValues + ("periodEnd" to 20261231)),
+            "null value" to ok + ("templateParameters" to retentionValues + ("periodEnd" to null)),
+            "blank value" to ok + ("templateParameters" to retentionValues + ("periodEnd" to " ")),
+            "empty object" to ok + ("templateParameters" to emptyMap<String, String>()),
+            "not an object" to ok + ("templateParameters" to "x"),
+        )
+    }
+
+    private fun shapeDeviations(): Map<String, Map<String, Any?>> {
+        val ok = retentionPayload()
+        val onlyPasscode = ok - "templateParameters" + ("sealedPasscode" to passcode)
+        return mapOf(
+            "sms" to ok + ("channel" to "SMS"),
+            "two recipients" to retentionPayload(address, address2),
+            "with link" to ok + ("linkReference" to "l"),
+            "with passcode" to ok + ("sealedPasscode" to passcode),
+            "signed-link with parameters" to ok + ("template" to "signed-link"),
+            "signed-link-passcode with parameters" to ok + ("template" to "signed-link-passcode"),
+            "unknown template with parameters" to ok + ("template" to "Retention-Notice"),
+            "retention with link only" to linkPayload(address) + ("template" to "retention-notice"),
+            "retention with passcode only" to onlyPasscode,
+            "retention with nothing" to ok - "templateParameters",
+        )
+    }
+
+    @Test
+    @DisplayName("INV-AC-27030 every deviating retention-notice payload is a violation with no record and no send")
+    fun retentionDeviations() {
+        val f = fixture()
+        for ((name, p) in valueDeviations() + shapeDeviations()) {
+            try {
+                f.useCase.handle(tenant, "ent-1", "evt-1", p)
+                throw AssertionError("not refused: $name")
+            } catch (_: ContractViolation) {
+                // expected
+            }
+        }
+        f.records.rows.size shouldBe 0
+        f.email!!.sent.size shouldBe 0
+        f.sms!!.sent.size shouldBe 0
+    }
+
+    @Test
+    @DisplayName("INV-AC-27030 no log line or exception message holds a template value")
+    fun retentionValuesNeverLeak() {
+        val lines = mutableListOf<String>()
+        val handler =
+            object : Handler() {
+                override fun publish(r: LogRecord) {
+                    lines += "${r.message} ${r.parameters?.joinToString()} ${r.thrown}"
+                }
+
+                override fun flush() = Unit
+
+                override fun close() = Unit
+            }
+        val root = Logger.getLogger("")
+        root.addHandler(handler)
+        val texts = mutableListOf<String>()
+        try {
+            val boom = IllegalStateException("refused $retentionValues")
+            val f = fixture(email = FakeChannel(MessageChannel.EMAIL, boom))
+            f.twice(retentionPayload())
+            f.records.rows.values
+                .forEach { texts += it.toString() }
+            val uc = fixture().useCase
+            val ok = retentionPayload()
+            val deviations =
+                listOf(
+                    ok + ("templateParameters" to retentionValues + ("extra" to "x")),
+                    ok + ("templateParameters" to retentionValues + ("periodEnd" to 5)),
+                    ok + ("channel" to "SMS"),
+                    ok + ("linkReference" to "l"),
+                    ok + ("template" to "signed-link"),
+                    retentionPayload(address, address2),
+                )
+            for (p in deviations) {
+                texts += shouldThrow<ContractViolation> { uc.handle(tenant, "ent-1", "evt-9", p) }.message.orEmpty()
+            }
+        } finally {
+            root.removeHandler(handler)
+        }
+        for (t in texts + lines) {
+            for (v in retentionValues.values) (v in t) shouldBe false
         }
     }
 }
