@@ -36,6 +36,7 @@ platform-outboxAndQueue-api = { module = "com.dynokore.platform:outbox-and-queue
 platform-outboxAndQueue-impl = { module = "com.dynokore.platform:outbox-and-queue" }
 platform-auditLog-api = { module = "com.dynokore.platform:audit-log-api" }
 platform-auditLog-impl = { module = "com.dynokore.platform:audit-log" }
+platform-crypto-api = { module = "com.dynokore.platform:crypto-api" }
 platform-configResolver-api = { module = "com.dynokore.platform:config-resolver-api" }
 platform-configResolver-impl = { module = "com.dynokore.platform:config-resolver" }
 platform-serviceRuntime-api = { module = "com.dynokore.platform:service-runtime-api" }

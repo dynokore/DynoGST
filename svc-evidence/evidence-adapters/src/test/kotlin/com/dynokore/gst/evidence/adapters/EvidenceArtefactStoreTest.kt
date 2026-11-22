@@ -1,10 +1,8 @@
 package com.dynokore.gst.evidence.adapters
 
 import com.dynokore.gst.evidence.adapters.persistence.ChainWiring
-import com.dynokore.platform.evidencestore.ObjectKey
-import com.dynokore.platform.evidencestore.ObjectKeyPrefix
-import com.dynokore.platform.evidencestore.ObjectRef
-import com.dynokore.platform.evidencestore.ObjectStore
+import com.dynokore.gst.evidence.adapters.persistence.JooqArtefactStore
+import com.dynokore.gst.evidence.application.artefact.SampleCheckPosition
 import com.dynokore.platform.outboxandqueue.CausationId
 import com.dynokore.platform.outboxandqueue.ContractViolation
 import com.dynokore.platform.outboxandqueue.CorrelationId
@@ -12,6 +10,8 @@ import com.dynokore.platform.outboxandqueue.DocUuid
 import com.dynokore.platform.outboxandqueue.Envelope
 import com.dynokore.platform.outboxandqueue.EventId
 import com.dynokore.platform.outboxandqueue.HandleOutcome
+import com.dynokore.platform.serviceruntime.events.EvidenceArtefact
+import com.dynokore.platform.serviceruntime.events.EvidenceArtefactType
 import com.dynokore.platform.tenancykernel.TenantId
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
@@ -69,7 +69,7 @@ class EvidenceArtefactStoreTest {
         EvidenceDb.connect(EvidenceDb.RUNTIME, EvidenceDb.RUNTIME_PASSWORD).use { connection ->
             connection.autoCommit = false
             SignedBindings.bind(connection, tenant)
-            val handler = ChainWiring.evidenceArtefactHandler(DSL.using(connection, SQLDialect.POSTGRES), NoObjects)
+            val handler = ChainWiring.evidenceArtefactHandler(DSL.using(connection, SQLDialect.POSTGRES))
             try {
                 events.map { handler.handle(it) }.also { connection.commit() }
             } catch (e: ContractViolation) {
@@ -223,17 +223,70 @@ class EvidenceArtefactStoreTest {
         }
     }
 
-    /** These types are not work-papers: no object is ever read. */
-    private object NoObjects : ObjectStore {
-        override fun put(
-            key: ObjectKey,
-            bytes: ByteArray,
-            retainUntil: Instant,
-        ): ObjectRef = error("not used")
+    private fun page(
+        tenant: UUID,
+        entity: String,
+        limit: Int,
+        after: SampleCheckPosition? = null,
+    ) = EvidenceDb.connect(EvidenceDb.RUNTIME, EvidenceDb.RUNTIME_PASSWORD).use { connection ->
+        connection.autoCommit = false
+        SignedBindings.bind(connection, tenant)
+        JooqArtefactStore(DSL.using(connection, SQLDialect.POSTGRES))
+            .page(TenantId(tenant), entity, limit, after)
+            .also { connection.rollback() }
+    }
 
-        override fun get(key: ObjectKey): ByteArray = error("not used")
+    /** Stores one row through the port with a controlled recordedAt (the handler stamps its own clock). */
+    private fun insertAt(
+        tenant: UUID,
+        entity: String?,
+        type: String,
+        reference: String,
+        hash: String,
+        at: String,
+    ) = EvidenceDb.connect(EvidenceDb.RUNTIME, EvidenceDb.RUNTIME_PASSWORD).use { connection ->
+        connection.autoCommit = false
+        SignedBindings.bind(connection, tenant)
+        JooqArtefactStore(DSL.using(connection, SQLDialect.POSTGRES)).insert(
+            TenantId(tenant),
+            entity,
+            EvidenceArtefact(EvidenceArtefactType(type), reference, hash),
+            "e-$reference-$hash-$type",
+            Instant.parse(at),
+        )
+        connection.commit()
+    }
 
-        override fun bytesUnder(prefix: ObjectKeyPrefix): Long = error("not used")
+    @Test
+    fun `INV-AC-27602 the page of an entity holds only its SAMPLE_CHECK rows of the bound tenant, in key order`() {
+        val tenant = UUID.randomUUID()
+        val other = UUID.randomUUID()
+        val early = "2026-01-15T00:00:00Z"
+        insertAt(tenant, "E1", "SAMPLE_CHECK", "b", hashA, early)
+        insertAt(tenant, "E1", "SAMPLE_CHECK", "a", hashB, early)
+        insertAt(tenant, "E1", "SAMPLE_CHECK", "a", hashA, early)
+        insertAt(tenant, "E1", "RENDITION", "r", hashA, early)
+        insertAt(tenant, "E2", "SAMPLE_CHECK", "c", hashA, early)
+        insertAt(tenant, null, "SAMPLE_CHECK", "d", hashA, early)
+        insertAt(other, "E1", "SAMPLE_CHECK", "z", hashA, early)
+        val all = page(tenant, "E1", 100)
+        all.rows.map { it.reference to it.hash } shouldBe listOf("a" to hashA, "a" to hashB, "b" to hashA)
+        all.rows.map { it.artefactType }.toSet() shouldBe setOf("SAMPLE_CHECK")
+        all.last shouldBe null
+        val first = page(tenant, "E1", 2)
+        first.rows.size shouldBe 2
+        val second = page(tenant, "E1", 2, first.last)
+        second.rows.map { it.reference } shouldBe listOf("b")
+        second.last shouldBe null
+        page(tenant, "E3", 10).rows shouldBe emptyList()
+    }
+
+    @Test
+    fun `INV-AC-27602 an earlier recordedAt sorts first before reference and hash`() {
+        val tenant = UUID.randomUUID()
+        insertAt(tenant, "E1", "SAMPLE_CHECK", "a", hashA, "2026-01-16T00:00:00Z")
+        insertAt(tenant, "E1", "SAMPLE_CHECK", "z", hashA, "2026-01-15T00:00:00Z")
+        page(tenant, "E1", 10).rows.map { it.reference } shouldBe listOf("z", "a")
     }
 
     private companion object {

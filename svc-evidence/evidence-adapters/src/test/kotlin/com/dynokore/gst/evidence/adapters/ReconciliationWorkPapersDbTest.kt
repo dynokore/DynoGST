@@ -72,18 +72,16 @@ class ReconciliationWorkPapersDbTest {
             body(DSL.using(c, SQLDialect.POSTGRES)).also { c.commit() }
         }
 
-    @Suppress("LongParameterList")
     private fun row(
         tenant: UUID,
         entity: String?,
         type: String,
         reference: String,
         hash: String,
-        period: String? = if (type == "RECONCILIATION_WORK_PAPER") "P0" else null,
     ) = tx(tenant) { dsl ->
         dsl.execute(
             "insert into evidence.evidence_artefact (id, tenant_id, entity_ref, artefact_type, reference, hash, " +
-                "event_id, recorded_at, period_ref) values (?, ?, ?, ?, ?, ?, ?, now(), ?)",
+                "event_id, recorded_at) values (?, ?, ?, ?, ?, ?, ?, now())",
             UUID.randomUUID(),
             tenant,
             entity,
@@ -91,7 +89,6 @@ class ReconciliationWorkPapersDbTest {
             reference,
             hash,
             UUID.randomUUID().toString(),
-            period,
         )
     }
 
@@ -103,10 +100,10 @@ class ReconciliationWorkPapersDbTest {
         store.objects[r1] = b1
         store.objects[r2] = b2
         store.objects[rT2] = paper("P3")
-        row(t1, "E1", "RECONCILIATION_WORK_PAPER", r1, sha(b1), "P1")
-        row(t1, "E2", "RECONCILIATION_WORK_PAPER", r2, sha(b2), "P2")
+        row(t1, "E1", "RECONCILIATION_WORK_PAPER", r1, sha(b1))
+        row(t1, "E2", "RECONCILIATION_WORK_PAPER", r2, sha(b2))
         row(t1, "E1", "RENDITION", "rendition/$t1/x", "c".repeat(64))
-        row(t2, "E9", "RECONCILIATION_WORK_PAPER", rT2, sha(paper("P3")), "P3")
+        row(t2, "E9", "RECONCILIATION_WORK_PAPER", rT2, sha(paper("P3")))
         return store
     }
 

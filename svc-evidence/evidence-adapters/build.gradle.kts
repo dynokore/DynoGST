@@ -34,6 +34,7 @@ dependencies {
     implementation(libs.platform.evidenceStore.impl)
     implementation(libs.platform.outboxAndQueue.impl)
     implementation(libs.platform.auditLog.impl)
+    implementation(libs.platform.crypto.api)
     implementation(libs.platform.configResolver.impl)
     implementation(libs.gstCatalogue)
     implementation(libs.platform.serviceRuntime.impl)
