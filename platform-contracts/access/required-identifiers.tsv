@@ -191,3 +191,4 @@ bumpAuthorityIncarnation	operation	openapi.yaml	INV-REQ-1201
 AuthorityIncarnationResponse.incarnation	schema_property	openapi.yaml	INV-REQ-1201
 AuthorityIncarnationResponse.previousIncarnation	schema_property	openapi.yaml	INV-REQ-1201
 templateParameters	property	schemas/message-requested-payload.schema.json	INV-REQ-639
+fallbackRecipient	root_property	schemas/message-requested-payload.schema.json	INV-REQ-2762

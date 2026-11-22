@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: notification API
-  version: 1.18.0
+  version: 1.19.0
   description: >-
     Contract-first source of truth for notification (API-01, STK-44). The
     `notification-contract` module generates its server interfaces and DTOs
@@ -1638,7 +1638,8 @@ components:
         The service sends `templateVersion` and `recipient` always,
         `bouncedAt` only in the state BOUNCED and `failureReason` only in the
         states BOUNCED and FAILED. A FAILED delivery is a failed hand-over to
-        the channel and no bounce.
+        the channel and no bounce. The service sends `substitution` only on an
+        SMS delivery whose passcode went by a second e-mail instead.
       properties:
         messageId:
           type: string
@@ -1677,7 +1678,25 @@ components:
           type: string
           maxLength: 200
           description: Never invoice content.
+        substitution:
+          $ref: '#/components/schemas/MessageSubstitution'
       required: [messageId, entityRef, channel, template, state]
+    MessageSubstitution:
+      type: object
+      description: >-
+        The substitution recorded on the delivery of an SMS that was reported
+        undeliverable (FR-AG.70, INV-REQ-2762).
+      properties:
+        channel:
+          type: string
+          enum: [EMAIL]
+          x-extensible-enum: true
+          description: The channel the message went by instead.
+        originalRecipient:
+          type: string
+          maxLength: 100
+          description: The recipient reference of the SMS delivery, never an address or number.
+      required: [channel, originalRecipient]
     MessageDeliveryPage:
       type: object
       properties:

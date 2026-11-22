@@ -89,3 +89,6 @@ PACK_NOT_ACTIVATED	enum_value	openapi.yaml	INV-REQ-1080
 Alert.trigger.PACK_NOT_ACTIVATED	schema_enum_value	openapi.yaml	INV-REQ-1080
 RESOLVED	enum_value	openapi.yaml	INV-REQ-1080
 Alert.state.RESOLVED	schema_enum_value	openapi.yaml	INV-REQ-1080
+MessageDelivery.substitution	schema_property	openapi.yaml	INV-REQ-2762
+MessageSubstitution.channel	schema_property	openapi.yaml	INV-REQ-2762
+MessageSubstitution.originalRecipient	schema_property	openapi.yaml	INV-REQ-2762

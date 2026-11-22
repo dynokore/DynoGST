@@ -11,3 +11,4 @@ openapi.yaml	/paths/~1internal~1v1~1access~1authorise/get/x-error-codes	equals	[
 openapi.yaml	/paths/~1internal~1v1~1access~1authorise/get/responses/503/$ref	equals	"#/components/responses/Error"	INV-REQ-1199
 openapi.yaml	/paths/~1internal~1v1~1access~1break-glass~1{unlockRef}~1reseal/post/x-operation/role	equals	"deployment.operator, tenant.admin, plus tax.approver"	INV-REQ-897
 openapi.yaml	/paths/~1internal~1v1~1access~1break-glass~1{unlockRef}~1reseal/post/x-operation/precondition	equals	"An unlock of the bound tenant exists; a session past its expiresAt that was not resealed may be resealed"	INV-REQ-897
+schemas/message-requested-payload.schema.json	/required	equals	["template","recipients","channel"]	INV-REQ-2762

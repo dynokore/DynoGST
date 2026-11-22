@@ -41,6 +41,12 @@
         "type": "string",
         "description": "One display value, as text."
       }
+    },
+    "fallbackRecipient": {
+      "type": "string",
+      "description": "Present only on an SMS message that carries sealedPasscode (FR-AG.70, INV-REQ-2762): the e-mail address the link message went to, which notification-svc uses for the second e-mail where the SMS is reported undeliverable. Not covered by the seal: the OAEP label stays the one recipient address. Absent under VP-75 SMS only. Never present on a message with linkReference.",
+      "minLength": 3,
+      "maxLength": 254
     }
   },
   "required": [
