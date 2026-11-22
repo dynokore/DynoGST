@@ -82,7 +82,9 @@ class SubmissionTypeFixtureScanTest {
 
     @Test
     fun `scan fails a jOOQ insert with no execute even when the type is named later in the file`() {
-        val text = "private val s = Submission.SUBMISSION_\ndsl.insertInto(s)\n.set(s.STATE, \"X\")\nval t = s.SUBMISSION_TYPE\n"
+        val text =
+            "private val s = Submission.SUBMISSION_\ndsl.insertInto(s)\n.set(s.STATE, \"X\")\n" +
+                "val t = s.SUBMISSION_TYPE\n"
         assertEquals(1, scan("F.kt", text).size)
     }
 
