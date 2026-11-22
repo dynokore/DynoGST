@@ -83,6 +83,8 @@ class UnreviewedActivationReadinessTest {
                 recorder,
                 clock,
                 lookup,
+                RecordingMemory(false),
+                RecordingSignals(),
             )
         return useCase.run("E", "P", "U").shouldBeInstanceOf<ReadinessRunResult.Determined>()
     }

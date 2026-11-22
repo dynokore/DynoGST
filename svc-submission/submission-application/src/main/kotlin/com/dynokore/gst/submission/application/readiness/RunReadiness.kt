@@ -56,6 +56,8 @@ class RunReadiness(
     private val recorder: ReadinessCheckRecorder,
     private val clock: Clock,
     private val unreviewed: UnreviewedActivationLookup? = null,
+    private val memory: ReadinessSignalMemory,
+    private val signals: ReadinessSignals,
 ) {
     fun run(
         entityRef: String,
@@ -81,15 +83,45 @@ class RunReadiness(
                 is PeriodVerdict.NotReady -> CheckVerdict.NOT_READY
                 PeriodVerdict.UnableToDetermine -> null
             }
-        return if (checkVerdict == null) {
-            ReadinessRunResult.Undetermined
-        } else {
-            ReadinessRunResult.Determined(
-                verdict,
-                counted,
-                recorder.append(entityRef, periodRef, checkVerdict, clock.instant(), approver, heldOutcome(counted)),
-                unreviewed?.forPeriod(entityRef, periodRef).orEmpty(),
+        if (checkVerdict == null || register == null) return ReadinessRunResult.Undetermined
+        val check = recorder.append(entityRef, periodRef, checkVerdict, clock.instant(), approver, heldOutcome(counted))
+        stageWhenChanged(entityRef, periodRef, check, checkVerdict, counted, register, input.obligationStartDate)
+        return ReadinessRunResult.Determined(
+            verdict,
+            counted,
+            check,
+            unreviewed?.forPeriod(entityRef, periodRef).orEmpty(),
+        )
+    }
+
+    /**
+     * Records the snapshot of a determined run and stages one `ReadinessChanged` when the verdict or the counts differ
+     * from the last signalled ones (INV-REQ-570), in the caller's open tenant transaction.
+     */
+    @Suppress("LongParameterList")
+    private fun stageWhenChanged(
+        entityRef: String,
+        periodRef: String,
+        check: StoredReadinessCheck,
+        checkVerdict: CheckVerdict,
+        counted: ReadinessResult,
+        register: List<ReadinessEntry>,
+        obligationStartDate: LocalDate?,
+    ) {
+        val counts =
+            when (counted) {
+                is ReadinessResult.Ready -> counted.counts
+                is ReadinessResult.Blocked -> counted.counts
+                ReadinessResult.UnableToDetermine -> error("a determined run has counts")
+            }
+        val snapshot =
+            ReadinessSnapshot(
+                checkVerdict,
+                counts.unsubmitted,
+                ReadinessCounter.countsByState(register, obligationStartDate),
             )
+        if (memory.record(entityRef, periodRef, snapshot)) {
+            signals.stage(ReadinessChangedFacts(entityRef, periodRef, snapshot, check.checkId))
         }
     }
 

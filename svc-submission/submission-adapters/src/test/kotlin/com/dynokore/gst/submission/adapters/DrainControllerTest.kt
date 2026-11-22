@@ -23,6 +23,8 @@ import com.dynokore.gst.submission.application.readiness.GetLatestReadinessCheck
 import com.dynokore.gst.submission.application.readiness.ReadinessCheckReader
 import com.dynokore.gst.submission.application.readiness.ReadinessCheckRecorder
 import com.dynokore.gst.submission.application.readiness.ReadinessInputs
+import com.dynokore.gst.submission.application.readiness.ReadinessSignalMemory
+import com.dynokore.gst.submission.application.readiness.ReadinessSnapshot
 import com.dynokore.gst.submission.application.readiness.RunReadiness
 import com.dynokore.gst.submission.application.readiness.StoredReadinessCheck
 import com.dynokore.gst.submission.application.register.PeriodDueDates
@@ -230,6 +232,15 @@ internal class DrainFixture(
             { _, _ -> ReadinessInputs(LocalDate.parse("2026-10-15"), CompletenessState.Passed) },
             recorder,
             clock,
+            memory =
+                object : ReadinessSignalMemory {
+                    override fun record(
+                        entityRef: String,
+                        periodRef: String,
+                        snapshot: ReadinessSnapshot,
+                    ) = false
+                },
+            signals = { },
         )
 
     fun preview() = PreviewDrain(authority, selection, factsStore)

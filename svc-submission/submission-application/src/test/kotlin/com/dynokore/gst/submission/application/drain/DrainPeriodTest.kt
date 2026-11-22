@@ -3,6 +3,8 @@ package com.dynokore.gst.submission.application.drain
 import com.dynokore.gst.submission.application.pack.PackMargin
 import com.dynokore.gst.submission.application.queue.DespatchedVersion
 import com.dynokore.gst.submission.application.readiness.ReadinessCheckRecorder
+import com.dynokore.gst.submission.application.readiness.RecordingMemory
+import com.dynokore.gst.submission.application.readiness.RecordingSignals
 import com.dynokore.gst.submission.application.readiness.ReadinessInputs
 import com.dynokore.gst.submission.application.readiness.RunReadiness
 import com.dynokore.gst.submission.application.readiness.StoredReadinessCheck
@@ -419,6 +421,8 @@ internal class DrainWorld(
             { _, _ -> ReadinessInputs(date("2026-10-15"), CompletenessState.Passed) },
             recorder,
             clock,
+            memory = RecordingMemory(false),
+            signals = RecordingSignals(),
         )
 
     private val factsPort =

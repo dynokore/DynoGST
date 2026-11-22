@@ -6,6 +6,8 @@ import com.dynokore.gst.submission.application.readiness.ReadinessCheckRecorder
 import com.dynokore.gst.submission.application.readiness.ReadinessEntrySource
 import com.dynokore.gst.submission.application.readiness.ReadinessInputs
 import com.dynokore.gst.submission.application.readiness.ReadinessRunResult
+import com.dynokore.gst.submission.application.readiness.ReadinessSignalMemory
+import com.dynokore.gst.submission.application.readiness.ReadinessSnapshot
 import com.dynokore.gst.submission.application.readiness.ReleasedOverrideChecks
 import com.dynokore.gst.submission.application.readiness.RunReadiness
 import com.dynokore.gst.submission.application.readiness.StoredReadinessCheck
@@ -287,7 +289,23 @@ class ReadinessEntrySourceDbTest {
                 )
             }
         val clock = Clock.fixed(Instant.parse("2026-11-12T08:00:00Z"), ZoneOffset.UTC)
-        val run = RunReadiness(source(), { _, _ -> ReadinessInputs(null, CompletenessState.Passed) }, recorder, clock)
+        val memory =
+            object : ReadinessSignalMemory {
+                override fun record(
+                    entityRef: String,
+                    periodRef: String,
+                    snapshot: ReadinessSnapshot,
+                ) = false
+            }
+        val run =
+            RunReadiness(
+                source(),
+                { _, _ -> ReadinessInputs(null, CompletenessState.Passed) },
+                recorder,
+                clock,
+                memory = memory,
+                signals = { },
+            )
         bound.set(tenant)
         val result =
             try {

@@ -65,6 +65,8 @@ class RunReadinessTest {
         { _, _ -> ReadinessInputs(day, completeness) },
         recorder,
         clock,
+        memory = RecordingMemory(false),
+        signals = RecordingSignals(),
     )
 
     @Test

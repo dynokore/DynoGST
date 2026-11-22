@@ -4,6 +4,7 @@ import com.dynokore.gst.submission.adapters.persistence.JooqDrainBacklog
 import com.dynokore.gst.submission.adapters.persistence.JooqDrainResidualSource
 import com.dynokore.gst.submission.adapters.persistence.JooqReadinessCheckStore
 import com.dynokore.gst.submission.adapters.persistence.JooqReadinessEntrySource
+import com.dynokore.gst.submission.adapters.persistence.JooqReadinessSignalMemory
 import com.dynokore.gst.submission.adapters.persistence.JooqRegisterListFactsStore
 import com.dynokore.gst.submission.adapters.policy.PolicySafetyMargins
 import com.dynokore.gst.submission.application.drain.DrainAuthority
@@ -23,13 +24,17 @@ import com.dynokore.gst.submission.application.queue.SubmissionWorker
 import com.dynokore.gst.submission.application.queue.TransportClient
 import com.dynokore.gst.submission.application.readiness.HoldingChecks
 import com.dynokore.gst.submission.application.readiness.ReadinessEntrySource
+import com.dynokore.gst.submission.application.readiness.OutboxReadinessSignals
 import com.dynokore.gst.submission.application.readiness.ReadinessInputSource
+import com.dynokore.gst.submission.application.readiness.ReadinessSignalMemory
+import com.dynokore.gst.submission.application.readiness.ReadinessSignals
 import com.dynokore.gst.submission.application.readiness.ReleasedOverrideChecks
 import com.dynokore.gst.submission.application.readiness.RunReadiness
 import com.dynokore.gst.submission.application.register.PeriodDueDates
 import com.dynokore.gst.submission.application.register.RegisterListFactsStore
 import com.dynokore.platform.configresolver.PolicyReader
 import com.dynokore.platform.outboxandqueue.DrainOrderAssigner
+import com.dynokore.platform.outboxandqueue.OutboxWriter
 import com.dynokore.platform.outboxandqueue.PendingPartitionReader
 import com.dynokore.platform.serviceruntime.replica.AuthorityReplica
 import com.dynokore.platform.tenancykernel.TenantContext
@@ -121,12 +126,35 @@ class DrainConfiguration {
     ): ReadinessEntrySource = JooqReadinessEntrySource(dsl, tenants, overrides, holding)
 
     @Bean
+    fun readinessSignalMemory(
+        dsl: DSLContext,
+        tenants: TenantContext,
+    ): ReadinessSignalMemory = JooqReadinessSignalMemory(dsl, tenants, Clock.systemUTC())
+
+    @Bean
+    fun readinessSignals(
+        outbox: OutboxWriter,
+        tenants: TenantContext,
+    ): ReadinessSignals = OutboxReadinessSignals(outbox, tenants)
+
+    @Bean
+    @Suppress("LongParameterList")
     fun runReadiness(
         entries: ReadinessEntrySource,
         inputs: ReadinessInputSource,
         dsl: DSLContext,
         tenants: TenantContext,
-    ): RunReadiness = RunReadiness(entries, inputs, JooqReadinessCheckStore(dsl, tenants), Clock.systemUTC())
+        memory: ReadinessSignalMemory,
+        signals: ReadinessSignals,
+    ): RunReadiness =
+        RunReadiness(
+            entries,
+            inputs,
+            JooqReadinessCheckStore(dsl, tenants),
+            Clock.systemUTC(),
+            memory = memory,
+            signals = signals,
+        )
 
     @Bean
     fun drainConfig(properties: DrainProperties): DrainConfig = DrainConfig(properties.batchSize)

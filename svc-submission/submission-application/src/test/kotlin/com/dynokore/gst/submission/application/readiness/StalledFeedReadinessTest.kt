@@ -105,6 +105,8 @@ class StalledFeedReadinessTest {
             { entity, period -> source.inputs(entity, period) },
             recorder,
             Clock.fixed(now, ZoneOffset.UTC),
+            memory = RecordingMemory(false),
+            signals = RecordingSignals(),
         ).run("E", "P", "U")
     }
 
