@@ -917,11 +917,7 @@ class OperatingProfileApplyKeyTest {
                     .cells(form)
                     .filter { (_, perms) -> perms[key] != null }
                     .mapValues { (_, perms) -> perms.getValue(key) }
-            val expected =
-                mapOf(
-                    "tenant.admin" to RoleAllowance.PERMITTED,
-                    "entity.admin" to RoleAllowance.WITHIN_SCOPE,
-                )
+            val expected = mapOf("tenant.admin" to RoleAllowance.PERMITTED, "entity.admin" to RoleAllowance.WITHIN_SCOPE)
             assertEquals(expected, held, "$key $form")
             assertEquals(held, OperationRoles.rolesFor(form, key), "$key $form")
         }
