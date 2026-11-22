@@ -109,6 +109,17 @@ fun interface PackActionAuthority {
         entityRef: String,
         permission: String,
     ): Boolean
+
+    /**
+     * Whether the actor holds the permission as a TENANT-scope grant, with no entity (INV-Q-11688 A). The default
+     * refuses, so a grant of [holds] never becomes a tenant grant; production decides it with the replica's tenant
+     * decision.
+     */
+    fun holdsTenant(
+        actor: String,
+        tenant: TenantId,
+        permission: String,
+    ): Boolean = false
 }
 
 sealed interface PackApprovalDecision {
