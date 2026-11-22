@@ -4,7 +4,7 @@
 # new since the base commit, a line whose response now has a row or no longer exists, and a duplicate or malformed line.
 # Columns, tab separated: directory, operation_id, status, owner_task (the owning service's later pinning task, or unassigned).
 # A task that pins a listed response adds its row and deletes its line in the same merge request.
-# Sorted by directory, operation_id, status. Generated from origin/main 8fa007d9527d71232c5765124f132e2fc7e7f3b2.
+# Sorted by directory, operation_id, status. Generated from origin/main ac310f93e9fb144547b6bc6471f3a282d2bd6b46.
 directory	operation_id	status	owner_task
 access	acceptFirstAdministratorInvitation	200	unassigned
 access	acceptFirstAdministratorInvitation	400	unassigned
@@ -607,9 +607,6 @@ evidence	getPartitionDeletion	200	unassigned
 evidence	getPartitionDeletion	404	unassigned
 evidence	getPartitionDeletion	500	unassigned
 evidence	getPartitionDeletion	default	unassigned
-evidence	getTransmittedVersion	200	unassigned
-evidence	getTransmittedVersion	202	unassigned
-evidence	getTransmittedVersion	default	unassigned
 evidence	importPriorEvidence	200	unassigned
 evidence	importPriorEvidence	201	unassigned
 evidence	importPriorEvidence	400	unassigned
@@ -688,10 +685,6 @@ masterdata	confirmRegisterSuggestion	200	unassigned
 masterdata	confirmRegisterSuggestion	404	unassigned
 masterdata	confirmRegisterSuggestion	409	unassigned
 masterdata	confirmRegisterSuggestion	default	unassigned
-masterdata	correctCounterpartyData	200	unassigned
-masterdata	correctCounterpartyData	404	unassigned
-masterdata	correctCounterpartyData	422	unassigned
-masterdata	correctCounterpartyData	default	unassigned
 masterdata	createConnection	201	unassigned
 masterdata	createConnection	default	unassigned
 masterdata	dryRunCounterpartyImport	200	unassigned
@@ -997,24 +990,12 @@ submission	exportSubmissions	default	unassigned
 submission	getComplianceMetrics	200	unassigned
 submission	getComplianceMetrics	503	unassigned
 submission	getComplianceMetrics	default	unassigned
-submission	getExceptionAgeing	200	unassigned
-submission	getExceptionAgeing	400	unassigned
-submission	getExceptionAgeing	403	unassigned
-submission	getExceptionAgeing	404	unassigned
-submission	getExceptionAgeing	503	unassigned
-submission	getExceptionAgeing	default	unassigned
 submission	getFilingGateOverrides	200	unassigned
 submission	getFilingGateOverrides	404	unassigned
 submission	getFilingGateOverrides	default	unassigned
 submission	getLatestReadinessCheck	200	unassigned
 submission	getLatestReadinessCheck	404	unassigned
 submission	getLatestReadinessCheck	default	unassigned
-submission	getPackActivationHistory	200	unassigned
-submission	getPackActivationHistory	400	unassigned
-submission	getPackActivationHistory	403	unassigned
-submission	getPackActivationHistory	404	unassigned
-submission	getPackActivationHistory	503	unassigned
-submission	getPackActivationHistory	default	unassigned
 submission	getReadiness	200	unassigned
 submission	getReadiness	403	unassigned
 submission	getReadiness	503	unassigned
