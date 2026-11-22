@@ -870,3 +870,38 @@ class OperationalReportKeysTest {
         assertNull(RolePermissions.kind("Exception-ageing.view"))
     }
 }
+
+class RenditionEvidenceKeyTest {
+    private val both = listOf(DeploymentForm.SAAS, DeploymentForm.PRIVATE)
+    private val y = RoleAllowance.PERMITTED
+
+    @Test
+    fun `INV-AC-27598 rendition-evidence view is READ with the holders of the by-acknowledgement lookup`() {
+        val key = "rendition-evidence.view"
+        assertEquals(PermissionKind.READ, RolePermissions.kind(key))
+        both.forEach { form ->
+            val held =
+                RolePermissions
+                    .cells(form)
+                    .filter { (_, perms) ->
+                        perms[key] != null
+                    }.mapValues { (_, perms) -> perms.getValue(key) }
+            assertEquals(mapOf("auditor" to y, "tax.approver" to y, "tax.operator" to y), held, "$key $form")
+            assertEquals(held, OperationRoles.rolesFor(form, key), "$key $form")
+            val sibling =
+                RolePermissions
+                    .cells(form)
+                    .filter { (_, perms) -> perms["enquiry-lookup.by-acknowledgement"] == y }
+                    .keys
+            assertEquals(sibling, held.keys, form.name)
+        }
+        listOf(
+            "rendition-evidence.view ",
+            "Rendition-evidence.view",
+            "rendition-evidences.view",
+            "rendition-evidence.view.entity",
+        ).forEach {
+            assertNull(RolePermissions.kind(it), it)
+        }
+    }
+}
