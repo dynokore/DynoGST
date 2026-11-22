@@ -32,8 +32,8 @@ import com.networknt.schema.SchemaRegistryConfig
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldNotBeEmpty
-import io.kotest.matchers.shouldBe
 import io.kotest.matchers.nulls.shouldNotBeNull
+import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import org.jooq.DSLContext
 import org.junit.jupiter.api.Test
