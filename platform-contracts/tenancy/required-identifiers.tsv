@@ -248,3 +248,6 @@ listRenditionAttestations	operation	openapi.yaml	INV-REQ-1036
 getSubmissionScope	operation	openapi.yaml	INV-REQ-1086
 SubmissionScopeResponse.submissionActivatedOn	schema_property	openapi.yaml	INV-REQ-1086
 SubmissionScopeResponse.currentPeriod	schema_property	openapi.yaml	INV-REQ-1086
+# INV-T-26650 adds the filingDueInstant and safetyMarginSeconds rows (INV-REQ-1019): the optional filing due instant and safety margin members of the PeriodDueDateChanged payload schema.
+filingDueInstant	property	schemas/period-due-date-changed-payload.schema.json	INV-REQ-1019
+safetyMarginSeconds	property	schemas/period-due-date-changed-payload.schema.json	INV-REQ-1019
