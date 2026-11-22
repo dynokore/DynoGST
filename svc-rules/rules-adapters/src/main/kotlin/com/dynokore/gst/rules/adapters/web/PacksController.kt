@@ -514,19 +514,23 @@ open class PacksController(
         if (!permissions.mayDo(actor(), MAPPING_PACK_AUTHOR)) {
             throw closed(ClosedErrorCode.ACCESS_DENIED, "the diff is not permitted")
         }
-        val proposed =
-            mappingPackBundlePart.propertyEntries.map {
-                MappingBundleRule(
-                    it.internalTaxCode,
-                    it.description.orEmpty(),
-                    it.irasCode,
-                    it.rate.orEmpty(),
-                    it.sourceClass.value,
-                    it.citation,
-                )
-            }
         return transactions.inTransaction {
             val active = activeRules()
+            val activeByCode = active.groupBy { it.internalTaxCode }
+            // A member the part leaves out (absent or null) is not supplied and is never a change (RFC 7396 absence
+            // rule): it takes the active value before the use case compares; an empty string is a supplied value.
+            val proposed =
+                mappingPackBundlePart.propertyEntries.map {
+                    val held = activeByCode[it.internalTaxCode]?.singleOrNull()
+                    MappingBundleRule(
+                        it.internalTaxCode,
+                        it.description ?: held?.description.orEmpty(),
+                        it.irasCode,
+                        it.rate ?: held?.rate.orEmpty(),
+                        it.sourceClass.value,
+                        it.citation ?: held?.citation,
+                    )
+                }
             when (val result = bundleDiff.diff(proposed, active)) {
                 is MappingPackBundleDiffResult.Changes -> {
                     ResponseEntity.ok(MappingPackDiff(result.changes.map(::changeOf)))

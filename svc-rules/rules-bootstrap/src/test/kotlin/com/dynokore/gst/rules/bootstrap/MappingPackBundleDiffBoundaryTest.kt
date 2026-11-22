@@ -43,6 +43,9 @@ private const val DIFFS = "/internal/v1/rules/mapping-pack-diffs"
 private const val PACK_ENTITY = "E-1"
 private val DIFF_TENANT: TenantId = TenantId.of("0a000000-0000-0000-0000-000000026960")
 
+/** A tenant that holds no mapping pack at all, while [DIFF_TENANT] holds an active one. */
+private val BARE_TENANT: TenantId = TenantId.of("0a000000-0000-0000-0000-000000026961")
+
 /** The fixtures of the boundary test: the build properties of the mapping pack ports. */
 @TestConfiguration(proxyBeanMethods = false)
 @Import(MappingAllowingPorts::class)
@@ -79,9 +82,15 @@ class MappingPackBundleDiffBoundaryTest
             draftPack()
         }
 
-        private fun bearer(user: String) = "Bearer $user|$tenant|"
+        private fun bearer(
+            user: String,
+            of: TenantId = tenant,
+        ) = "Bearer $user|$of|"
 
-        private fun newUser(withKey: Boolean): String {
+        private fun newUser(
+            withKey: Boolean,
+            tenant: TenantId = this.tenant,
+        ): String {
             val user = "u-" + UUID.randomUUID().toString().take(8)
             if (withKey) {
                 val role = OperationRoles.rolesFor(DeploymentForm.SAAS, AUTHOR_KEY).keys.first()
@@ -197,7 +206,8 @@ class MappingPackBundleDiffBoundaryTest
         private fun diff(
             body: String,
             user: String,
-        ): HttpResponse<String> = call("POST", DIFFS, body, bearer(user))
+            of: TenantId = tenant,
+        ): HttpResponse<String> = call("POST", DIFFS, body, bearer(user, of))
 
         /** The active pack as stored: registry rows and entries of the tenant, as text. */
         private fun activeState() =
@@ -251,6 +261,46 @@ class MappingPackBundleDiffBoundaryTest
                 code(answer) shouldBe "SRT-001"
             }
             activeState() shouldBe before
+        }
+
+        @Test
+        fun `INV-AC-26951 an absent member is no change and an empty description is a change`() {
+            val bare =
+                """{"bundleId":"B-26951","entries":[{"internalTaxCode":"STD","irasCode":"SR",""" +
+                    """"sourceClass":"PRIMARY"},""" +
+                    """{"internalTaxCode":"ZER","irasCode":"ZR","sourceClass":"PRIMARY"}]}"""
+            val user = newUser(withKey = true)
+            val absent = diff(bare, user)
+            withClue(absent.body()) { absent.statusCode() shouldBe 200 }
+            json(absent) shouldBe mapper.readTree("""{"changes":[]}""")
+            val nullMembers =
+                """{"bundleId":"B-26951","entries":[{"internalTaxCode":"STD","description":null,"irasCode":"SR",""" +
+                    """"rate":null,"sourceClass":"PRIMARY","citation":null},""" +
+                    """{"internalTaxCode":"ZER","irasCode":"ZR","sourceClass":"PRIMARY"}]}"""
+            json(diff(nullMembers, user)) shouldBe mapper.readTree("""{"changes":[]}""")
+            val current = catalogueEntry("SR").group
+            val empty =
+                """{"bundleId":"B-26951","entries":[{"internalTaxCode":"STD","description":"","irasCode":"SR",""" +
+                    """"sourceClass":"PRIMARY"},""" +
+                    """{"internalTaxCode":"ZER","irasCode":"ZR","sourceClass":"PRIMARY"}]}"""
+            val answer = diff(empty, user)
+            withClue(answer.body()) { answer.statusCode() shouldBe 200 }
+            json(answer) shouldBe
+                mapper.readTree(
+                    """{"changes":[{"path":"rules/STD/description","change":"CHANGED",""" +
+                        """"current":"$current","proposed":""}]}""",
+                )
+        }
+
+        @Test
+        fun `INV-AC-26951 a tenant without an active pack gets every entry ADDED and nothing REMOVED`() {
+            val user = newUser(withKey = true, tenant = BARE_TENANT)
+            val answer = diff(part(rule("STD", "SR"), rule("ZER", "ZR")), user, BARE_TENANT)
+            withClue(answer.body()) { answer.statusCode() shouldBe 200 }
+            json(answer) shouldBe
+                mapper.readTree(
+                    """{"changes":[{"path":"rules/STD","change":"ADDED"},{"path":"rules/ZER","change":"ADDED"}]}""",
+                )
         }
 
         companion object {
