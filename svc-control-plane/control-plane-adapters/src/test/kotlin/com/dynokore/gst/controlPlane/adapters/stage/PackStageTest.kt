@@ -103,7 +103,7 @@ class PackStageTest {
     ) = PackStage(dsl, repository, hasher, pipeline, sandbox)
 
     private fun replayOf(vararg docs: String) =
-        PackPipeline { PeriodReplay("2026-09", docs.map { StagedSubmission(it, "payload $it") }) }
+        PackPipeline { PeriodReplay("2026-09", docs.map { doc -> StagedSubmission(doc, "payload $doc") }) }
 
     @Test
     fun `INV-AC-26354 the stage records PASSED over the hash of the content it staged when every submission is accepted`() {
