@@ -93,21 +93,30 @@ class AccessAlertAdaptersDbTest {
         }
     }
 
-    @Test
-    fun `INV-AC-27270 tenant T2 cannot read or insert a row of T1`() {
-        val e = entity()
+    /** Commits one T1 alert as the table owner so that other bindings can be tried against it. */
+    private fun seedCommitted(entity: String) =
         NotificationDb.superuser().use { su ->
             su.autoCommit = false
             SignedBindings.bind(su, a)
-            try {
-                JooqAccessAlerts(DSL.using(su, SQLDialect.POSTGRES)).raise(draft(a, e)) shouldBe true
-                // same transaction, runtime role cannot see it, so verify through a second table of T1 with the
-                // superuser and then through the T2 binding after a commit of the seed
-                su.commit()
-            } finally {
-                if (!su.isClosed) su.rollback()
+            JooqAccessAlerts(DSL.using(su, SQLDialect.POSTGRES)).raise(draft(a, entity)) shouldBe true
+            su.commit()
+        }
+
+    private fun purge(entity: String) =
+        NotificationDb.superuser().use {
+            it.createStatement().use { s ->
+                s.execute(
+                    "delete from notification.alert_recipient where alert_id in " +
+                        "(select alert_id from notification.alert where entity_ref = '$entity')",
+                )
+                s.execute("delete from notification.alert where entity_ref = '$entity'")
             }
         }
+
+    @Test
+    fun `INV-AC-27270 tenant T2 cannot read or insert a row of T1`() {
+        val e = entity()
+        seedCommitted(e)
         try {
             bound(b) { c, _ ->
                 alertRows(c, e) shouldBe emptyList<String>()
@@ -119,10 +128,6 @@ class AccessAlertAdaptersDbTest {
                     c.createStatement().use {
                         it.execute(
                             "insert into notification.alert_recipient (tenant_id, alert_id, user_id) " +
-                                "select tenant_id, alert_id, 'intruder' from notification.alert",
-                        )
-                        it.execute(
-                            "insert into notification.alert_recipient (tenant_id, alert_id, user_id) " +
                                 "values ('$a', gen_random_uuid(), 'intruder')",
                         )
                     }
@@ -130,15 +135,7 @@ class AccessAlertAdaptersDbTest {
             }
             bound(a) { c, _ -> recipientRows(c, e) shouldBe listOf("u1", "u2") }
         } finally {
-            NotificationDb.superuser().use {
-                it.createStatement().use { s ->
-                    s.execute(
-                        "delete from notification.alert_recipient where alert_id in " +
-                            "(select alert_id from notification.alert where entity_ref = '$e')",
-                    )
-                    s.execute("delete from notification.alert where entity_ref = '$e'")
-                }
-            }
+            purge(e)
         }
     }
 
