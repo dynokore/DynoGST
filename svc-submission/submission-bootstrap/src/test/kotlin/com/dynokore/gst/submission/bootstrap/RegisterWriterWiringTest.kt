@@ -105,6 +105,7 @@ class RegisterWriterWiringTest {
                 dueDateType to dueDateTopic,
                 SubmissionEvents.PERIOD_RECORDS_CHANGED_TYPE to SubmissionEvents.PERIOD_RECORDS_CHANGED_TOPIC,
                 SubmissionEvents.ENTITY_PROFILE_CHANGED_TYPE to SubmissionEvents.ENTITY_PROFILE_CHANGED_TOPIC,
+                SubmissionEvents.IDENTITY_TRIPLE_CORRECTED_TYPE to SubmissionEvents.IDENTITY_TRIPLE_CORRECTED_TOPIC,
                 SubmissionEvents.ORGANISATION_STRUCTURE_CHANGED_TYPE to
                     SubmissionEvents.ORGANISATION_STRUCTURE_CHANGED_TOPIC,
                 SubmissionEvents.FEED_HEALTH_CHANGED_TYPE to SubmissionEvents.FEED_HEALTH_CHANGED_TOPIC,
@@ -147,6 +148,7 @@ class RegisterWriterWiringTest {
                 "periodDueDateChangedConsumer",
                 "periodRecordsChangedConsumer",
                 "entityProfileChangedInboxConsumer",
+                "identityTripleCorrectedConsumer",
                 "organisationStructureChangedConsumer",
                 "entityNodeProfileChangedConsumer",
                 "feedHealthChangedConsumer",

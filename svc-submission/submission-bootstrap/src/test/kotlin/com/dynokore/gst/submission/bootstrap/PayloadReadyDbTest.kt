@@ -374,6 +374,7 @@ class PayloadReadyDbTest {
                 "periodDueDateChangedConsumer",
                 "periodRecordsChangedConsumer",
                 "entityProfileChangedInboxConsumer",
+                "identityTripleCorrectedConsumer",
                 "organisationStructureChangedConsumer",
                 "entityNodeProfileChangedConsumer",
                 "feedHealthChangedConsumer",

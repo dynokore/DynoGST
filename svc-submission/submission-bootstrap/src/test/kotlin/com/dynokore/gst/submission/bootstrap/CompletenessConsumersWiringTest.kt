@@ -96,6 +96,7 @@ class CompletenessConsumersWiringTest {
                 "com.dynokore.gst.tenancy.PeriodDueDateChanged.v1" to "gst.tenancy.period-due-date-changed.v1",
                 SubmissionEvents.PERIOD_RECORDS_CHANGED_TYPE to "gst.tenancy.period-records-changed.v1",
                 SubmissionEvents.ENTITY_PROFILE_CHANGED_TYPE to SubmissionEvents.ENTITY_PROFILE_CHANGED_TOPIC,
+                SubmissionEvents.IDENTITY_TRIPLE_CORRECTED_TYPE to SubmissionEvents.IDENTITY_TRIPLE_CORRECTED_TOPIC,
                 SubmissionEvents.ORGANISATION_STRUCTURE_CHANGED_TYPE to
                     SubmissionEvents.ORGANISATION_STRUCTURE_CHANGED_TOPIC,
                 feedType to feedTopic,

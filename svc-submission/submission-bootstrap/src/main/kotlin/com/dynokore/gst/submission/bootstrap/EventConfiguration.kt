@@ -78,6 +78,9 @@ object SubmissionEvents {
     const val ENTITY_PROFILE_CHANGED_TOPIC = "gst.tenancy.entity-profile-changed.v1"
     const val ENTITY_PROFILE_CHANGED_TYPE = "com.dynokore.gst.tenancy.EntityProfileChanged.v1"
 
+    const val IDENTITY_TRIPLE_CORRECTED_TOPIC = "gst.masterdata.identity-triple-corrected.v1"
+    const val IDENTITY_TRIPLE_CORRECTED_TYPE = "com.dynokore.gst.masterdata.IdentityTripleCorrected.v1"
+
     const val ORGANISATION_STRUCTURE_CHANGED_TOPIC = "gst.tenancy.organisation-structure-changed.v1"
     const val ORGANISATION_STRUCTURE_CHANGED_TYPE = "com.dynokore.gst.tenancy.OrganisationStructureChanged.v1"
 
@@ -120,7 +123,8 @@ object SubmissionEvents {
      * `AccessPointRouteChanged` (producer transport-svc, no content topic, INV-AC-23662, the connection replica),
      * `AcknowledgementReceived` (producer transport-svc, no content topic, INV-AC-24271, the acknowledgement writer),
      * `FeedHealthChanged` (producer ingestion-svc) and `AggregateWindowChanged` (producer aggregation-svc), no
-     * content topic, the last two feeding the completeness rows (INV-REQ-792); submission-svc
+     * content topic, the last two feeding the completeness rows (INV-REQ-792), and `IdentityTripleCorrected`
+     * (producer masterdata-svc, no content topic, INV-REQ-1006, the stored corrections); submission-svc
      * is only their subscriber.
      */
     val consumed: List<CatalogueEntry> =
@@ -164,6 +168,13 @@ object SubmissionEvents {
                 ENTITY_PROFILE_CHANGED_TYPE,
                 ENTITY_PROFILE_CHANGED_TOPIC,
                 setOf("tenancy-svc"),
+                contentTopic = false,
+                retainedWhileResolvable = false,
+            ),
+            CatalogueEntry(
+                IDENTITY_TRIPLE_CORRECTED_TYPE,
+                IDENTITY_TRIPLE_CORRECTED_TOPIC,
+                setOf("masterdata-svc"),
                 contentTopic = false,
                 retainedWhileResolvable = false,
             ),
