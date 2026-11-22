@@ -58,6 +58,7 @@ class OutboxCanonicalVersionCreatedPublisher(
                 },
             )
             append(",\"traceReference\":").append(json(facts.traceReference))
+            append(",\"entityRef\":").append(json(facts.entityRef))
             append(",\"canonicalDocument\":").append(facts.canonicalDocument)
             facts.aggregateId?.let { append(",\"aggregateId\":").append(json(it)) }
             append(",\"routingFacts\":").append(routing(facts.routingFacts))

@@ -32,6 +32,7 @@ import com.networknt.schema.SchemaRegistryConfig
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldNotBeEmpty
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import org.jooq.DSLContext
@@ -121,9 +122,10 @@ class CanonicalVersionCreatedOutboxDbTest {
         version: Int,
         aggregateId: String?,
         routing: RoutingFactsData = RoutingFactsData(RoutingDirection.SALE, RoutingNetworkPath.ISSUED_VIA_NETWORK),
+        entityRef: String = "E-001",
     ) = CanonicalVersionCreatedFacts(
         docUuid = doc,
-        entityRef = "E-001",
+        entityRef = entityRef,
         version = version,
         transactionDate = LocalDate.of(2026, 3, 20),
         prescribedPeriodRef = "2026-Q1",
@@ -396,6 +398,45 @@ class CanonicalVersionCreatedOutboxDbTest {
         rowsOf(tenant, f).size shouldBe 0
         read(tenant, "select count(*) from canonical.document where doc_uuid = ?::uuid", f.toString()) shouldBe
             listOf(listOf("0"))
+    }
+
+    @Test
+    fun `INV-AC-26806 every row carries entityRef of its own document and validates against the schema of the pin`(
+        @TempDir dir: Path,
+    ) = run(dir) { b ->
+        val tenant = UUID.randomUUID()
+        val other = UUID.randomUUID()
+        val d1 = UUID.randomUUID()
+        val d2 = UUID.randomUUID()
+        mapper
+            .readTree(schemaText())
+            .get("properties")
+            .get("entityRef")
+            .shouldNotBeNull()
+        b.scope.bind(TenantId(tenant), actor) {
+            b.runner.inTransaction {
+                b.writer.createFirst(newDocument(tenant, d1), facts(d1, 1, null, entityRef = "E1"))
+                b.writer.createFirst(newDocument(tenant, d2), facts(d2, 1, null, entityRef = "E2"))
+            }
+        }
+        b.scope.bind(TenantId(tenant), actor) {
+            b.runner.inTransaction { b.writer.next(d1, 1, newVersion(), facts(d1, 2, null, entityRef = "E1")) }
+        }
+        val rows = rowsOf(tenant, d1) + rowsOf(tenant, d2)
+        rows.size shouldBe 3
+        rows.map { members(it[1]!!)["entityRef"] } shouldBe listOf("\"E1\"", "\"E1\"", "\"E2\"")
+        rows.forEach { schemaErrors(it[1]!!).shouldBeEmpty() }
+        rowsOf(other, d1).size shouldBe 0
+        rowsOf(other, d2).size shouldBe 0
+        val blank = UUID.randomUUID()
+        shouldThrow<IllegalArgumentException> {
+            b.scope.bind(TenantId(tenant), actor) {
+                b.runner.inTransaction {
+                    b.writer.createFirst(newDocument(tenant, blank), facts(blank, 1, null, entityRef = " "))
+                }
+            }
+        }
+        rowsOf(tenant, blank).size shouldBe 0
     }
 
     private companion object {
