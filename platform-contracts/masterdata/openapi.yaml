@@ -558,6 +558,7 @@ paths:
         precondition: "console-bff has verified that the privacy case named by `caseId` is OPEN; masterdata-svc records `caseId` and does not call evidence-svc."
         reversibility: COMPENSABLE
         repeatKey: "(counterpartyRef, Idempotency-Key) — a repeat with the same body returns the version first appended, unchanged; a further correction is a further version."
+        compensationCost: "Compensated by a further correctCounterpartyData call that appends one more version carrying the earlier value (INV-NOTE-7 row correctPersonalData); every earlier version stays readable through getCounterpartyHistory and the evidence annotation that console-bff appended stays in the chain, so both corrections remain in the history and the audit trail."
       parameters:
         - name: counterpartyRef
           in: path
