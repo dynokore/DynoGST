@@ -134,19 +134,20 @@ class FixedClockRetentionTest {
         val dirB =
             java.nio.file.Files
                 .createDirectories(dir.resolve("b"))
-        // Both contexts are open at once (random ports), so a static clock or a shared constant would show in b.
+        // The management port is fixed (application.yaml): two contexts cannot be open at once, so b starts
+        // after a was advanced and closed, which proves no state leaks through a static field or the constant.
         val start = Instant.parse("2026-03-10T20:00:00Z")
         RetentionService.start(dirA).use { a ->
-            RetentionService.start(dirB).use { b ->
-                a.grants.stale()
-                val lagBound = a.bean(AuthorityReplica::class.java).lagBound
-                a.bean(Clock::class.java).instant() shouldBe
-                    RetentionService.FIXED_CLOCK
-                        .instant()
-                        .plus(lagBound)
-                        .plusMillis(ReplicaGrants.MARGIN_MS)
-                b.bean(Clock::class.java).instant() shouldBe RetentionService.FIXED_CLOCK.instant()
-            }
+            a.grants.stale()
+            val lagBound = a.bean(AuthorityReplica::class.java).lagBound
+            a.bean(Clock::class.java).instant() shouldBe
+                RetentionService.FIXED_CLOCK
+                    .instant()
+                    .plus(lagBound)
+                    .plusMillis(ReplicaGrants.MARGIN_MS)
+        }
+        RetentionService.start(dirB).use { b ->
+            b.bean(Clock::class.java).instant() shouldBe RetentionService.FIXED_CLOCK.instant()
         }
         RetentionService.FIXED_CLOCK.instant() shouldBe start
     }
