@@ -41,6 +41,22 @@
       "type": "string",
       "format": "date-time",
       "description": "When the export was requested."
+    },
+    "retentionCustodyHolder": {
+      "type": "object",
+      "description": "The retention custody holder, copied from the offboarding record; it holds contact data of the custody holder.",
+      "properties": {
+        "name": {"type": "string", "minLength": 1, "maxLength": 200},
+        "contactEmail": {"type": "string", "minLength": 1, "maxLength": 254},
+        "contactMobile": {"type": "string"}
+      },
+      "required": ["name", "contactEmail"],
+      "additionalProperties": true
+    },
+    "noticeWindowDays": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Only lengthens the installation notice window; it never shortens it."
     }
   },
   "required": [
