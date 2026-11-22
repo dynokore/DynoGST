@@ -2,6 +2,7 @@ package com.dynokore.gst.consoleBff.adapters.profile
 
 import com.dynokore.gst.consoleBff.application.profile.OPERATING_PROFILE_APPLY
 import com.dynokore.gst.consoleBff.application.profile.ProfileScope
+import com.dynokore.platform.configresolver.ScopeLevel
 import com.dynokore.platform.serviceruntime.replica.AuthorityReplica
 import com.dynokore.platform.serviceruntime.replica.AuthorityVerdict
 import com.dynokore.platform.serviceruntime.replica.AuthorizationRequest
@@ -9,7 +10,6 @@ import com.dynokore.platform.serviceruntime.replica.FallbackResult
 import com.dynokore.platform.serviceruntime.replica.OperationRoleMap
 import com.dynokore.platform.serviceruntime.replica.PrincipalKind
 import com.dynokore.platform.serviceruntime.replica.ReplicaFallback
-import com.dynokore.platform.serviceruntime.replica.ScopeLevel
 import com.dynokore.platform.tenancykernel.TenantId
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
@@ -90,6 +90,13 @@ class ReplicaProfileAuthorityTest {
     fun `INV-AC-27577 a DEGRADED decision gives false`() {
         authority { FallbackResult.Unavailable }.holds(tenant, "u", "E1", ProfileScope.ENTITY) shouldBe false
         authority { FallbackResult.Unavailable }.holds(tenant, "u", "E1", ProfileScope.TENANT) shouldBe false
+    }
+
+    @Test
+    fun `INV-AC-27577 a null decision gives false`() {
+        val nullDecision = ReplicaProfileAuthority { null }
+        nullDecision.holds(tenant, "u", "E1", ProfileScope.ENTITY) shouldBe false
+        nullDecision.holds(tenant, "u", "E1", ProfileScope.TENANT) shouldBe false
     }
 
     @Test
