@@ -13,7 +13,7 @@ import java.time.Clock
 private const val HTTP_OK = 200
 private const val HTTP_NOT_FOUND = 404
 
-/** ClosedErrorCode.NOT_FOUND of service-runtime: what evidence-svc answers for an unknown case or one of another tenant. */
+/** ClosedErrorCode.NOT_FOUND of service-runtime: evidence-svc answers it for an unknown case or another tenant. */
 private const val NOT_FOUND_CODE = "SRT-005"
 
 /**
