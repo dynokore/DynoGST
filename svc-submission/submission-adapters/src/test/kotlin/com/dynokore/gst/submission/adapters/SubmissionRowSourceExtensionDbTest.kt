@@ -190,7 +190,8 @@ class SubmissionRowSourceExtensionDbTest {
 
     @Test
     fun `INV-AC-20729 a document of another entity in the same period name is not affected`() {
-        // doc_uuid is the register primary key, so the same Doc UUID cannot exist in two entities (reported as a gap).
+        // doc_uuid is the register primary key, so the same Doc UUID cannot be stored in two entities;
+        // a different document is the reachable look-alike.
         val f = fixture()
         seedDoc(f.a, "d5-${f.s}", f.other, f.p, LocalDate.of(2026, 3, 10))
         read(f.a, f.other, f.p) shouldBe mapOf("d5-${f.s}" to Dates(register, null, null))
