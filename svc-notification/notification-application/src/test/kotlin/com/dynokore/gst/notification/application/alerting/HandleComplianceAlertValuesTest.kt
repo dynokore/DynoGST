@@ -52,7 +52,7 @@ class HandleComplianceAlertValuesTest {
         )
 
     private fun payload(
-        days: Int? = 10,
+        days: Int? = 7,
         without: Int = 1,
     ): Map<String, Any?> =
         buildMap {
@@ -114,7 +114,9 @@ class HandleComplianceAlertValuesTest {
 
     @Test
     fun `INV-AC-12838 days 10, 3 and -2 raise the DEADLINE alert in tiers 1, 2 and 3`() {
-        deadlineTier(10) shouldBe (1 to TRIGGER_DUE_DATE_THRESHOLD)
+        deadlineTier(7) shouldBe (1 to TRIGGER_DUE_DATE_THRESHOLD)
+        raised.clear()
+        handler.handle("ev-10", tenant, payload(10)) shouldBe HandleComplianceAlertValuesResult.Raised(1)
         deadlineTier(3) shouldBe (2 to TRIGGER_DUE_DATE_THRESHOLD)
         deadlineTier(-2) shouldBe (3 to TRIGGER_PAST_DUE)
     }
@@ -134,7 +136,7 @@ class HandleComplianceAlertValuesTest {
     @Test
     fun `INV-AC-12838 an empty tier list raises tier 1`() {
         tiers = emptyList()
-        deadlineTier(3).first shouldBe 1
+        deadlineTier(-1) shouldBe (1 to TRIGGER_PAST_DUE)
     }
 
     @Test

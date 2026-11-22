@@ -55,6 +55,7 @@ sealed interface ComplianceAlertDecision {
 
 /**
  * Decides the coverage and deadline alerts from the measured values (INV-Q-12767 A, INV-REQ-1069, INV-REQ-1113).
+ * The DEADLINE draft is raised only when past due or at or below the first-tier threshold of the policy (INV-Q-25904).
  * Reads only its arguments and keeps no state. The thresholds are the entity's policy [PolicyTier]s, never constants.
  */
 object ComplianceAlert {
@@ -82,7 +83,11 @@ object ComplianceAlert {
                 entityRef = values.entityRef,
                 periodRef = values.periodRef,
             )
-        val days = values.daysToNearestDeadline ?: return ComplianceAlertDecision.Raise(listOf(coverage))
+        val days = values.daysToNearestDeadline
+        val threshold = tiers.firstOrNull { it.tier == FIRST_TIER }?.daysToDue
+        val pastDue = days != null && days < 0
+        val atThreshold = days != null && threshold != null && days <= threshold
+        if (days == null || !(pastDue || atThreshold)) return ComplianceAlertDecision.Raise(listOf(coverage))
         val tier =
             tiers
                 .sortedByDescending { it.tier }
@@ -91,7 +96,7 @@ object ComplianceAlert {
         val deadline =
             ComplianceAlertDraft(
                 alertClass = AlertClass.DEADLINE,
-                trigger = if (days < 0) TRIGGER_PAST_DUE else TRIGGER_DUE_DATE_THRESHOLD,
+                trigger = if (pastDue) TRIGGER_PAST_DUE else TRIGGER_DUE_DATE_THRESHOLD,
                 tier = tier,
                 entityRef = values.entityRef,
                 periodRef = values.periodRef,

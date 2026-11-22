@@ -34,7 +34,7 @@ class ComplianceAlertTest {
 
     @Test
     fun `INV-AC-12838 tier follows days to the nearest deadline`() {
-        ComplianceAlert.decide(values(days = 10), tiers) shouldBe Raise(listOf(coverage(), deadline(1)))
+        ComplianceAlert.decide(values(days = 10), tiers) shouldBe Raise(listOf(coverage()))
         ComplianceAlert.decide(values(days = 3), tiers) shouldBe Raise(listOf(coverage(), deadline(2)))
         ComplianceAlert.decide(values(days = 0), tiers) shouldBe Raise(listOf(coverage(), deadline(3)))
         ComplianceAlert.decide(values(days = -2), tiers) shouldBe
@@ -66,7 +66,9 @@ class ComplianceAlertTest {
 
     @Test
     fun `INV-AC-12838 an empty tier list gives tier 1`() {
-        ComplianceAlert.decide(values(days = 3), emptyList()) shouldBe Raise(listOf(coverage(), deadline(1)))
+        ComplianceAlert.decide(values(days = 3), emptyList()) shouldBe Raise(listOf(coverage()))
+        ComplianceAlert.decide(values(days = -1), emptyList()) shouldBe
+            Raise(listOf(coverage(), deadline(1, "PAST_DUE")))
     }
 
     @Test
