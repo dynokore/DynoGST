@@ -18,5 +18,6 @@ class BoundMessageChannels(
             beans.single()
         }
 
-    override fun forChannel(channel: DeliveryChannel): MessageDelivery? = byChannel[MessageChannel.valueOf(channel.name)]
+    override fun forChannel(channel: DeliveryChannel): MessageDelivery? =
+        byChannel[MessageChannel.valueOf(channel.name)]
 }

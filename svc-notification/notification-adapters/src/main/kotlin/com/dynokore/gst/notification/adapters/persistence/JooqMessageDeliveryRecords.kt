@@ -45,5 +45,4 @@ class JooqMessageDeliveryRecords(
             .where(MESSAGE_DELIVERY.MESSAGE_ID.eq(record.messageId))
             .execute()
     }
-
 }

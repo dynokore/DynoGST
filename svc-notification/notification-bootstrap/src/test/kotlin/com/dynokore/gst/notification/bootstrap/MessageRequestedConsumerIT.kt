@@ -4,8 +4,8 @@ import com.dynokore.gst.notification.adapters.delivery.BoundMessageChannels
 import com.dynokore.gst.notification.adapters.delivery.ClosedTemplateVersions
 import com.dynokore.gst.notification.adapters.events.MessageRequestedHandler
 import com.dynokore.gst.notification.adapters.persistence.JooqMessageDeliveryRecords
-import com.dynokore.gst.notification.adapters.persistence.jooq.tables.MessageDelivery.Companion.MESSAGE_DELIVERY
 import com.dynokore.gst.notification.adapters.persistence.jooq.tables.EventDeadLetter.Companion.EVENT_DEAD_LETTER
+import com.dynokore.gst.notification.adapters.persistence.jooq.tables.MessageDelivery.Companion.MESSAGE_DELIVERY
 import com.dynokore.platform.outboxandqueue.CausationId
 import com.dynokore.platform.outboxandqueue.ConsumerSubscription
 import com.dynokore.platform.outboxandqueue.CorrelationId
@@ -220,7 +220,9 @@ class MessageRequestedConsumerIT {
     }
 
     @Test
-    @DisplayName("INV-AC-26363 a wrong event type goes to the dead letter and leaves the table and the channel untouched")
+    @DisplayName(
+        "INV-AC-26363 a wrong event type goes to the dead letter and leaves the table and the channel untouched",
+    )
     fun wrongTypeDeadLetters(
         @TempDir dir: Path,
     ) = run(dir) { tenant ->
@@ -305,7 +307,12 @@ class MessageRequestedConsumerIT {
         log.add(envelope(tenant, eventId(), link))
         unbound.pollOnce().applied shouldBe 1
         tx(tenant) {
-            dsl.selectFrom(MESSAGE_DELIVERY).orderBy(MESSAGE_DELIVERY.POSITION).fetch().map { listOf(it.state, it.failureReason) }
+            dsl
+                .selectFrom(
+                    MESSAGE_DELIVERY,
+                ).orderBy(MESSAGE_DELIVERY.POSITION)
+                .fetch()
+                .map { listOf(it.state, it.failureReason) }
         } shouldBe List(2) { listOf("FAILED", "CHANNEL_NOT_BOUND") }
     }
 }

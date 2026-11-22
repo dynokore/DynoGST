@@ -45,9 +45,14 @@ class MessageRequestedHandler(
         val payload = parse(event.dataJson)
         val counting = Counting(records)
         try {
-            DeliverRequestedMessage(counting, channels, templates, clock).handle(event.tenant, event.entity.value, event.id.value, payload)
+            DeliverRequestedMessage(
+                counting,
+                channels,
+                templates,
+                clock,
+            ).handle(event.tenant, event.entity.value, event.id.value, payload)
         } catch (e: PayloadViolation) {
-            throw ContractViolation(e.message ?: "payload refused", null)
+            throw ContractViolation(e.message ?: "payload refused", e)
         }
         return if (counting.written > 0) HandleOutcome.APPLIED else HandleOutcome.IGNORED
     }
