@@ -44,7 +44,7 @@ class OperationsGateTest {
 
     @Test
     fun `the real table covers the real contract`() {
-        OperationsGate.contractOperations(openapi).size shouldBe 23
+        OperationsGate.contractOperations(openapi).size shouldBe 25
         OperationsGate.contractChannels(asyncapi).size shouldBe 5
         run(done = doneText).shouldBeEmpty()
         val assignedAndLive =
@@ -68,7 +68,7 @@ class OperationsGateTest {
         row.size shouldBe 1
         row.single().kind shouldBe "channel"
         row.single().task shouldBe "INV-T-22956" // assigned by INV-T-22956 (was UNASSIGNED at INV-T-22886)
-        OperationsGate.contractOperations(openapi).size shouldBe 23
+        OperationsGate.contractOperations(openapi).size shouldBe 25
         OperationsGate.contractChannels(asyncapi) shouldBe channelRows.map { it.id }.toSet()
         channelRows.size shouldBe 5
     }

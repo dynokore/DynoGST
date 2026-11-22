@@ -411,6 +411,60 @@ class PartitionDeletionHttpTest {
         sameResponse(other, unknown) shouldBe true
     }
 
+    /** Sets the fixture window (and, when [by] is given, its acknowledgement) on the notice row of [f]. */
+    private fun recordWindow(
+        f: Fixture,
+        by: String?,
+        sole: Boolean?,
+    ) {
+        sql(
+            "update evidence.retention_notice set window_days = ?, acknowledged_by = ?, " +
+                "acknowledged_sole_operator = ? where tenant_id = ? and partition_id = ?",
+            FIXTURE_WINDOW,
+            by,
+            sole,
+            f.tenant,
+            f.partitionId,
+        )
+    }
+
+    @Test
+    fun `INV-AC-26256 the status shows the notice window and the acknowledging user id`() {
+        val f = fixture()
+        recordWindow(f, ACKNOWLEDGER, false)
+        deleted(f)
+        val result = read(f).second.get("result")
+        result.get("noticeWindowDays").asInt() shouldBe FIXTURE_WINDOW
+        result.get("windowAcknowledgement").get("userId").asString() shouldBe ACKNOWLEDGER
+        result.get("windowAcknowledgement").get("soleOperator").asBoolean() shouldBe false
+    }
+
+    @Test
+    fun `INV-AC-26256 a notice without acknowledgement shows the window and no windowAcknowledgement key`() {
+        val f = fixture()
+        recordWindow(f, null, null)
+        deleted(f)
+        val result = read(f).second.get("result")
+        result.get("noticeWindowDays").asInt() shouldBe FIXTURE_WINDOW
+        result.has("windowAcknowledgement") shouldBe false
+    }
+
+    @Test
+    fun `INV-AC-26256 neither body contains a role name`() {
+        val acknowledged = fixture()
+        recordWindow(acknowledged, ACKNOWLEDGER, true)
+        deleted(acknowledged)
+        val plain = fixture()
+        recordWindow(plain, null, null)
+        deleted(plain)
+        listOf(acknowledged, plain).forEach { f ->
+            val body = read(f).first.body()
+            listOf(REQUEST_ROLE, "security.officer", "tax.approver").forEach { role ->
+                body.contains(role) shouldBe false
+            }
+        }
+    }
+
     @Test
     fun `INV-AC-22964 the starter id of the operation is the calling user id and no role name`() {
         val f = fixture()
@@ -696,6 +750,8 @@ class PartitionDeletionHttpTest {
         const val GUARD = "partition_deletion_operation_running_only"
         const val STARTER = "u-starter"
         const val OTHER = "u-other"
+        const val ACKNOWLEDGER = "u-acknowledger"
+        const val FIXTURE_WINDOW = 47
         const val REQUEST_ROLE = "platform.engineer"
         const val WAIT_SECONDS = 30L
         const val POLL_MILLIS = 50L

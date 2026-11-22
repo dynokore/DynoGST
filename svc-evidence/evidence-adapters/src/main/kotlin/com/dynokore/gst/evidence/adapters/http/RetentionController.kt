@@ -3,6 +3,7 @@ package com.dynokore.gst.evidence.adapters.http
 import com.dynokore.gst.catalogue.ErrorCode
 import com.dynokore.gst.evidence.adapters.persistence.DeletionOperation
 import com.dynokore.gst.evidence.adapters.persistence.JooqPartitionDeletionOperations
+import com.dynokore.gst.evidence.adapters.persistence.RecordedNotice
 import com.dynokore.gst.evidence.application.retention.DeleteAtRetentionEnd
 import com.dynokore.gst.evidence.application.retention.DeleteAtRetentionEndResult
 import com.dynokore.gst.evidence.application.retention.PartitionRegistry
@@ -13,6 +14,7 @@ import com.dynokore.gst.evidence.contract.model.DeletionStatus
 import com.dynokore.gst.evidence.contract.model.ErrorEnvelope
 import com.dynokore.gst.evidence.contract.model.MaxEvidenceRetention
 import com.dynokore.gst.evidence.contract.model.OperationState
+import com.dynokore.gst.evidence.contract.model.WindowAcknowledgement
 import com.dynokore.platform.outboxandqueue.TenantScope
 import com.dynokore.platform.serviceruntime.http.ClosedErrorCode
 import com.dynokore.platform.serviceruntime.http.Problems
@@ -213,9 +215,24 @@ open class RetentionController(
         val operation = inTenant(tenant) { operations.latest(tenant, partitionId) }
         val kept = operation?.let { (it.completedAt ?: it.startedAt).plus(visibility.period) }
         return when {
-            operation == null || kept == null || !clock.instant().isBefore(kept) -> refuse(ClosedErrorCode.NOT_FOUND)
-            operation.starterUserId != caller.actor -> refuse(ClosedErrorCode.NOT_FOUND)
-            else -> ResponseEntity.ok(status(operation))
+            operation == null || kept == null || !clock.instant().isBefore(kept) -> {
+                refuse(ClosedErrorCode.NOT_FOUND)
+            }
+
+            operation.starterUserId != caller.actor -> {
+                refuse(ClosedErrorCode.NOT_FOUND)
+            }
+
+            else -> {
+                ResponseEntity.ok(
+                    status(
+                        operation,
+                        inTenant(tenant) {
+                            operations.notice(tenant, partitionId, operation.startedAt)
+                        },
+                    ),
+                )
+            }
         }
     }
 
@@ -261,13 +278,16 @@ open class RetentionController(
         headers.set(HttpHeaders.LOCATION, "$STATUS_PATH_PREFIX${operation.partitionId}$STATUS_PATH_SUFFIX")
         headers.set(HttpHeaders.RETRY_AFTER, RETRY_AFTER_SECONDS.toString())
         // The contract types the operation as ResponseEntity<DeletionResult>; its 202 body is a DeletionStatus.
-        val body: Any = status(operation)
+        val body: Any = status(operation, null)
 
         @Suppress("UNCHECKED_CAST")
         return ResponseEntity.status(HttpStatus.ACCEPTED).headers(headers).body(body) as ResponseEntity<DeletionResult>
     }
 
-    private fun status(operation: DeletionOperation): DeletionStatus {
+    private fun status(
+        operation: DeletionOperation,
+        notice: RecordedNotice?,
+    ): DeletionStatus {
         val started = operation.startedAt.atOffset(ZoneOffset.UTC)
         val completed = operation.completedAt?.atOffset(ZoneOffset.UTC)
         return when (operation.state) {
@@ -277,7 +297,16 @@ open class RetentionController(
 
             JooqPartitionDeletionOperations.SUCCEEDED -> {
                 val result =
-                    DeletionResult(operation.partitionId, DeletionResult.Status.DELETED, checkNotNull(completed))
+                    DeletionResult(
+                        operation.partitionId,
+                        DeletionResult.Status.DELETED,
+                        checkNotNull(completed),
+                        noticeWindowDays = notice?.windowDays,
+                        windowAcknowledgement =
+                            notice?.acknowledgedBy?.let {
+                                WindowAcknowledgement(it, soleOperator = notice.soleOperator)
+                            },
+                    )
                 DeletionStatus(operation.partitionId, OperationState.SUCCEEDED, started, completed, result)
             }
 

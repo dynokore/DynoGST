@@ -360,6 +360,16 @@ class JooqRetentionRecords(
 /** A NOT NULL column of a generated record, which jOOQ types as nullable. */
 internal fun <T : Any> T?.req(): T = checkNotNull(this) { "a NOT NULL column was read as null" }
 
+/**
+ * The notice of a partition as recorded: the window in days and, when a shortened window was acknowledged, the
+ * acknowledging user ID (never a role) with its sole-operator flag (INV-REQ-2462).
+ */
+data class RecordedNotice(
+    val windowDays: Int,
+    val acknowledgedBy: String?,
+    val soleOperator: Boolean?,
+)
+
 /** One row of `partition_deletion_operation`. */
 data class DeletionOperation(
     val operationId: UUID,
@@ -448,6 +458,25 @@ class JooqPartitionDeletionOperations(
                     it.errorCode,
                 )
             }
+
+    /** The notice row of the partition, latest by `notified_at` at or before [startedAt], or null (INV-AC-26256). */
+    fun notice(
+        tenant: TenantId,
+        partitionId: String,
+        startedAt: Instant,
+    ): RecordedNotice? {
+        val n = RETENTION_NOTICE
+        return dsl
+            .selectFrom(n)
+            .where(
+                n.TENANT_ID.eq(tenant.value),
+                n.PARTITION_ID.eq(partitionId),
+                n.NOTIFIED_AT.le(startedAt.atOffset(ZoneOffset.UTC)),
+            ).orderBy(n.NOTIFIED_AT.desc())
+            .limit(1)
+            .fetchOne()
+            ?.let { RecordedNotice(it.windowDays.req(), it.acknowledgedBy, it.acknowledgedSoleOperator) }
+    }
 
     companion object {
         const val RUNNING = "RUNNING"
