@@ -37,6 +37,7 @@ import java.time.LocalDate
 import java.util.UUID
 
 /** The register writer's handler with fake ports (INV-AC-16339). */
+@Suppress("LargeClass") // the task fixes all INV-AC-27680 cases in this one file
 class CanonicalVersionCreatedHandlerTest {
     private val tenant = TenantId(UUID.fromString("00000000-0000-0000-0000-000000000016"))
     private val doc = "3fa85f64-5717-4562-b3fc-2c963f66afa6"
