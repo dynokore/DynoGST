@@ -3,6 +3,7 @@ package com.dynokore.gst.notification.adapters.events
 import com.dynokore.gst.notification.application.delivery.DeliverRequestedMessage
 import com.dynokore.gst.notification.application.delivery.MessageChannels
 import com.dynokore.gst.notification.application.delivery.MessageDeliveryRecords
+import com.dynokore.gst.notification.application.delivery.PasscodeOpener
 import com.dynokore.gst.notification.application.delivery.TemplateVersions
 import com.dynokore.gst.notification.domain.delivery.MessageDeliveryRecord
 import com.dynokore.platform.outboxandqueue.ContractViolation
@@ -27,6 +28,7 @@ class MessageRequestedHandler(
     private val templates: TemplateVersions,
     private val clock: Clock,
     private val mapper: ObjectMapper,
+    private val passcodes: PasscodeOpener,
 ) : EventHandler {
     /** Counts the rows written for one event; one instance per event, so no state is shared between events. */
     private class Counting(
@@ -50,6 +52,7 @@ class MessageRequestedHandler(
                 channels,
                 templates,
                 clock,
+                passcodes,
             ).handle(event.tenant, event.entity.value, event.id.value, payload)
         } catch (e: PayloadViolation) {
             throw ContractViolation(e.message ?: "payload refused", e)

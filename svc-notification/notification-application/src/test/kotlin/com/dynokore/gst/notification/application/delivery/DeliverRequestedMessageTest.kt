@@ -85,7 +85,12 @@ class DeliverRequestedMessageTest {
             object : TemplateVersions {
                 override fun versionOf(templateId: String) = if (templateId in known) "1" else null
             }
-        return Fixture(records, email, sms, DeliverRequestedMessage(records, channels, templates, clock))
+        return Fixture(
+            records,
+            email,
+            sms,
+            DeliverRequestedMessage(records, channels, templates, clock, PasscodeOpener { sealed, _ -> sealed }),
+        )
     }
 
     private fun Fixture.twice(payload: Map<String, Any?>) {

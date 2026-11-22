@@ -44,6 +44,7 @@ class DeliverRequestedMessage(
     private val channels: MessageChannels,
     private val templates: TemplateVersions,
     private val clock: Clock,
+    private val passcodes: PasscodeOpener,
 ) {
     @Suppress("UNUSED_PARAMETER")
     fun handle(
@@ -81,22 +82,44 @@ class DeliverRequestedMessage(
         return when {
             version == null -> failed(base, null, DeliveryFailure.TEMPLATE_UNKNOWN)
             channel == null -> failed(base, version, DeliveryFailure.CHANNEL_NOT_BOUND)
-            else -> send(base, channel, outbound(request, address, version), version)
+            else -> openAndSend(base, channel, request, address, version)
         }
+    }
+
+    // The opener runs after the record row exists and before send; the clear value lives in this call only.
+    private fun openAndSend(
+        base: MessageDeliveryRecord,
+        channel: MessageDelivery,
+        request: Request,
+        address: String,
+        version: String,
+    ): MessageDeliveryRecord {
+        val clear =
+            if (request.sealedPasscode == null) {
+                null
+            } else {
+                try {
+                    passcodes.open(request.sealedPasscode, address)
+                } catch (_: PasscodeUnopenable) {
+                    return failed(base, version, PASSCODE_UNOPENABLE)
+                }
+            }
+        return send(base, channel, outbound(request, address, version, clear), version)
     }
 
     private fun outbound(
         request: Request,
         address: String,
         version: String,
+        clearPasscode: String?,
     ) = OutboundMessage(
         channel = MessageChannel.valueOf(request.channel.name),
         to = address,
         templateId = request.template,
         templateVersion = version,
         content =
-            if (request.sealedPasscode != null) {
-                PasscodeContent(request.sealedPasscode)
+            if (clearPasscode != null) {
+                PasscodeContent(clearPasscode)
             } else {
                 LinkContent(requireNotNull(request.linkReference))
             },
@@ -133,6 +156,9 @@ class DeliverRequestedMessage(
         reason: String,
     ) = base.copy(templateVersion = version, state = DeliveryRecordState.FAILED, failureReason = reason)
 }
+
+/** The reason of a record whose sealed passcode could not be opened. */
+private const val PASSCODE_UNOPENABLE = "PASSCODE_UNOPENABLE"
 
 private class Request(
     val template: String,

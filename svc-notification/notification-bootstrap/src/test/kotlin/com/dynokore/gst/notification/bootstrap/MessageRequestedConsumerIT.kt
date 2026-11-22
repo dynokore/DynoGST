@@ -6,6 +6,7 @@ import com.dynokore.gst.notification.adapters.events.MessageRequestedHandler
 import com.dynokore.gst.notification.adapters.persistence.JooqMessageDeliveryRecords
 import com.dynokore.gst.notification.adapters.persistence.jooq.tables.EventDeadLetter.Companion.EVENT_DEAD_LETTER
 import com.dynokore.gst.notification.adapters.persistence.jooq.tables.MessageDelivery.Companion.MESSAGE_DELIVERY
+import com.dynokore.gst.notification.application.delivery.RefusingPasscodeOpener
 import com.dynokore.platform.outboxandqueue.CausationId
 import com.dynokore.platform.outboxandqueue.ConsumerSubscription
 import com.dynokore.platform.outboxandqueue.CorrelationId
@@ -111,6 +112,7 @@ class MessageRequestedConsumerIT {
                     ClosedTemplateVersions(),
                     Clock.systemUTC(),
                     ObjectMapper(),
+                    RefusingPasscodeOpener,
                 ),
                 RebuildRequiredSink { },
                 Clock.systemUTC(),
@@ -270,12 +272,19 @@ class MessageRequestedConsumerIT {
             ),
         )
         consumer.pollOnce().applied shouldBe 1
-        sms.sent.single().to shouldBe "+6591234567"
+        sms.sent.size shouldBe 0
         val rows = rowTexts(tenant)
         rows.size shouldBe 1
         rows.single() shouldNotContain sealed
         rows.single() shouldNotContain "+6591234567"
-        states(tenant).single()[2] shouldBe "SENT"
+        states(tenant).single()[2] shouldBe "FAILED"
+        tx(tenant) {
+            dsl
+                .selectFrom(MESSAGE_DELIVERY)
+                .fetch()
+                .single()
+                .failureReason
+        } shouldBe "PASSCODE_UNOPENABLE"
     }
 
     @Test
@@ -300,6 +309,7 @@ class MessageRequestedConsumerIT {
                     ClosedTemplateVersions(),
                     Clock.systemUTC(),
                     ObjectMapper(),
+                    RefusingPasscodeOpener,
                 ),
                 RebuildRequiredSink { },
                 Clock.systemUTC(),
