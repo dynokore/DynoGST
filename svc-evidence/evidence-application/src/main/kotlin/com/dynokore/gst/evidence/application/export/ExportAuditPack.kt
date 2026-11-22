@@ -28,6 +28,7 @@ class ExportAuditPack(
     private val integrity: IntegrityStore,
     private val chainIntegrity: ExportChainIntegrity,
     private val clock: Clock,
+    private val verifier: (PackageFiles) -> PackageVerification = ::verifyAuditPack,
 ) {
     fun execute(job: AuditPackExportJob): AuditPackExportJob {
         if (job.state != AuditPackState.PENDING) return job
@@ -40,36 +41,46 @@ class ExportAuditPack(
     }
 
     private fun run(job: AuditPackExportJob): String {
-        val unbound = PackageContentClass.entries.filter { sources.source(it) == null }
-        if (unbound.isNotEmpty()) throw Stop("no source for ${unbound.joinToString(", ") { it.name }}")
+        refuseUnbound()
         if (!port { chainIntegrity.allowsExport(job.tenant) }) {
             throw Stop("chain integrity does not allow the export (DEP-007)")
         }
         val candidates = candidates(job)
         val latest = port { integrity.latestRun(job.tenant, job.entityRef, job.periodRef) }
-        val assembled =
-            when (
-                val result =
-                    AuditPackAssembler.assemble(
-                        PackageScope.EntityPeriod(
-                            job.tenant,
-                            EntityRef(job.entityRef),
-                            PeriodRef(job.periodRef),
-                        ),
-                        candidates,
-                        clock.instant(),
-                        report(latest),
-                    )
-            ) {
-                is AssemblyResult.Refused -> throw Stop("assembly refused: ${result.reason} ${result.itemName}")
-                is AssemblyResult.Assembled -> result
-            }
-        val verification = verify(assembled.files)
+        val assembled = assemble(job, candidates, report(latest))
+        refuseInvalid(assembled.files)
+        return port { store.store(job.tenant, job.packId.toString(), assembled.files) }
+    }
+
+    private fun refuseUnbound() {
+        val unbound = PackageContentClass.entries.filter { sources.source(it) == null }
+        if (unbound.isNotEmpty()) throw Stop("no source for ${unbound.joinToString(", ") { it.name }}")
+    }
+
+    private fun assemble(
+        job: AuditPackExportJob,
+        candidates: List<PackageCandidate>,
+        report: String,
+    ): AssemblyResult.Assembled =
+        when (
+            val result =
+                AuditPackAssembler.assemble(
+                    PackageScope.EntityPeriod(job.tenant, EntityRef(job.entityRef), PeriodRef(job.periodRef)),
+                    candidates,
+                    clock.instant(),
+                    report,
+                )
+        ) {
+            is AssemblyResult.Refused -> throw Stop("assembly refused: ${result.reason} ${result.itemName}")
+            is AssemblyResult.Assembled -> result
+        }
+
+    private fun refuseInvalid(files: PackageFiles) {
+        val verification = verifier(files)
         if (verification is PackageVerification.Invalid) {
             val codes = verification.problems.take(PROBLEMS_SHOWN).joinToString(", ") { it.code.name }
             throw Stop("package invalid: $codes")
         }
-        return port { store.store(job.tenant, job.packId.toString(), assembled.files) }
     }
 
     private fun candidates(job: AuditPackExportJob): List<PackageCandidate> =
@@ -95,7 +106,7 @@ class ExportAuditPack(
 
     private companion object {
         const val MAX_REASON = 200
-        const val PROBLEMS_SHOWN = 5
+        const val PROBLEMS_SHOWN = 3
 
         /** The contract names of the six library classes, then the verification report. */
         val CONTENTS: List<String> = PackageContentClass.entries.map(::contractName) + "VERIFICATION_REPORT"
@@ -112,7 +123,8 @@ class ExportAuditPack(
     }
 }
 
-private fun verify(files: PackageFiles): PackageVerification =
+/** The production verification: [PackageVerifier] over a view of the package files. */
+fun verifyAuditPack(files: PackageFiles): PackageVerification =
     PackageVerifier.verify(
         object : PackageSource {
             override fun paths(): Set<String> = files.paths.toSet()

@@ -86,6 +86,7 @@ class TenantPackageCandidatesDbTest {
             PackageScope.WholeTenant(TenantId(t1)),
             candidates,
             Instant.parse("2026-11-15T00:00:00Z"),
+            null,
         )
 
     private fun read(
