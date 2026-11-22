@@ -49,9 +49,9 @@ class PrivacyCaseClientTest {
     }
 
     @Test
-    @DisplayName("INV-AC-27140 case 404 and the owner's problem body are relayed unchanged")
+    @DisplayName("INV-AC-27140 case the owner's problem body is relayed unchanged, except 404 SRT-005")
     fun refusalsRelayed() {
-        for ((status, code) in REFUSALS) {
+        for ((status, code) in REFUSALS.filter { it != 404 to "SRT-005" }) {
             stub.answer(status, envelope(status, code))
             assertEquals(
                 OwnerReply.Refused(OwnerRefusal(status, code, "T", "BLOCK", "MANUAL", "R", "D")),
@@ -62,10 +62,45 @@ class PrivacyCaseClientTest {
     }
 
     @Test
-    @DisplayName("INV-AC-27140 case 404 without a readable problem body is Unavailable")
+    @DisplayName("INV-AC-27140 case 404 with problem code SRT-005 is Ok(null)")
+    fun unknownCase() {
+        stub.answer(404, envelope(404, "SRT-005"))
+        assertEquals(OwnerReply.Ok<String?>(null), status())
+    }
+
+    @Test
+    @DisplayName("INV-AC-27140 case 404 with each unreadable body is Unavailable")
     fun notFoundWithoutEnvelope() {
-        stub.answer(404, null)
-        assertTrue(status() is OwnerReply.Unavailable)
+        for (body in UNREADABLE_BODIES) {
+            stub.answer(404, body)
+            assertTrue(status() is OwnerReply.Unavailable, "404 $body")
+        }
+    }
+
+    @Test
+    @DisplayName("INV-AC-27140 case 404 with look-alike codes is Refused unchanged")
+    fun lookAlikeCodes() {
+        for (code in listOf("SRT-0050", "SRT-004", "XXX-005")) {
+            stub.answer(404, envelope(404, code))
+            assertEquals(
+                OwnerReply.Refused(OwnerRefusal(404, code, "T", "BLOCK", "MANUAL", "R", "D")),
+                status(),
+                code,
+            )
+        }
+    }
+
+    @Test
+    @DisplayName("INV-AC-27140 case SRT-005 with another status is Refused")
+    fun notFoundCodeOtherStatus() {
+        for (st in listOf(400, 403, 409, 422)) {
+            stub.answer(st, envelope(st, "SRT-005"))
+            assertEquals(
+                OwnerReply.Refused(OwnerRefusal(st, "SRT-005", "T", "BLOCK", "MANUAL", "R", "D")),
+                status(),
+                "status $st",
+            )
+        }
     }
 
     @Test
