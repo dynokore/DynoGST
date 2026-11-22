@@ -3,7 +3,6 @@ package com.dynokore.gst.access.application.flowcontext
 import com.dynokore.gst.access.application.token.SigningKeyUnavailable
 import com.dynokore.platform.tenancykernel.TenantId
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.time.Clock
@@ -17,20 +16,15 @@ class IssueFlowContextUseCaseTest {
     private var unavailable = false
     private val now = Instant.parse("2026-11-23T10:00:00Z")
 
-    private val fixture = setOf("ingestion-svc", "canonical-svc", "payload-svc", "control-plane-svc")
-
-    private fun useCase(
-        at: Instant = now,
-        callers: Set<String> = fixture,
-    ) = IssueFlowContextUseCase(
-        { c ->
-            calls += c
-            if (unavailable) throw SigningKeyUnavailable("no key")
-            "compact-1"
-        },
-        Clock.fixed(at, ZoneOffset.UTC),
-        callers,
-    )
+    private fun useCase(at: Instant = now) =
+        IssueFlowContextUseCase(
+            { c ->
+                calls += c
+                if (unavailable) throw SigningKeyUnavailable("no key")
+                "compact-1"
+            },
+            Clock.fixed(at, ZoneOffset.UTC),
+        )
 
     private fun issue(
         caller: String?,
@@ -83,21 +77,6 @@ class IssueFlowContextUseCaseTest {
 
     @Test
     fun `INV-AC-27492 look-alike trailing space is not served`() = notServed("ingestion-svc ")
-
-    @Test
-    fun `INV-AC-27492 case 8 an empty allowed caller set stops the construction`() {
-        assertThrows(IllegalArgumentException::class.java) { useCase(callers = emptySet()) }
-        assertTrue(calls.isEmpty())
-    }
-
-    @Test
-    fun `INV-AC-27492 a name added to the mutable set after construction is not served`() {
-        val mutable = fixture.toMutableSet()
-        val uc = useCase(callers = mutable)
-        mutable += "submission-svc"
-        assertEquals(IssueFlowContextResult.CallerNotServed, issue("submission-svc", uc = uc))
-        assertTrue(calls.isEmpty())
-    }
 
     @Test
     fun `INV-AC-27492 the four listed callers are served`() {

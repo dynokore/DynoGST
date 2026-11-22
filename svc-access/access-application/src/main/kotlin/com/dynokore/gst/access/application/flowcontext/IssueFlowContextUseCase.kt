@@ -7,6 +7,9 @@ import java.time.Clock
 /** Lifetime of a flow context in seconds. access-svc owns it; the caller never sends it (owner 2026-11-18, A). */
 const val FLOW_CONTEXT_LIFETIME_SECONDS: Long = 900L
 
+/** The services that may ask for a flow context; compared by string equality. */
+val FLOW_CONTEXT_CALLERS: Set<String> = setOf("ingestion-svc", "canonical-svc", "payload-svc", "control-plane-svc")
+
 /** Kind of the originating principal. Mirrors the kinds of the authority replica. */
 enum class FlowPrincipalKind { HUMAN, CONSENT_AGENT, MACHINE }
 
@@ -50,15 +53,7 @@ sealed interface IssueFlowContextResult {
 class IssueFlowContextUseCase(
     private val signer: FlowContextSigner,
     private val clock: Clock,
-    allowedCallers: Set<String>,
 ) {
-    /** The generated callers of the operation, copied so that a later change of the argument has no effect. */
-    private val allowedCallers: Set<String> = allowedCallers.toSet()
-
-    init {
-        require(this.allowedCallers.isNotEmpty()) { "the allowed caller set must not be empty" }
-    }
-
     fun issue(
         callerService: String?,
         tenant: TenantId,
@@ -66,7 +61,7 @@ class IssueFlowContextUseCase(
         principalKind: FlowPrincipalKind,
         flowId: String,
     ): IssueFlowContextResult {
-        val caller = callerService?.takeIf { it in allowedCallers }
+        val caller = callerService?.takeIf { it in FLOW_CONTEXT_CALLERS }
         return when {
             caller == null -> IssueFlowContextResult.CallerNotServed
             tenant.isPlatform -> IssueFlowContextResult.InvalidRequest
