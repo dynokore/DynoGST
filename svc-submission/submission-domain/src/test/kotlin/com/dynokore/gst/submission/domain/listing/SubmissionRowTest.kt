@@ -145,4 +145,30 @@ class SubmissionRowTest {
         row("a").acknowledgementDeadline shouldBe null
         row("a").copy(acknowledgementDeadline = deadline).acknowledgementDeadline shouldBe deadline
     }
+
+    @Test
+    fun `INV-AC-20729 a row built without the two new arguments has both null`() {
+        val built =
+            SubmissionRow(
+                docUuid = "z",
+                version = 1,
+                submissionType = SubmissionKind.TYPE_1A,
+                state = LifecycleState.QUEUED,
+                dueDate = LocalDate.parse("2026-11-01"),
+                documentNumber = "N-z",
+                documentTypeCode = "380",
+                direction = Direction.SALE,
+                counterpartyName = "Buyer",
+                counterpartyUen = "201234567A",
+                transactionDate = LocalDate.parse("2026-10-01"),
+                taxableAmount = BigDecimal("100.00"),
+                gstAmount = BigDecimal("9.00"),
+                categoryCodes = setOf("SR"),
+                submittedAt = null,
+                acknowledgedAt = null,
+                acknowledgementId = null,
+            )
+        built.originalDueDate shouldBe null
+        built.extendedDueDate shouldBe null
+    }
 }

@@ -24,6 +24,12 @@ data class EffectiveDueDateResult(
     val extendedDueDate: LocalDate?,
 )
 
+/** The dates of the extension row that applies to a document: [original] is null for a DATE_RANGE row. */
+data class ExtensionSource(
+    val original: LocalDate?,
+    val extended: LocalDate,
+)
+
 /**
  * The effective submission due date of a document (INV-REQ-81, INV-REQ-70): the extended date of the row of the
  * narrowest matching scope (DOCUMENT_SET, then DATE_RANGE, then PERIOD), among equal scopes the latest recorded row,
@@ -35,6 +41,17 @@ object EffectiveDueDate {
     private const val PERIOD = "PERIOD"
     private val SUBMISSION_TARGETS = setOf("SUBMISSION_DUE_DATE", "BOTH")
     private const val FILING_ONLY = "FILING_DUE_DATE"
+
+    /** The original and extended date of the row that applies, or null when no row applies (INV-REQ-86). */
+    fun resolveSource(
+        registerDueDate: LocalDate,
+        docUuid: String,
+        transactionDate: LocalDate?,
+        rows: List<ExtensionInput>,
+    ): ExtensionSource? {
+        val r = resolve(registerDueDate, docUuid, transactionDate, rows)
+        return r.extendedDueDate?.let { ExtensionSource(r.originalDueDate, it) }
+    }
 
     /** [rows] are in order of recording, oldest first; [transactionDate] is null when the document has none. */
     fun resolve(
