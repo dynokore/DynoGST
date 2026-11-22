@@ -242,3 +242,5 @@ DOCUMENT_NOT_FOUND	enum_value	schemas/net-derivation-refused-payload.schema.json
 NET_NOT_POSITIVE	enum_value	schemas/net-derivation-refused-payload.schema.json	INV-REQ-558
 # INV-T-26811: optional entityRef on the CanonicalVersionCreated payload (INV-REQ-1037)
 entityRef	property	schemas/canonical-version-created-payload.schema.json	INV-REQ-1037
+# INV-T-27132: optional assertionText on the decisions of the DecisionTraceRecorded payload (INV-REQ-1182)
+assertionText	property	schemas/decision-trace-recorded-payload.schema.json	INV-REQ-1182

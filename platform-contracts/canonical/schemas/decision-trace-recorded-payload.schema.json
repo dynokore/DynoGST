@@ -85,6 +85,12 @@
                     "value"
                   ]
                 }
+              },
+              "assertionText": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500,
+                "description": "Optional. The business-language text of the failed assertion, written by the service that raised the failure from the pack that failed it (INV-REQ-1182)."
               }
             },
             "required": [
