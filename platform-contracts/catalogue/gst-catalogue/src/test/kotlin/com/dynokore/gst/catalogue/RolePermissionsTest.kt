@@ -920,12 +920,7 @@ class OperatingProfileApplyKeyTest {
             assertEquals(mapOf("tenant.admin" to RoleAllowance.PERMITTED, "entity.admin" to RoleAllowance.WITHIN_SCOPE), held, "$key $form")
             assertEquals(held, OperationRoles.rolesFor(form, key), "$key $form")
         }
-        listOf(
-            "operating-profile.apply ",
-            "Operating-profile.apply",
-            "operating-profiles.apply",
-            "operating-profile.apply.entity",
-        ).forEach {
+        listOf("operating-profile.apply ", "Operating-profile.apply", "operating-profiles.apply", "operating-profile.apply.entity").forEach {
             assertNull(RolePermissions.kind(it), it)
         }
     }
