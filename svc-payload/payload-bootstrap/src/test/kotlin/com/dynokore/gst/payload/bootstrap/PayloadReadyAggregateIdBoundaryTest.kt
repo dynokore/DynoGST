@@ -33,6 +33,7 @@ import com.dynokore.platform.outboxandqueue.TenantScope
 import com.dynokore.platform.outboxandqueue.WorkQueue
 import com.dynokore.platform.tenancykernel.TenantId
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.springframework.beans.factory.config.BeanDefinitionCustomizer
@@ -241,7 +242,13 @@ class PayloadReadyAggregateIdBoundaryTest {
         val xmlE = String(Base64.getDecoder().decode(re["payloadBytes"].asString()), Charsets.UTF_8)
         note.findAll(xmlD).count() shouldBe 1
         note.findAll(xmlE).count() shouldBe 0
-        note.replace(xmlD, "") shouldBe xmlE
+        // INV-REQ-412: the aggregate also writes its literal as the buyer endpoint ID (IBT-049), the other one difference
+        val endpoint = Regex("(<(?:\\w+:)?EndpointID(?:\\s[^>]*)?>)([^<]*)(</)")
+        endpoint.findAll(xmlD).map { it.groupValues[2] }.toList() shouldBe listOf("POS")
+        val endpointE = endpoint.findAll(xmlE).map { it.groupValues[2] }.toList()
+        endpointE.size shouldBe 1
+        endpointE[0] shouldNotBe "POS"
+        endpoint.replace(note.replace(xmlD, "")) { "${it.groupValues[1]}${endpointE[0]}${it.groupValues[3]}" } shouldBe xmlE
     }
 
     /** The four events go through the two production inbox consumers, one poll each. */
