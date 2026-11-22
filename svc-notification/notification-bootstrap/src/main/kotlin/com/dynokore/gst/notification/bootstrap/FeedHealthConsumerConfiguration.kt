@@ -6,7 +6,6 @@ import com.dynokore.gst.notification.application.alerting.FeedAlertStore
 import com.dynokore.gst.notification.application.alerting.FeedHealthStates
 import com.dynokore.gst.notification.application.alerting.HandleFeedHealthChanged
 import com.dynokore.gst.notification.application.alerting.ResolveDefaultRecipients
-import com.dynokore.gst.notification.application.alerting.SetAlertPolicy
 import com.dynokore.platform.outboxandqueue.ConsumerSubscription
 import com.dynokore.platform.outboxandqueue.EventCatalogue
 import com.dynokore.platform.outboxandqueue.EventHandler
@@ -14,7 +13,6 @@ import com.dynokore.platform.outboxandqueue.EventLogReader
 import com.dynokore.platform.outboxandqueue.JdbcInboxConsumer
 import com.dynokore.platform.outboxandqueue.RebuildRequiredSink
 import com.dynokore.platform.outboxandqueue.TenantScope
-import com.dynokore.platform.serviceruntime.replica.AuthorityReplica
 import org.jooq.DSLContext
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.context.annotation.Bean
@@ -37,10 +35,6 @@ class FeedHealthConsumerConfiguration {
         holders: AuthorityReplicaRoleHolders,
         clock: Clock,
     ): HandleFeedHealthChanged = HandleFeedHealthChanged(states, alerts, ResolveDefaultRecipients(holders), clock)
-
-    /** The alert policy command (INV-REQ-1114): the permission is decided by the replica, never by a role name. */
-    @Bean
-    fun setAlertPolicy(replica: AuthorityReplica): SetAlertPolicy = SetAlertPolicy(replica)
 
     @Bean
     fun feedHealthChangedHandler(

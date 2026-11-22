@@ -13,7 +13,7 @@ import java.time.Clock
 
 /**
  * The one [ReplayDelivery] of notification-svc. The library bean injects exactly one `JdbcInboxConsumer`; this service
- * has three, so this bean makes it back off (precedent: svc-submission `submissionReplayDelivery`) and routes each item
+ * has two, so this bean makes it back off (precedent: svc-submission `submissionReplayDelivery`) and routes each item
  * by its topic to the consumer that owns it. Its queue claims only the items queued for `notification-svc`.
  */
 @Configuration(proxyBeanMethods = false)
@@ -28,7 +28,6 @@ class ReplayConfiguration {
         mapper: tools.jackson.databind.ObjectMapper,
         @Qualifier("packConsumer") pack: JdbcInboxConsumer,
         @Qualifier("backlogConsumer") backlog: JdbcInboxConsumer,
-        @Qualifier("feedHealthConsumer") feed: JdbcInboxConsumer,
     ): ReplayDelivery =
         TopicRoutingReplayDelivery(
             JdbcWorkQueue(
@@ -43,7 +42,6 @@ class ReplayConfiguration {
             mapOf(
                 PackConsumerConfiguration.TOPIC to pack,
                 BacklogConsumerConfiguration.TOPIC to backlog,
-                FeedHealthConsumerConfiguration.TOPIC to feed,
             ),
             mapper,
         )
