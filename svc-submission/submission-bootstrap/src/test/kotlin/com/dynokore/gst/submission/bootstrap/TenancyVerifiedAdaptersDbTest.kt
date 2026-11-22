@@ -225,7 +225,8 @@ class TenancyVerifiedAdaptersDbTest {
         seed { dsl, bind ->
             bind(other)
             dsl.execute(
-                "insert into submission.submission (tenant_id, doc_uuid, version, state, entity_ref, submission_type) " +
+                "insert into submission.submission " +
+                    "(tenant_id, doc_uuid, version, state, entity_ref, submission_type) " +
                     "values (?, ?, 2, 'QUEUED', ?, 'TYPE_1B')",
                 other,
                 "own-$s",
@@ -254,7 +255,8 @@ class TenancyVerifiedAdaptersDbTest {
         seed { dsl, bind ->
             bind(b)
             dsl.execute(
-                "insert into submission.submission (tenant_id, doc_uuid, version, state, entity_ref, submission_type) " +
+                "insert into submission.submission " +
+                    "(tenant_id, doc_uuid, version, state, entity_ref, submission_type) " +
                     "values (?, ?, 2, 'REJECTED', ?, 'TYPE_1B')",
                 b,
                 doc.toString(),

@@ -9,9 +9,9 @@ import java.nio.file.Path
 /**
  * INV-AC-27292: every insert into `submission.submission` in the listed bootstrap fixtures names `submission_type`.
  *
- * It is a text scan. It cannot see an insert built by a helper in another file, an insert whose table is held in a
- * variable other than a `val x = Submission.SUBMISSION_` alias, or SQL assembled from fragments. No such helper exists
- * in the listed files at the time of writing; the list is the whole surface.
+ * It is a text scan. It cannot see an insert built by a helper in another file, an insert whose table is held in
+ * a variable other than a `val x = Submission.SUBMISSION_` alias, or SQL assembled from fragments. No such helper
+ * exists in the listed files at the time of writing; the list is the whole surface.
  */
 class SubmissionTypeFixtureScanTest {
     @Test
@@ -21,7 +21,7 @@ class SubmissionTypeFixtureScanTest {
     }
 
     @Test
-    fun `INV-AC-27292 the scan itself fails closed on a missing file, no insert site and a missing or misspelt column`() {
+    fun `INV-AC-27292 the scan fails closed on a missing file, no site and a missing or misspelt column`() {
         val dir = Files.createTempDirectory("type-scan")
         try {
             assertEquals(1, problemsOf("gone.kt", dir.resolve("gone.kt")).size)
@@ -85,7 +85,13 @@ class SubmissionTypeFixtureScanTest {
             file: Path,
         ): List<String> {
             if (!Files.isRegularFile(file)) return listOf("$label: file is missing")
-            val text = code(Files.readString(file))
+            return sitesProblems(label, code(Files.readString(file)))
+        }
+
+        private fun sitesProblems(
+            label: String,
+            text: String,
+        ): List<String> {
             val aliases = ALIAS.findAll(text).map { it.groupValues[1] }.toSet() + "Submission.SUBMISSION_"
             val sites =
                 RAW.findAll(text).map { it.range.first to statementEnd(text, it.range.first, "values") } +
@@ -95,14 +101,11 @@ class SubmissionTypeFixtureScanTest {
                         }
                     }
             val list = sites.toList()
-            if (list.isEmpty()) return listOf("$label: no insert site into submission.submission")
-            return list.mapNotNull { (start, end) ->
-                if (TYPE.containsMatchIn(text.substring(start, end))) {
-                    null
-                } else {
+            val missing =
+                list.filterNot { (start, end) -> TYPE.containsMatchIn(text.substring(start, end)) }.map { (start, _) ->
                     "$label:${text.substring(0, start).count { it == '\n' } + 1}: insert does not name submission_type"
                 }
-            }
+            return if (list.isEmpty()) listOf("$label: no insert site into submission.submission") else missing
         }
 
         private fun statementEnd(
