@@ -207,7 +207,6 @@ class ExportAuditPackTest {
     private fun PackageFiles.text(path: String) = String(bytes(path)!!)
 
     @Test
-    @Suppress("MaxLineLength", "ktlint:standard:max-line-length") // the name is fixed by the task text
     fun `INV-AC-25916 the stored package opens with the verifier and holds the report with the four fields of the latest run`() {
         val r = rig()
         val job = r.useCase.execute(pending)
