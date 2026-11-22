@@ -32,6 +32,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import tools.jackson.databind.ObjectMapper
+import java.time.Clock
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
@@ -94,19 +95,26 @@ internal open class Vp62TestSupport {
         ) = period.deliver(tenant, handler, "com.dynokore.gst.platform.PolicyChanged.v1", data, id)
     }
 
-    protected fun run(block: (Setup) -> Unit) {
-        BoundaryFixture.runner().run { context ->
-            context.startupFailure?.let { throw it }
-            val env = ProfileEnv(context)
-            env.withGroup(1, DIVISIONAL) { tenant, group, members ->
-                val period = PeriodEnv(env)
-                period.calendar.pack = saturdayPack()
-                val entity = members.single()
-                period.register(entity, "2026-01-01")
-                period.change(entity, Freq.MONTHLY, "2026-01-01")
-                block(Setup(period, tenant, entity, group.groupRef))
+    /** [clock] replaces the system clock of the context (a fixed date for forward-dated values); null keeps it. */
+    protected fun run(
+        clock: Clock? = null,
+        block: (Setup) -> Unit,
+    ) {
+        BoundaryFixture
+            .runner()
+            .let { runner -> clock?.let { runner.withBean(Clock::class.java, { it }, primaryBean()) } ?: runner }
+            .run { context ->
+                context.startupFailure?.let { throw it }
+                val env = ProfileEnv(context)
+                env.withGroup(1, DIVISIONAL) { tenant, group, members ->
+                    val period = PeriodEnv(env)
+                    period.calendar.pack = saturdayPack()
+                    val entity = members.single()
+                    period.register(entity, "2026-01-01")
+                    period.change(entity, Freq.MONTHLY, "2026-01-01")
+                    block(Setup(period, tenant, entity, group.groupRef))
+                }
             }
-        }
     }
 
     protected fun Setup.scope(
