@@ -28,6 +28,9 @@ include:
 # build-image (coordinator CI ruling, precedent INV-T-7512). Nothing else about the job changes.
 unit-test:
   tags: []
+  # CI-FAST (coordinator CI ruling 2026-11-23, precedent platform-release !127): the uncached unit-test run reaches
+  # about 58 min under shared-runner load and hit the 1 h default; tests and coverage unchanged; follow-up: shard classes.
+  timeout: 2h
 
 variables:
   # CI-FAST, owner ruling 2026-10-17 ("skip repeated checks"; platform-build ci/stages.gitlab-ci.yml): main skips a
