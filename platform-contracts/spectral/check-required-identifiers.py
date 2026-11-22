@@ -80,6 +80,19 @@ still a finding; absent at both, no check.
                 key 202 and the quoted key '202' both read as 202; `default` is valid). Another operation's responses,
                 `components.responses`, a description and a substring never count (INV-T-11736, INV-Q-11733 A)
 
+Unpinned-response completeness (INV-T-27400, INV-AC-27399; two-way traceability, a ratchet over a burn-down list). R(head) are the
+(directory, operationId, status) triples of every operation under `paths` of every `<dir>/openapi.yaml` that has a string `operationId`
+and a `responses` mapping (status = the string form of the key, as the kind operation_response reads it). P(head) are the triples of the
+data rows of `<dir>/required-identifiers.tsv` of kind operation_response and file openapi.yaml (identifier split at the first dot).
+B(head) are the data lines of `spectral/required-identifiers-unpinned-responses.tsv` (header directory, operation_id, status, owner_task;
+tab separated; blank and `#` lines ignored; a data line has exactly 4 non-empty cells; an absent file is the empty list).
+  U1  every member of R(head) minus P(head) must be in B(head); with and without --base. A list line matches by equality of its cells.
+  U2  a line of B(head) whose triple is in P(head), or not in R(head), or repeats another line, or has not 4 non-empty cells is a finding
+      naming its line number.
+  U3  (only with --base) every line of B(head) must be a line of B(base) read with `git show` (compared by the trimmed triple); when the
+      file is absent at the base, every line must be a member of R(base) minus P(base) read from the base commit. A list that cannot
+      be parsed at the base, or an openapi.yaml that cannot be parsed there, is a finding.
+
 Usage: check-required-identifiers.py [--base <sha>] [<root>]      (default root: the current directory)
 Standard library plus PyYAML, as the other spectral checks.
 """
@@ -399,6 +412,132 @@ def check_completeness(root: Path, sha: str, git) -> list[str]:
     return findings
 
 
+UNPINNED = "spectral/required-identifiers-unpinned-responses.tsv"
+UNPINNED_HEADER = ("directory", "operation_id", "status", "owner_task")
+
+
+def unpinned_lines(text: str) -> list[tuple[int, list[str]]]:
+    """(line number, raw cells) of every data line of the burn-down list; comments, blanks and the header are not data lines.
+    Cells are not trimmed: a status written `403 ` is not the status 403 (U1, U2); U3 compares the trimmed triple."""
+    out: list[tuple[int, list[str]]] = []
+    first = True
+    for no, raw in enumerate(text.splitlines(), 1):
+        if not raw.strip() or raw.lstrip().startswith("#"):
+            continue
+        cells = raw.split("\t")
+        if first and tuple(c.strip() for c in cells) == UNPINNED_HEADER:
+            first = False
+            continue
+        first = False
+        out.append((no, cells))
+    return out
+
+
+def unpinned_shape(cells: list[str]) -> bool:
+    return len(cells) == 4 and all(c.strip() for c in cells)
+
+
+def response_set(d: str, text: str) -> set[tuple[str, str, str]] | str:
+    """R of one openapi.yaml text: (directory, operationId, status) triples, or the parse error text."""
+    try:
+        doc = yaml.safe_load(text)
+    except yaml.YAMLError as e:
+        return f"cannot be parsed: {str(e).splitlines()[0]}"
+    return {(d, op, st) for op, st in collect(doc)["operation_response"]}
+
+
+def pinned_set(d: str, text: str) -> set[tuple[str, str, str]]:
+    """P of one required-identifiers.tsv text: the (directory, operationId, status) of every operation_response row on openapi.yaml."""
+    out: set[tuple[str, str, str]] = set()
+    for ident, kind, file in row_keys(text):
+        if kind == "operation_response" and file == "openapi.yaml":
+            op, dot, st = ident.partition(".")
+            if dot and op and st:
+                out.add((d, op, st))
+    return out
+
+
+def check_unpinned(root: Path, sha: str | None) -> list[str]:
+    """INV-T-27400: U1 completeness, U2 burn-down hygiene, U3 no growth (with a base)."""
+    def git(*args: str) -> subprocess.CompletedProcess:
+        return subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True)
+
+    findings: list[str] = []
+    resp: set[tuple[str, str, str]] = set()
+    pinned: set[tuple[str, str, str]] = set()
+    for spec in sorted(root.glob("*/openapi.yaml")):
+        d = spec.parent.name
+        got = response_set(d, spec.read_text())
+        if isinstance(got, str):
+            findings.append(f"{d}/openapi.yaml: {got}")
+            continue
+        resp |= got
+        table = root / d / "required-identifiers.tsv"
+        if table.is_file():
+            pinned |= pinned_set(d, table.read_text())
+    listfile = root / UNPINNED
+    lines = unpinned_lines(listfile.read_text()) if listfile.is_file() else []
+    listed: set[tuple[str, str, str]] = set()
+    seen: dict[tuple[str, ...], int] = {}
+    for no, cells in lines:
+        tag = f"burn-down line {no}"
+        if not unpinned_shape(cells):
+            findings.append(f"{tag} of {UNPINNED} needs exactly 4 non-empty cells (directory, operation_id, status, owner_task)")
+            continue
+        triple = (cells[0], cells[1], cells[2])
+        if triple in seen:
+            findings.append(f"{tag} of {UNPINNED} repeats burn-down line {seen[triple]}")
+            continue
+        seen[triple] = no
+        listed.add(triple)
+        if triple in pinned:
+            findings.append(f"{tag} of {UNPINNED}: response '{triple[1]}.{triple[2]}' of {triple[0]}/openapi.yaml now has an operation_response row; remove the line")
+        elif triple not in resp:
+            findings.append(f"{tag} of {UNPINNED}: response '{triple[1]}.{triple[2]}' of {triple[0]}/openapi.yaml does not exist; remove the line")
+    for d, op, st in sorted(resp - pinned - listed):
+        findings.append(f"response '{op}.{st}' of {d}/openapi.yaml has no operation_response row in {d}/required-identifiers.tsv and is not on the burn-down list")
+    if sha is None:
+        return findings
+    # U3: no growth against the base commit (never the working tree)
+    if git("cat-file", "-e", f"{sha}:{UNPINNED}").returncode == 0:
+        shown = git("show", f"{sha}:{UNPINNED}")
+        if shown.returncode != 0:
+            return findings + [f"{UNPINNED}: cannot be read at {sha}: {shown.stderr.strip()}"]
+        allowed: set[tuple[str, str, str]] = set()
+        for no, cells in unpinned_lines(shown.stdout):
+            if not unpinned_shape(cells):
+                findings.append(f"{UNPINNED}: at {sha} burn-down line {no} cannot be parsed (needs exactly 4 non-empty cells)")
+            else:
+                allowed.add((cells[0].strip(), cells[1].strip(), cells[2].strip()))
+    else:
+        listing = git("ls-tree", "-r", "--name-only", sha)
+        if listing.returncode != 0:
+            return findings + [f"--base {sha!r}: git ls-tree failed: {listing.stderr.strip()}"]
+        names = listing.stdout.splitlines()
+        base_resp: set[tuple[str, str, str]] = set()
+        base_pinned: set[tuple[str, str, str]] = set()
+        for name in sorted(n for n in names if re.fullmatch(r"[^/]+/openapi\.yaml", n)):
+            d = name.split("/")[0]
+            shown = git("show", f"{sha}:{name}")
+            got = response_set(d, shown.stdout) if shown.returncode == 0 else f"cannot be read: {shown.stderr.strip()}"
+            if isinstance(got, str):
+                findings.append(f"{name}: at {sha} it {got}")
+                continue
+            base_resp |= got
+            tname = f"{d}/required-identifiers.tsv"
+            if tname in names:
+                tshown = git("show", f"{sha}:{tname}")
+                if tshown.returncode != 0:
+                    findings.append(f"{tname}: cannot read it at {sha}: {tshown.stderr.strip()}")
+                    continue
+                base_pinned |= pinned_set(d, tshown.stdout)
+        allowed = base_resp - base_pinned
+    for no, cells in lines:
+        if unpinned_shape(cells) and (cells[0].strip(), cells[1].strip(), cells[2].strip()) not in allowed:
+            findings.append(f"burn-down line {no} of {UNPINNED} is new since {sha}")
+    return findings
+
+
 def check_base(root: Path, sha: str) -> list[str]:
     """INV-Q-7027 A: a row of a table at the base commit must still be a row of the same table at the head."""
     if not sha.strip() or sha.startswith("-"):
@@ -519,6 +658,7 @@ def main(argv: list[str]) -> int:
         findings += check_base(root, base)
     if base is None or git_ok(root, base):
         findings += check_audited(root, base)
+        findings += check_unpinned(root, base)
     if findings:
         print("gst-ci: required-identifiers FAIL")
         for f in findings:

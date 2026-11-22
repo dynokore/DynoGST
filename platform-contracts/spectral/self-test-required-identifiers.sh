@@ -89,6 +89,26 @@ expect_fail_dir() {
   else case "$out" in *"$2"*"R-6"*|*"R-6"*"$2"*) echo "gst-ci: self-test '${1##*/}' failed as expected ($2)";;
        *) echo "gst-ci: FAIL — '$1' failed, but not with '$2' naming R-6:"; echo "$out"; failed=1;; esac; fi
 }
+# INV-T-27400 (INV-AC-27399): the unpinned-response completeness rule makes every response of an operation need a row or a burn-down
+# line. unpin writes, into a throwaway tree only, the burn-down list holding every response that has no operation_response row in it
+# (never the real list); the check is then asked to accept or reject mutations of that tree.
+SPD=$PWD
+unpin() { # tree dir -> $1/spectral/required-identifiers-unpinned-responses.tsv
+  mkdir -p "$1/spectral"
+  python3 - "$1" "$SPD/check-required-identifiers.py" <<'PY'
+import importlib.util, sys
+from pathlib import Path
+spec = importlib.util.spec_from_file_location("c", sys.argv[2]); c = importlib.util.module_from_spec(spec); spec.loader.exec_module(c)
+root = Path(sys.argv[1]); resp = set(); pinned = set()
+for s in sorted(root.glob("*/openapi.yaml")):
+    resp |= c.response_set(s.parent.name, s.read_text())
+    t = s.parent / "required-identifiers.tsv"
+    if t.is_file(): pinned |= c.pinned_set(s.parent.name, t.read_text())
+with open(root / "spectral" / "required-identifiers-unpinned-responses.tsv", "w") as f:
+    f.write("directory\toperation_id\tstatus\towner_task\n")
+    for d, o, st in sorted(resp - pinned): f.write(f"{d}\t{o}\t{st}\tunassigned\n")
+PY
+}
 NF="not found as a"
 # INV-T-20335: enum_value is satisfied by a member of an `enum` list or of an `x-extensible-enum` list;
 # the boolean marker `true` adds no member and schema_enum_value still reads `enum` only.
@@ -194,6 +214,7 @@ components:
     '418': {description: teapot}
 YAML
   printf 'identifier\tkind\tfile\trequirement\n%s\toperation_response\topenapi.yaml\tR-6\n' "$2" > "$T/$1/svc/required-identifiers.tsv"
+  unpin "$T/$1"
 }
 for ok in postThing.202 postThing.403 postThing.default listThings.409; do
   mkr "resp-pass-$ok" "$ok"
@@ -274,6 +295,7 @@ mkb() { # name -> $T/<name> with one commit holding svc/openapi.yaml and the two
   mkdir -p "$T/$1/svc"
   printf 'openapi: 3.1.0\ninfo: {title: f, version: 1.0.0}\npaths:\n  /x:\n    get:\n      operationId: op\n      responses:\n        "200":\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  alpha: {type: string}\n                  beta: {type: string}\n                  gamma: {type: string}\n' > "$T/$1/svc/openapi.yaml"
   printf "$TSV" > "$T/$1/svc/required-identifiers.tsv"
+  unpin "$T/$1"
   git -C "$T/$1" init -q && git -C "$T/$1" add -A && git -C "$T/$1" -c user.name=t -c user.email=t@t commit -q -m base
 }
 base_case() { # name, expected rc (0 pass, 1 fail), expected text, then the mutation as a command run in $T/<name>
@@ -356,6 +378,7 @@ mkm() { # name, map lines (printf format) -> $T/<name>; the map is committed at 
   printf 'openapi: 3.1.0\ninfo: {title: f, version: 1.0.0}\npaths:\n  /x:\n    get:\n      operationId: op\n      responses:\n        "200":\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  alpha: {type: string}\n                  beta: {type: string}\n                  gamma: {type: string}\n' > "$T/$1/svc/openapi.yaml"
   printf 'identifier\tkind\tfile\trequirement\nalpha\tproperty\topenapi.yaml\tR-6\nbeta\tproperty\topenapi.yaml\tR-6\ngamma\tproperty\topenapi.yaml\tR-6\n' > "$T/$1/svc/required-identifiers.tsv"
   [ -n "$2" ] && printf "${RH}$2" > "$T/$1/spectral/required-identifiers-renames.tsv"
+  unpin "$T/$1"
   git -C "$T/$1" init -q && git -C "$T/$1" add -A && git -C "$T/$1" -c user.name=t -c user.email=t@t commit -q -m base
 }
 rename_case() { # name, expected rc, expected text, map lines at the base, mutation run in $T/<name>
@@ -391,6 +414,7 @@ mkt() { # name, map lines -> $T/<name>
   cp $RT/openapi-base.yaml "$T/$1/svc/openapi.yaml"; cp $RT/asyncapi.yaml "$T/$1/svc/asyncapi.yaml"; cp $RT/table-base.tsv "$T/$1/svc/required-identifiers.tsv"
   cp $RT/openapi-base.yaml "$T/$1/other/openapi.yaml"; cp $RT/table-base.tsv "$T/$1/other/required-identifiers.tsv"
   printf "${RH}$2" > "$T/$1/spectral/required-identifiers-renames.tsv"
+  unpin "$T/$1"
   git -C "$T/$1" init -q && git -C "$T/$1" add -A && git -C "$T/$1" -c user.name=t -c user.email=t@t commit -q -m base
 }
 retire_case() { # name, expected rc, expected text, map lines at the base, mutation run in $T/<name>
@@ -403,7 +427,7 @@ retire_case() { # name, expected rc, expected text, map lines at the base, mutat
 }
 HEADRM="cp \"$PWD/$RT/table-head.tsv\" svc/required-identifiers.tsv; cp \"$PWD/$RT/openapi-head.yaml\" svc/openapi.yaml"
 GONE2="'issueSignatoryLink' (operation, openapi.yaml)"
-retire_case retire-ok 0 "" "$RR" "$HEADRM"
+retire_case retire-ok 0 "" "$RR" "$HEADRM; unpin \"\$PWD\""
 retire_case retire-still-present 1 "$GONE2" "$RR" "cp \"$PWD/$RT/table-head.tsv\" svc/required-identifiers.tsv"
 retire_case retire-lookalike-plural 1 "$GONE2" 'svc/required-identifiers.tsv\tissueSignatoryLinks\toperation\topenapi.yaml\tRETIRED\tRETIRED\tRETIRED\tINV-Q-17427\n' "$HEADRM"
 retire_case retire-lookalike-case 1 "$GONE2" 'svc/required-identifiers.tsv\tissuesignatorylink\toperation\topenapi.yaml\tRETIRED\tRETIRED\tRETIRED\tINV-Q-17427\n' "$HEADRM"
@@ -419,7 +443,7 @@ retire_case retire-duplicate-row 1 "$GONE2" "$RR$RR" "$HEADRM"
 retire_case retire-partial 1 "map line 2" 'svc/required-identifiers.tsv\tissueSignatoryLink\toperation\topenapi.yaml\tRETIRED\tproperty\topenapi.yaml\tINV-Q-17427\n' "$HEADRM"
 retire_case retire-partial-row 1 "$GONE2" 'svc/required-identifiers.tsv\tissueSignatoryLink\toperation\topenapi.yaml\tRETIRED\tproperty\topenapi.yaml\tINV-Q-17427\n' "$HEADRM"
 retire_case retire-map-added-in-change 1 "$GONE2" "" "$HEADRM; printf \"\$(printf '$RH$RR')\" > spectral/required-identifiers-renames.tsv"
-retire_case retire-rename-still-passes 0 "" 'svc/required-identifiers.tsv\tissueSignatoryLink\toperation\topenapi.yaml\tkeepOp2\toperation\topenapi.yaml\tINV-Q-10647\n' "sed -i 's/^issueSignatoryLink\toperation/keepOp2\toperation/' svc/required-identifiers.tsv; sed -i 's/operationId: issueSignatoryLink/operationId: keepOp2/' svc/openapi.yaml"
+retire_case retire-rename-still-passes 0 "" 'svc/required-identifiers.tsv\tissueSignatoryLink\toperation\topenapi.yaml\tkeepOp2\toperation\topenapi.yaml\tINV-Q-10647\n' "sed -i 's/^issueSignatoryLink\toperation/keepOp2\toperation/' svc/required-identifiers.tsv; sed -i 's/operationId: issueSignatoryLink/operationId: keepOp2/' svc/openapi.yaml; printf 'keepOp2.200\toperation_response\topenapi.yaml\tR-6\n' >> svc/required-identifiers.tsv; unpin \"\$PWD\""
 # INV-T-13720 (INV-Q-13717 A): the kind root_property. Each case is a JSON Schema or OpenAPI file in the temporary directory.
 mkr() { # name, kind, identifier, json text -> $T/<name>/svc/s.json with a one-row table
   mkdir -p "$T/$1/svc"; printf '%s\n' "$4" > "$T/$1/svc/s.json"
@@ -515,5 +539,72 @@ ratchet_case own-map-new-not-req 1 "map line 2" "$OT"'\tINV-REQ-1\tR-7\tINV-Q-10
 ratchet_case own-map-unknown-row 1 "map line 2" 'svc/required-identifiers.tsv\tnope\toperation_error_code\topenapi.yaml\tINV-REQ-1\tINV-REQ-7\tINV-Q-100\n' "true"
 ratchet_case own-map-unknown-table 1 "map line 2" 'svc9/required-identifiers.tsv\trecordDocument.ING-002\toperation_error_code\topenapi.yaml\tINV-REQ-1\tINV-REQ-7\tINV-Q-100\n' "true"
 ratchet_case own-map-unused-line 0 "" "$OL" "true"
+# INV-T-27400 (INV-AC-27399): the unpinned-response completeness rule U1 (every response has a row or a burn-down line), U2 (burn-down
+# hygiene) and U3 (the list cannot grow since the base). Each case is a throwaway git repository: svc answers checkPreIssuance 200 and
+# 403 (both pinned) and validateIssuance 200 and 404 (both on the list); svc2 answers checkPreIssuance 200 (pinned). The base commit
+# holds the list; the mutation runs before the check with --base.
+LST=spectral/required-identifiers-unpinned-responses.tsv
+GC="git -c user.name=t -c user.email=t@t"
+mku() { # name -> $T/<name>
+  mkdir -p "$T/$1/svc" "$T/$1/svc2"
+  printf 'openapi: 3.1.0\ninfo: {title: f, version: 1.0.0}\npaths:\n  /a:\n    post:\n      operationId: checkPreIssuance\n      responses:\n        "200": {description: ok}\n        "403": {description: no}\n  /b:\n    post:\n      operationId: validateIssuance\n      responses:\n        "200": {description: ok}\n        "404": {description: nf}\n' > "$T/$1/svc/openapi.yaml"
+  printf 'openapi: 3.1.0\ninfo: {title: f, version: 1.0.0}\npaths:\n  /a:\n    post:\n      operationId: checkPreIssuance\n      responses:\n        "200": {description: ok}\n' > "$T/$1/svc2/openapi.yaml"
+  printf 'identifier\tkind\tfile\trequirement\ncheckPreIssuance.200\toperation_response\topenapi.yaml\tINV-REQ-1\ncheckPreIssuance.403\toperation_response\topenapi.yaml\tINV-REQ-1\n' > "$T/$1/svc/required-identifiers.tsv"
+  printf 'identifier\tkind\tfile\trequirement\ncheckPreIssuance.200\toperation_response\topenapi.yaml\tINV-REQ-1\n' > "$T/$1/svc2/required-identifiers.tsv"
+  unpin "$T/$1"
+  git -C "$T/$1" init -q && git -C "$T/$1" add -A && $GC -C "$T/$1" commit -q -m base
+}
+lapp() { printf '%s\t%s\t%s\tunassigned\n' "$1" "$2" "$3" >> $LST; } # one list line in the working tree
+unp_case() { # name, expected rc, expected text, mutation run in $T/<name>
+  n=$1; want=$2; txt=$3; mku "$n"; shift 3; (cd "$T/$n" && eval "$*")
+  out=$(python3 check-required-identifiers.py --base "$(git -C "$T/$n" rev-parse HEAD)" "$T/$n" 2>&1); rc=$?
+  if [ "$want" = 0 ] && [ $rc -ne 0 ]; then echo "gst-ci: FAIL — INV-AC-27399 unpinned case '$n' rejected:"; echo "$out"; failed=1
+  elif [ "$want" = 1 ] && [ $rc -eq 0 ]; then echo "gst-ci: FAIL — INV-AC-27399 unpinned case '$n' was accepted"; failed=1
+  elif [ "$want" = 1 ] && ! case "$out" in *"$txt"*) true;; *) false;; esac; then echo "gst-ci: FAIL — INV-AC-27399 unpinned case '$n' failed, but not with '$txt':"; echo "$out"; failed=1
+  else echo "gst-ci: self-test INV-AC-27399 unpinned '$n' behaved as expected"; fi
+}
+U1T="has no operation_response row in svc/required-identifiers.tsv and is not on the burn-down list"
+U1F="response 'checkPreIssuance.403' of svc/openapi.yaml $U1T"
+ADD409='sed -i "s/^        .404.: .*/&\n        \"409\": {description: c}/" svc/openapi.yaml'
+DEL404='sed -i "/^        .404.: /d" svc/openapi.yaml'
+DEL403ROW="sed -i '/^checkPreIssuance.403/d' svc/required-identifiers.tsv"
+ROW409="printf 'validateIssuance.409\toperation_response\topenapi.yaml\tINV-REQ-1\n' >> svc/required-identifiers.tsv"
+unp_case unp-real-shape 0 "" "true"
+unp_case unp-response-added 1 "response 'validateIssuance.409' of svc/openapi.yaml $U1T" "$ADD409"
+unp_case unp-response-added-with-row 0 "" "$ADD409; $ROW409"
+unp_case unp-row-deleted 1 "$U1F" "$DEL403ROW"
+unp_case unp-row-deleted-listed 1 "burn-down line 4 of $LST is new since" "$DEL403ROW; lapp svc checkPreIssuance 403"
+unp_case unp-listed-new-response 1 "is new since" "$ADD409; lapp svc validateIssuance 409"
+unp_case unp-listed-has-row 1 "burn-down line 2 of $LST: response 'validateIssuance.200' of svc/openapi.yaml now has an operation_response row" "printf 'validateIssuance.200\toperation_response\topenapi.yaml\tINV-REQ-1\n' >> svc/required-identifiers.tsv"
+unp_case unp-listed-gone 1 "burn-down line 3 of $LST: response 'validateIssuance.404' of svc/openapi.yaml does not exist" "$DEL404"
+unp_case unp-listed-lookalike 1 "burn-down line 4 of $LST: response 'validateIssuance.403' of svc/openapi.yaml does not exist" "lapp svc validateIssuance 403"
+unp_case unp-listed-other-directory 1 "$U1F" "$DEL403ROW; lapp svc2 checkPreIssuance 403"
+unp_case unp-listed-status-space 1 "$U1F" "$DEL403ROW; lapp svc checkPreIssuance \"403 \""
+unp_case unp-listed-status-quoted 1 "$U1F" "$DEL403ROW; lapp svc checkPreIssuance \"'403'\""
+unp_case unp-listed-status-letter-o 1 "$U1F" "$DEL403ROW; lapp svc checkPreIssuance 4O3"
+unp_case unp-listed-operation-case 1 "$U1F" "$DEL403ROW; lapp svc checkpreissuance 403"
+unp_case unp-duplicate-line 1 "burn-down line 4 of $LST repeats burn-down line 2" "lapp svc validateIssuance 200"
+unp_case unp-three-cells 1 "burn-down line 4 of $LST needs exactly 4 non-empty cells" "printf 'svc\tvalidateIssuance\t403\n' >> $LST"
+unp_case unp-empty-cell 1 "burn-down line 4 of $LST needs exactly 4 non-empty cells" "printf 'svc\tvalidateIssuance\t\tunassigned\n' >> $LST"
+unp_case unp-five-cells 1 "burn-down line 4 of $LST needs exactly 4 non-empty cells" "printf 'svc\tvalidateIssuance\t403\tunassigned\textra\n' >> $LST"
+unp_case unp-burn-down-removed-with-row 0 "" "sed -i '/^svc.validateIssuance.200/d' $LST; printf 'validateIssuance.200\toperation_response\topenapi.yaml\tINV-REQ-1\n' >> svc/required-identifiers.tsv"
+unp_case unp-burn-down-removed-no-row 1 "response 'validateIssuance.200' of svc/openapi.yaml $U1T" "sed -i '/^svc.validateIssuance.200/d' $LST"
+unp_case unp-list-working-tree-only 1 "burn-down line 4 of $LST is new since" "$GC rm -q $LST; $GC commit -q -m nolist; $ADD409; $ROW409; unpin \"\$PWD\"; printf 'svc\tvalidateIssuance\t409\tunassigned\n' >> $LST; sed -i '/^validateIssuance.409/d' svc/required-identifiers.tsv"
+# first merge: the list is absent at the base; the head list must equal members of R(base) minus P(base)
+NOLIST="$GC rm -q $LST; $GC commit -q -m nolist"
+unp_case unp-first-merge 0 "" "$NOLIST; unpin \"\$PWD\""
+unp_case unp-first-merge-extra-line 1 "burn-down line 4 of $LST is new since" "$NOLIST; unpin \"\$PWD\"; lapp svc checkPreIssuance 200"
+unp_case unp-first-merge-extra-line-nonexistent 1 "burn-down line 4 of $LST: response 'validateIssuance.403' of svc/openapi.yaml does not exist" "$NOLIST; unpin \"\$PWD\"; lapp svc validateIssuance 403"
+unp_case unp-first-merge-missing-line 1 "response 'validateIssuance.404' of svc/openapi.yaml $U1T" "$NOLIST; unpin \"\$PWD\"; sed -i '/validateIssuance.404/d' $LST"
+# an unparseable list at the base is a finding, never a skip
+unp_case unp-base-list-unparseable 1 "at " "printf 'svc\tvalidateIssuance\t403\n' >> $LST; git add -A; $GC commit -q -m broken; sed -i '\$d' $LST"
+unp_case unp-base-list-unparseable-text 1 "cannot be parsed (needs exactly 4 non-empty cells)" "printf 'svc\tvalidateIssuance\t403\n' >> $LST; git add -A; $GC commit -q -m broken; sed -i '\$d' $LST"
+# without --base the completeness rule U1 and the hygiene rule U2 still run; U3 does not
+mku unp-plain; (cd "$T/unp-plain" && eval "$DEL403ROW")
+out=$(python3 check-required-identifiers.py "$T/unp-plain" 2>&1); rc=$?
+case "$out" in *"$U1F"*) [ $rc -eq 1 ] && echo "gst-ci: self-test INV-AC-27399 unpinned 'unp-plain' (no --base) failed as expected" || { echo "gst-ci: FAIL — unp-plain rc $rc"; failed=1; };; *) echo "gst-ci: FAIL — unp-plain without the finding:"; echo "$out"; failed=1;; esac
+mku unp-plain-listed; (cd "$T/unp-plain-listed" && eval "$ADD409; $ROW409; lapp svc validateIssuance 409")
+out=$(python3 check-required-identifiers.py "$T/unp-plain-listed" 2>&1); rc=$?
+case "$out" in *"now has an operation_response row"*) [ $rc -eq 1 ] && echo "gst-ci: self-test INV-AC-27399 unpinned 'unp-plain-listed' (no --base) failed as expected" || { echo "gst-ci: FAIL — unp-plain-listed rc $rc"; failed=1; };; *) echo "gst-ci: FAIL — unp-plain-listed without the finding:"; echo "$out"; failed=1;; esac
 [ "$failed" -eq 0 ] && echo "gst-ci: check-required-identifiers.py self-test passed."
 exit $failed
