@@ -1490,3 +1490,26 @@ permissions:
     cells:
       - {role: tax.approver, form: SAAS, allowance: PERMITTED}
       - {role: tax.approver, form: PRIVATE, allowance: PERMITTED}
+  - key: alert-policy.set
+    kind: WRITE
+    row: "Set an alert policy"
+    cells:
+      - {role: tenant.admin, form: SAAS, allowance: PERMITTED}
+      - {role: tenant.admin, form: PRIVATE, allowance: PERMITTED}
+      - {role: security.officer, form: SAAS, allowance: PERMITTED}
+      - {role: security.officer, form: PRIVATE, allowance: PERMITTED}
+  - key: alert.snooze
+    kind: WRITE
+    row: "Snooze an alert"
+    cells:
+      - {role: tax.operator, form: SAAS, allowance: PERMITTED}
+      - {role: tax.operator, form: PRIVATE, allowance: PERMITTED}
+      - {role: tax.approver, form: SAAS, allowance: PERMITTED}
+      - {role: tax.approver, form: PRIVATE, allowance: PERMITTED}
+      - {role: integration.engineer, form: SAAS, allowance: PERMITTED}
+      - {role: integration.engineer, form: PRIVATE, allowance: PERMITTED}
+      - {role: security.officer, form: SAAS, allowance: PERMITTED}
+      - {role: security.officer, form: PRIVATE, allowance: PERMITTED}
+      - {role: billing.contact, form: SAAS, allowance: PERMITTED}
+      - {role: billing.contact, form: PRIVATE, allowance: PERMITTED}
+      - {role: deployment.operator, form: PRIVATE, allowance: PERMITTED}
