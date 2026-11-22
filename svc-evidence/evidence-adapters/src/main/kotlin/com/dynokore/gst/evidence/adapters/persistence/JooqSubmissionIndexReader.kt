@@ -25,6 +25,26 @@ class JooqSubmissionIndexReader(
         filter: ReverseLookupFilter,
         after: ReverseLookupKey?,
         limit: Int,
+    ): List<ReverseLookupRow> = query(conditions(tenant, filter, after), limit)
+
+    /**
+     * As [read] with `entity_ref in (entities)` added by AND (INV-REQ-710): exact, case-sensitive; a null
+     * `entity_ref` never matches. An empty set returns an empty list before any statement is built (fail closed).
+     */
+    override fun readScoped(
+        tenant: TenantId,
+        entities: Set<String>,
+        filter: ReverseLookupFilter,
+        after: ReverseLookupKey?,
+        limit: Int,
+    ): List<ReverseLookupRow> {
+        if (entities.isEmpty()) return emptyList()
+        return query(conditions(tenant, filter, after) + SUBMISSION_INDEX.ENTITY_REF.`in`(entities), limit)
+    }
+
+    private fun query(
+        where: List<Condition>,
+        limit: Int,
     ): List<ReverseLookupRow> {
         val i = SUBMISSION_INDEX
         return dsl
@@ -38,7 +58,7 @@ class JooqSubmissionIndexReader(
                 i.ENTITY_REF,
                 i.PERIOD_REF,
             ).from(i)
-            .where(conditions(tenant, filter, after))
+            .where(where)
             .orderBy(i.DOCUMENT_DATE, i.DOC_UUID, i.VERSION)
             .limit(limit)
             .fetch()
