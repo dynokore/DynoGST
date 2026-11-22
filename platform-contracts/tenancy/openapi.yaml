@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: tenancy API
-  version: 2.2.0
+  version: 2.3.0
   description: 'Contract-first source of truth for tenancy (API-01, STK-44), replacing the INV-T-2849
     scaffold (INV-T-2857, T13). Internal API only (SDS/04-api-standards §1): organisation structure and
     each entity''s regulatory profile, called by console-bff (commands), control-plane-svc (tenant provisioning
@@ -24,6 +24,8 @@ tags:
   description: Sandbox workspaces and their pairing (§35.5).
 - name: installation
   description: Installation-wide facts (licence status).
+- name: submission-scope
+  description: Submission activation date and current period of an entity, read by ingestion-svc for a backfill request.
 - name: tenancy
   description: Deprecated placeholder tag (INV-T-2849); dropped with the placeholder operation.
 paths:
@@ -295,6 +297,71 @@ paths:
                     lifecycleState: LIVE
         "422":
           $ref: '#/components/responses/Error'
+        "400":
+          $ref: '#/components/responses/Error'
+        "401":
+          $ref: '#/components/responses/Error'
+        "403":
+          $ref: '#/components/responses/Error'
+        "404":
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+  /internal/v1/tenancy/entities/{entityRef}/submission-scope:
+    get:
+      operationId: getSubmissionScope
+      summary: Read the entity's submission activation date and current period (INV-REQ-1086)
+      description: >-
+        Read by ingestion-svc only for a request that carries `backfill` (INV-REQ-1086), so that it can enforce the
+        scope window of the backfill situation at intake; a request without `backfill` makes no call. The owner of the
+        values is tenancy-svc, the single source of truth. `submissionActivatedOn` is the date submission was
+        activated for the entity by `goLive` and is absent while the entity has none. `currentPeriod` is the period
+        record whose position is CURRENT and is absent when the entity has none. Dates are inclusive and in the
+        period calendar zone Asia/Singapore.
+
+
+        The decision is by the scoped permission key `transaction.ingest` (catalogue row "Ingest transactions via
+        API"): tenancy-svc decides it per request through `AuthorityReplica.decide` for the end user whose credential
+        ingestion-svc forwards, never by a role name (INV-Q-10027). An unanswered read fails closed at the caller.
+      tags:
+      - submission-scope
+      x-principal: ingest
+      x-caller-auth: end-user
+      x-sync-edge: ingestion-svc->tenancy-svc
+      x-timeout: 2000
+      x-requirements:
+      - INV-REQ-1086
+      x-error-codes: []
+      x-operation:
+        role: ingest
+        scope: entity
+        precondition: The entity exists
+        reversibility: UNDOABLE
+        repeatKey: A read — no state changes; repeating it returns the current values
+      parameters:
+      - name: entityRef
+        in: path
+        required: true
+        description: The registered entity's opaque reference.
+        schema:
+          type: string
+          maxLength: 64
+        example: ENT-3F2A9C
+      responses:
+        "200":
+          description: The entity's submission activation date and current period
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmissionScopeResponse'
+              examples:
+                default:
+                  value:
+                    entityRef: ENT-3F2A9C
+                    submissionActivatedOn: "2026-10-01"
+                    currentPeriod:
+                      periodStart: "2026-10-01"
+                      periodEnd: "2026-12-31"
         "400":
           $ref: '#/components/responses/Error'
         "401":
@@ -5777,6 +5844,34 @@ components:
             $ref: '#/components/schemas/PeriodRecord'
         nextCursor:
           type: string
+    SubmissionScopeResponse:
+      type: object
+      description: Submission activation date and current period of an entity; inclusive dates in Asia/Singapore.
+      required:
+      - entityRef
+      additionalProperties: false
+      properties:
+        entityRef:
+          type: string
+          maxLength: 64
+        submissionActivatedOn:
+          type: string
+          format: date
+          description: Date submission was activated by goLive; absent while the entity has none.
+        currentPeriod:
+          type: object
+          description: The period record whose position is CURRENT; absent when the entity has none.
+          required:
+          - periodStart
+          - periodEnd
+          additionalProperties: false
+          properties:
+            periodStart:
+              type: string
+              format: date
+            periodEnd:
+              type: string
+              format: date
   responses:
     Error:
       description: Error (API-20 envelope)
