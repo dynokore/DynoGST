@@ -56,16 +56,16 @@ class OperationsGateTest {
 
     @Test
     fun `INV-AC-14437 the real table covers the real contract`() {
-        OperationsGate.contractOperations(openapi).size shouldBe 17
+        OperationsGate.contractOperations(openapi).size shouldBe 18
         OperationsGate.contractChannels(asyncapi).size shouldBe 1
         run(done = doneText).shouldBeEmpty()
         doneLines() shouldBe listOf("INV-T-21108", "INV-T-21165", "INV-T-21207", "INV-T-26286")
     }
 
     @Test
-    fun `INV-AC-21120 seventeen operations, eight added rows UNASSIGNED, stubs equal the contract`() {
+    fun `INV-AC-21120 eighteen operations, nine added rows UNASSIGNED, stubs equal the contract`() {
         val ids = OperationsGate.contractOperations(openapi)
-        ids.size shouldBe 17
+        ids.size shouldBe 18
         OperationsGate.contractChannels(asyncapi).size shouldBe 1
         val rows = tsv.lines().filter { it.isNotBlank() }.map { it.split('\t') }
         rows.filter { it[0] == "operation" }.map { it[1] }.toSet() shouldBe ids
@@ -78,6 +78,7 @@ class OperationsGateTest {
                 "compareDocumentVersions",
                 "previewConfigurationPromotion",
                 "applyOperatingProfile",
+                "getEntityRenditionEvidence",
             )
         for (id in added) {
             val own = rows.filter { it[0] == "operation" && it[1] == id }
@@ -85,7 +86,7 @@ class OperationsGateTest {
             own.single()[2] shouldBe "UNASSIGNED"
         }
         rows.single { it[0] == "operation" && it[1] == "getPortfolio" }[2] shouldBe "INV-T-26286"
-        stubs.size shouldBe 12
+        stubs.size shouldBe 13
         stubs shouldBe ids - implemented
         run(done = doneText).shouldBeEmpty()
         doneLines() shouldBe listOf("INV-T-21108", "INV-T-21165", "INV-T-21207", "INV-T-26286")

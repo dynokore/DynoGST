@@ -202,6 +202,7 @@ class ReadPermissionContractTest {
                 "getOverridePreview",
                 "searchDocuments",
                 "compareDocumentVersions",
+                "getEntityRenditionEvidence",
             )
     }
 }
