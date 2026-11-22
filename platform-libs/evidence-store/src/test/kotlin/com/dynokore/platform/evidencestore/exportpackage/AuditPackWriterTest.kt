@@ -339,4 +339,83 @@ class AuditPackWriterTest {
             },
         )
     }
+
+    private val sig = byteArrayOf(0x30, 0x03, 1, 2, 3)
+    private val pem = "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----"
+
+    private fun src(f: Map<String, ByteArray>) =
+        object : PackageSource {
+            override fun paths(): Set<String> = f.keys.toSet()
+
+            override fun read(path: String): ByteArray = f.getValue(path)
+        }
+
+    @Test
+    fun `INV-AC-27739 both tag files are written and listed`() {
+        val f = AuditPackWriter.write(entity, onePerClass(), at, report, sig, pem)
+        assertArrayEquals(sig, f.bytes("verification-report.p7s"))
+        val keyBytes = (pem + "\n").toByteArray(Charsets.UTF_8)
+        assertArrayEquals(keyBytes, f.bytes("verification-key.pem"))
+        assertFalse(String(f.bytes("verification-key.pem")!!, Charsets.UTF_8).contains("\r"))
+        assertTrue(tagLines(f).contains("${sha(sig)}  verification-report.p7s"))
+        assertTrue(tagLines(f).contains("${sha(keyBytes)}  verification-key.pem"))
+        val readme = String(f.bytes("README.txt")!!, Charsets.UTF_8)
+        assertTrue(readme.contains("verification-report.p7s") && readme.contains("verification-key.pem"))
+        assertTrue(PackageVerifier.verify(src(f.paths.associateWith { f.bytes(it)!! })) is PackageVerification.Valid)
+        val twice = AuditPackWriter.write(entity, onePerClass(), at, report, sig, pem + "\n")
+        assertArrayEquals(keyBytes, twice.bytes("verification-key.pem"))
+        listOf("\r\n", "\n\n").forEach {
+            val g = AuditPackWriter.write(entity, onePerClass(), at, report, sig, pem + it)
+            assertArrayEquals(keyBytes, g.bytes("verification-key.pem"))
+        }
+    }
+
+    @Test
+    fun `INV-AC-27739 the four-argument form is unchanged`() {
+        val a = AuditPackWriter.write(entity, onePerClass(), at, report)
+        val b = AuditPackWriter.write(entity, onePerClass(), at, report, null, null)
+        assertEquals(a.paths, b.paths)
+        a.paths.forEach { assertArrayEquals(a.bytes(it), b.bytes(it), it) }
+        assertNull(a.bytes("verification-report.p7s"))
+        assertNull(a.bytes("verification-key.pem"))
+    }
+
+    @Test
+    fun `INV-AC-27739 one file alone is refused`() {
+        assertThrows(IllegalArgumentException::class.java) {
+            AuditPackWriter.write(entity, onePerClass(), at, report, sig, null)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            AuditPackWriter.write(entity, onePerClass(), at, report, null, pem)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            AuditPackWriter.write(entity, onePerClass(), at, null, sig, pem)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            AuditPackWriter.write(entity, onePerClass(), at, " ", sig, pem)
+        }
+    }
+
+    @Test
+    fun `INV-AC-27739 a whole-tenant scope refuses a signature`() {
+        val w = PackageScope.WholeTenant(tenant)
+        assertThrows(
+            IllegalArgumentException::class.java,
+        ) { AuditPackWriter.write(w, onePerClass(), at, null, sig, pem) }
+        assertThrows(
+            IllegalArgumentException::class.java,
+        ) { AuditPackWriter.write(w, onePerClass(), at, report, sig, pem) }
+    }
+
+    @Test
+    fun `INV-AC-27739 a blank key or an empty signature is refused`() {
+        listOf("", " ", "\n").forEach {
+            assertThrows(IllegalArgumentException::class.java) {
+                AuditPackWriter.write(entity, onePerClass(), at, report, sig, it)
+            }
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            AuditPackWriter.write(entity, onePerClass(), at, report, ByteArray(0), pem)
+        }
+    }
 }

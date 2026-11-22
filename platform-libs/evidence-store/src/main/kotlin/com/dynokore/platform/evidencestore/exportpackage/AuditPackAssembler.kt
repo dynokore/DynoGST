@@ -40,12 +40,32 @@ object AuditPackAssembler {
         candidates: List<PackageCandidate>,
         generatedAt: Instant,
         verificationReport: String?,
+    ): AssemblyResult = assemble(scope, candidates, generatedAt, verificationReport, null, null)
+
+    /** As the four-argument form, with the detached report signature and verification key of [AuditPackWriter]. */
+    fun assemble(
+        scope: PackageScope,
+        candidates: List<PackageCandidate>,
+        generatedAt: Instant,
+        verificationReport: String?,
+        reportSignature: ByteArray?,
+        verificationKeyPem: String?,
     ): AssemblyResult {
         val tenant = scopeTenant(scope)
         val included = candidates.filter { inScope(scope, it) }
         val refusal = foreignTenant(tenant, candidates) ?: duplicate(included)
         if (refusal != null) return refusal
-        val files = AuditPackWriter.write(scope, included.map { it.item }, generatedAt, verificationReport)
+        val files =
+            AuditPackWriter.write(
+                scope,
+                included.map {
+                    it.item
+                },
+                generatedAt,
+                verificationReport,
+                reportSignature,
+                verificationKeyPem,
+            )
         return AssemblyResult.Assembled(files, included.size, candidates.size - included.size)
     }
 

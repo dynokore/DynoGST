@@ -525,11 +525,30 @@ class PackageVerifierTest {
                 "data/zzz/x.bin",
                 bag(ok + ("data/zzz/x.bin" to byteArrayOf(1))),
             )
+        cases +=
+            Triple(PackageProblemCode.REPORT_SIGNATURE_INCOMPLETE, "verification-key.pem", lonePem(bag(ok)))
         assertEquals(PackageProblemCode.entries.toSet(), cases.map { it.first }.toSet())
         for ((code, path, files) in cases) {
             val failing = if (code == PackageProblemCode.SOURCE_READ_FAILED) p else null
             assertTrue(PackageProblem(code, path) in problems(verify(files, failing))) { "$code $path" }
         }
+    }
+
+    /** A bag with the report and the signature, listed, and no key file. */
+    private fun lonePem(f: MutableMap<String, ByteArray>): MutableMap<String, ByteArray> {
+        f["verification-report.txt"] = "Result: PASSED\n".toByteArray()
+        f["verification-report.p7s"] = byteArrayOf(0x30, 3, 1, 2, 3)
+        val tags =
+            listOf(
+                "bagit.txt",
+                "bag-info.txt",
+                "README.txt",
+                "manifest-sha256.txt",
+                "verification-report.txt",
+                "verification-report.p7s",
+            )
+        f["tagmanifest-sha256.txt"] = tags.joinToString("") { "${sha(f.getValue(it))}  $it\n" }.toByteArray()
+        return f
     }
 
     private val reportPath = "verification-report.txt"
@@ -584,5 +603,92 @@ class PackageVerifierTest {
         val f = bag(full())
         f["Verification-Report.txt"] = byteArrayOf(1, 2, 3)
         assertIs<PackageVerification.Valid>(verify(f))
+    }
+
+    private val sigPath = "verification-report.p7s"
+    private val keyPath = "verification-key.pem"
+
+    private fun signed(
+        withSig: Boolean = true,
+        withKey: Boolean = true,
+        listSig: Boolean = withSig,
+        listKey: Boolean = withKey,
+        withRep: Boolean = true,
+    ): MutableMap<String, ByteArray> {
+        val f = bag(full())
+        if (withRep) f[reportPath] = reportBytes
+        if (withSig) f[sigPath] = byteArrayOf(0x30, 3, 1, 2, 3)
+        if (withKey) f[keyPath] = "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n".toByteArray()
+        val tags =
+            listOf("bagit.txt", "bag-info.txt", "README.txt", "manifest-sha256.txt") +
+                (if (withRep) listOf(reportPath) else emptyList()) +
+                (if (listSig) listOf(sigPath) else emptyList()) +
+                (if (listKey) listOf(keyPath) else emptyList())
+        f["tagmanifest-sha256.txt"] = tags.joinToString("") { "${sha(f.getValue(it))}  $it\n" }.toByteArray()
+        return f
+    }
+
+    @Test
+    fun `INV-AC-27739 the verifier accepts a signed pack`() {
+        assertIs<PackageVerification.Valid>(verify(signed()))
+    }
+
+    @Test
+    fun `INV-AC-27739 an unlisted p7s is TAG_FILE_NOT_LISTED`() {
+        single(verify(signed(listSig = false)), PackageProblemCode.TAG_FILE_NOT_LISTED, sigPath)
+        single(verify(signed(listKey = false)), PackageProblemCode.TAG_FILE_NOT_LISTED, keyPath)
+    }
+
+    @Test
+    fun `INV-AC-27739 an altered key file is TAG_DIGEST_MISMATCH`() {
+        val f = signed()
+        f[keyPath] = f.getValue(keyPath).also { it[0] = (it[0] + 1).toByte() }
+        single(verify(f), TAG_DIGEST_MISMATCH, keyPath)
+        val g = signed()
+        g[sigPath] = g.getValue(sigPath).also { it[4] = (it[4] + 1).toByte() }
+        single(verify(g), TAG_DIGEST_MISMATCH, sigPath)
+        val h = signed()
+        h.remove(sigPath)
+        h.remove(keyPath)
+        assertEquals(
+            setOf(PackageProblem(TAG_DIGEST_MISMATCH, sigPath), PackageProblem(TAG_DIGEST_MISMATCH, keyPath)),
+            problems(verify(h)).toSet(),
+        )
+    }
+
+    @Test
+    fun `INV-AC-27739 a lone key file is REPORT_SIGNATURE_INCOMPLETE`() {
+        single(verify(signed(withSig = false)), PackageProblemCode.REPORT_SIGNATURE_INCOMPLETE, sigPath)
+        single(verify(signed(withKey = false)), PackageProblemCode.REPORT_SIGNATURE_INCOMPLETE, keyPath)
+        val noReport = problems(verify(signed(withRep = false)))
+        assertTrue(noReport.all { it.code == PackageProblemCode.REPORT_SIGNATURE_INCOMPLETE })
+        assertEquals(setOf(sigPath, keyPath), noReport.map { it.path }.toSet())
+        assertEquals(
+            PackageProblemCode.SOURCE_READ_FAILED.ordinal + 1,
+            PackageProblemCode.REPORT_SIGNATURE_INCOMPLETE.ordinal,
+        )
+        assertEquals(
+            PackageProblemCode.entries.size - 1,
+            PackageProblemCode.REPORT_SIGNATURE_INCOMPLETE.ordinal,
+        )
+        assertEquals(16, PackageProblemCode.SOURCE_READ_FAILED.ordinal)
+        assertEquals(10, PackageProblemCode.TAG_FILE_NOT_LISTED.ordinal)
+    }
+
+    @Test
+    fun `INV-AC-27739 a file named verification-report p7s bak or data verification-report p7s is not a tag file`() {
+        val f = signed()
+        f["$sigPath.bak"] = byteArrayOf(9)
+        f["data/$sigPath"] = byteArrayOf(9)
+        val p = problems(verify(f)).map { it.path }
+        assertTrue("$sigPath.bak" !in p && sigPath !in p && keyPath !in p)
+        val g = bag(full())
+        g["$sigPath.bak"] = byteArrayOf(1)
+        g["$keyPath.bak"] = byteArrayOf(1)
+        assertIs<PackageVerification.Valid>(verify(g))
+        val h = bag(full())
+        h["x-$sigPath"] = byteArrayOf(1)
+        h["x-$keyPath"] = byteArrayOf(1)
+        assertIs<PackageVerification.Valid>(verify(h))
     }
 }

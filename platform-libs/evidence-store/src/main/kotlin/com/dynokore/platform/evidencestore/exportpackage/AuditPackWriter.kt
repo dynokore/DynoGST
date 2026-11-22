@@ -43,13 +43,38 @@ object AuditPackWriter {
     private const val MANIFEST = "manifest-sha256.txt"
     private const val TAG_MANIFEST = "tagmanifest-sha256.txt"
     private const val VERIFICATION_REPORT = "verification-report.txt"
+    private const val REPORT_SIGNATURE = "verification-report.p7s"
+    private const val VERIFICATION_KEY = "verification-key.pem"
 
     fun write(
         scope: PackageScope,
         items: List<PackageItem>,
         generatedAt: Instant,
         verificationReport: String?,
+    ): PackageFiles = write(scope, items, generatedAt, verificationReport, null, null)
+
+    /**
+     * As the four-argument form, and with both [reportSignature] (the DER detached CMS over the report) and
+     * [verificationKeyPem] also writes the root tag files `verification-report.p7s` and `verification-key.pem`.
+     * Both or neither; either needs a non-blank report. The writer signs nothing.
+     */
+    @Suppress("LongMethod")
+    fun write(
+        scope: PackageScope,
+        items: List<PackageItem>,
+        generatedAt: Instant,
+        verificationReport: String?,
+        reportSignature: ByteArray?,
+        verificationKeyPem: String?,
     ): PackageFiles {
+        require((reportSignature == null) == (verificationKeyPem == null)) {
+            "the report signature and the verification key are written together or not at all"
+        }
+        if (reportSignature != null) {
+            require(!verificationReport.isNullOrBlank()) { "a report signature needs a non-blank verification report" }
+            require(reportSignature.isNotEmpty()) { "the report signature must not be empty" }
+            require(!verificationKeyPem.isNullOrBlank()) { "the verification key must not be blank" }
+        }
         when (scope) {
             is PackageScope.EntityPeriod -> {
                 require(!verificationReport.isNullOrBlank()) {
@@ -81,6 +106,12 @@ object AuditPackWriter {
         if (verificationReport != null) {
             tagged[VERIFICATION_REPORT] =
                 (if (verificationReport.endsWith("\n")) verificationReport else verificationReport + "\n")
+                    .toByteArray(StandardCharsets.UTF_8)
+        }
+        if (reportSignature != null && verificationKeyPem != null) {
+            tagged[REPORT_SIGNATURE] = reportSignature.copyOf()
+            tagged[VERIFICATION_KEY] =
+                (verificationKeyPem.trimEnd('\r', '\n') + "\n")
                     .toByteArray(StandardCharsets.UTF_8)
         }
         val tagManifest = tagged.map { (path, bytes) -> "${ContentHash.of(bytes).hex}  $path" }
@@ -142,6 +173,8 @@ object AuditPackWriter {
                 "tagmanifest-sha256.txt lists the SHA-256 of the other description files.",
                 "verification-report.txt, when present, states the integrity status of the period at export time",
                 "and is listed in tagmanifest-sha256.txt.",
+                "verification-report.p7s, when present, is the detached CMS signature (RFC 5652) over that report",
+                "and verification-key.pem is the certificate to verify it; both are listed in tagmanifest-sha256.txt.",
                 "",
                 "To check the content, run this from the package root:",
                 "  sha256sum -c manifest-sha256.txt",

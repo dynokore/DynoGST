@@ -6,6 +6,10 @@ train is its own (README.md: "own version and changelog").
 
 ## [Unreleased]
 
+## [2.7.0] - 2026-11-22
+### Added
+- Tag files `verification-report.p7s` (the DER detached CMS signature over the report, given as bytes) and `verification-key.pem` (the verification certificate, UTF-8, one final LF) at the bag root, listed in `tagmanifest-sha256.txt` and named in README.txt. `AuditPackWriter.write` and `AuditPackAssembler.assemble` gain second overloads with `reportSignature: ByteArray?` and `verificationKeyPem: String?`; the four-argument forms delegate with two nulls and are byte-identical. Both or neither, only with a non-blank report on an entity-and-period package (otherwise `IllegalArgumentException`). `PackageVerifier` checks both by exact path (`TAG_FILE_NOT_LISTED`, `TAG_DIGEST_MISMATCH`) and the new last `PackageProblemCode` member `REPORT_SIGNATURE_INCOMPLETE` reports a lone file; it does not check the signature cryptographically (INV-REQ-663, INV-T-27740; INV-AC-27739).
+
 ## [2.6.0] - 2026-11-19
 ### Changed
 - `AuditPackWriter.write` and `AuditPackAssembler.assemble` gain the parameter `verificationReport: String?` (no default): an entity-and-period package refuses a null or blank report and writes it as the root tag file `verification-report.txt`, listed in `tagmanifest-sha256.txt` and named in README.txt; a whole-tenant package refuses a report. `PackageVerifier` also checks the exact path `verification-report.txt` against the tag manifest when it is present or listed (`TAG_DIGEST_MISMATCH`, `TAG_FILE_NOT_LISTED`); a bag without it stays valid. The six content classes, `bag-info.txt` and the Payload-Oxum are unchanged (INV-REQ-988, INV-T-24774; INV-AC-24773).

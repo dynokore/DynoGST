@@ -30,6 +30,7 @@ enum class PackageProblemCode {
     CLASS_COUNT_MISMATCH,
     UNKNOWN_CONTENT_DIRECTORY,
     SOURCE_READ_FAILED,
+    REPORT_SIGNATURE_INCOMPLETE,
 }
 
 data class PackageProblem(

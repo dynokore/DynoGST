@@ -4,7 +4,9 @@ import com.dynokore.platform.evidencestore.EntityRef
 import com.dynokore.platform.evidencestore.PeriodRef
 import com.dynokore.platform.evidencestore.exportpackage.PackageProblemCode.DIGEST_MISMATCH
 import com.dynokore.platform.tenancykernel.TenantId
+import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.time.Instant
@@ -151,13 +153,30 @@ class AuditPackAssemblerTest {
     fun `INV-AC-24773 the assembler passes the report to the writer and refuses a bad one`() {
         val r = assembled(AuditPackAssembler.assemble(scope(), mixed(), at, report))
         assertEquals(report, String(r.files.bytes("verification-report.txt")!!, Charsets.UTF_8))
-        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException::class.java) {
+        assertThrows(IllegalArgumentException::class.java) {
             AuditPackAssembler.assemble(scope(), mixed(), at, null)
         }
-        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException::class.java) {
+        assertThrows(IllegalArgumentException::class.java) {
             AuditPackAssembler.assemble(PackageScope.WholeTenant(t1), mixed(), at, report)
         }
         val w = assembled(AuditPackAssembler.assemble(PackageScope.WholeTenant(t1), mixed(), at, null))
         assertEquals(null, w.files.bytes("verification-report.txt"))
+    }
+
+    @Test
+    fun `INV-AC-27739 the assembler passes the signature and key to the writer`() {
+        val sig = byteArrayOf(0x30, 0x03, 1, 2, 3)
+        val pem = "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----"
+        val r = assembled(AuditPackAssembler.assemble(scope(), mixed(), at, report, sig, pem))
+        org.junit.jupiter.api.Assertions
+            .assertArrayEquals(sig, r.files.bytes("verification-report.p7s"))
+        assertEquals("$pem\n", String(r.files.bytes("verification-key.pem")!!, Charsets.UTF_8))
+        assertTrue(PackageVerifier.verify(source(r.files)) is PackageVerification.Valid)
+        assertThrows(IllegalArgumentException::class.java) {
+            AuditPackAssembler.assemble(PackageScope.WholeTenant(t1), mixed(), at, null, sig, pem)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            AuditPackAssembler.assemble(scope(), mixed(), at, report, sig, null)
+        }
     }
 }
