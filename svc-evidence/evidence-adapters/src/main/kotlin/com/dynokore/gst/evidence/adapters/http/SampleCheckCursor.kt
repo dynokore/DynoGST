@@ -17,8 +17,7 @@ import java.util.Base64
 
 /**
  * The cursor of `listRenditionSampleChecks`: `v1.` + base64url(position, issue time) + `.` + base64url(tag), the tag
- * a HMAC-SHA256 of `Macs` (CS-53) over the layout, the entityRef, the acting user ID (never a role), the position
- * and the issue time.
+ * a HMAC-SHA256 of `Macs` (CS-53) over the layout, the entityRef, the acting user ID (never a role) and the position.
  * The entityRef, the user ID and the key are not in the token. The key is read through [SecretStore] at every use,
  * never cached; the previous key is accepted for verification only. Every refusal answers null alike.
  */
@@ -33,7 +32,7 @@ class SampleCheckCursor(
         now: Instant,
     ): String {
         val payload = payloadOf(last, now)
-        val tag = Macs.tag(currentKey(), signed(entityRef, userId, last, now.toEpochMilli()))
+        val tag = Macs.tag(currentKey(), signed(entityRef, userId, last))
         return "$LAYOUT.${ENCODER.encodeToString(payload)}.${ENCODER.encodeToString(tag)}"
     }
 
@@ -50,10 +49,8 @@ class SampleCheckCursor(
         val parsed = payload?.let { parse(it, now) }
         val genuine =
             parsed != null && tag != null &&
-                listOfNotNull(key, previousKey()).any {
-                    Macs.verify(it, signed(entityRef, userId, parsed.first, parsed.second), tag)
-                }
-        return if (genuine) parsed.first else null
+                listOfNotNull(key, previousKey()).any { Macs.verify(it, signed(entityRef, userId, parsed), tag) }
+        return if (genuine) parsed else null
     }
 
     private fun payloadOf(
@@ -65,11 +62,11 @@ class SampleCheckCursor(
     private fun parse(
         payload: ByteArray,
         now: Instant,
-    ): Pair<SampleCheckPosition, Long>? {
+    ): SampleCheckPosition? {
         val fields = String(payload, Charsets.UTF_8).split('\n', limit = FIELDS)
         val issued = fields.getOrNull(1)?.toLongOrNull()?.let { runCatching { Instant.ofEpochMilli(it) }.getOrNull() }
         val fresh = issued != null && !issued.isAfter(now) && !issued.plus(MAX_AGE).isBefore(now)
-        return if (fresh) positionOf(fields)?.let { it to issued.toEpochMilli() } else null
+        return if (fresh) positionOf(fields) else null
     }
 
     private fun positionOf(fields: List<String>): SampleCheckPosition? {
@@ -101,12 +98,11 @@ class SampleCheckCursor(
     private fun decoded(text: String): ByteArray? =
         runCatching { DECODER.decode(text) }.getOrNull()?.takeIf { ENCODER.encodeToString(it) == text }
 
-    /** Length-prefixed fields: no value shifts into its neighbour. The issue time is signed (expiry is unforgeable). */
+    /** Length-prefixed fields: no value can shift into its neighbour. The issue time is not signed (freshness only). */
     private fun signed(
         entityRef: String,
         userId: String,
         position: SampleCheckPosition,
-        issuedAtMillis: Long,
     ): ByteArray {
         val out = ByteArrayOutputStream()
         val data = DataOutputStream(out)
@@ -117,7 +113,6 @@ class SampleCheckCursor(
             position.recordedAt.toString(),
             position.reference,
             position.hash,
-            issuedAtMillis.toString(),
         ).map { it.toByteArray(Charsets.UTF_8) }.forEach {
             data.writeInt(it.size)
             data.write(it)
