@@ -201,3 +201,6 @@ issueFlowContext.401	operation_response	openapi.yaml	INV-REQ-1202
 issueFlowContext.403	operation_response	openapi.yaml	INV-REQ-1202
 issueFlowContext.503	operation_response	openapi.yaml	INV-REQ-1202
 issueFlowContext.default	operation_response	openapi.yaml	INV-REQ-1202
+issueFlowContext.SRT-001	operation_error_code	openapi.yaml	INV-REQ-1202
+issueFlowContext.SRT-004	operation_error_code	openapi.yaml	INV-REQ-1202
+issueFlowContext.SRT-013	operation_error_code	openapi.yaml	INV-REQ-1202
