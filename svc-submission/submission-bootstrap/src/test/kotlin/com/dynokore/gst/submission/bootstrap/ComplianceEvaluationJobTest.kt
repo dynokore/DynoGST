@@ -124,6 +124,7 @@ class ComplianceEvaluationJobTest {
             .set(s.VERSION, 1)
             .set(s.STATE, "ACKNOWLEDGED")
             .set(s.ENTITY_REF, entity)
+            .set(s.SUBMISSION_TYPE, "TYPE_1B")
             .execute()
     }
 

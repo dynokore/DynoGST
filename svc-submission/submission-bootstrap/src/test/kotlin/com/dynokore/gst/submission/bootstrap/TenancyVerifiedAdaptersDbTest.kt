@@ -89,8 +89,8 @@ class TenancyVerifiedAdaptersDbTest {
         )
         val number = if (codes.size >= 2) 2 else 1
         dsl.execute(
-            "insert into submission.submission (tenant_id, doc_uuid, version, state, entity_ref) " +
-                "values (?, ?, ?, ?, ?)",
+            "insert into submission.submission (tenant_id, doc_uuid, version, state, entity_ref, submission_type) " +
+                "values (?, ?, ?, ?, ?, 'TYPE_1B')",
             tenant,
             doc,
             number,
@@ -225,8 +225,8 @@ class TenancyVerifiedAdaptersDbTest {
         seed { dsl, bind ->
             bind(other)
             dsl.execute(
-                "insert into submission.submission (tenant_id, doc_uuid, version, state, entity_ref) " +
-                    "values (?, ?, 2, 'QUEUED', ?)",
+                "insert into submission.submission (tenant_id, doc_uuid, version, state, entity_ref, submission_type) " +
+                    "values (?, ?, 2, 'QUEUED', ?, 'TYPE_1B')",
                 other,
                 "own-$s",
                 e1,
@@ -254,8 +254,8 @@ class TenancyVerifiedAdaptersDbTest {
         seed { dsl, bind ->
             bind(b)
             dsl.execute(
-                "insert into submission.submission (tenant_id, doc_uuid, version, state, entity_ref) " +
-                    "values (?, ?, 2, 'REJECTED', ?)",
+                "insert into submission.submission (tenant_id, doc_uuid, version, state, entity_ref, submission_type) " +
+                    "values (?, ?, 2, 'REJECTED', ?, 'TYPE_1B')",
                 b,
                 doc.toString(),
                 e1,
