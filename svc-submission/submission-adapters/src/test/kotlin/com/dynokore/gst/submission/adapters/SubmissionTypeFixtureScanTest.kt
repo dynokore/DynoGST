@@ -80,6 +80,12 @@ class SubmissionTypeFixtureScanTest {
         assertEquals(1, scan("F.kt", attempt).size)
     }
 
+    @Test
+    fun `scan fails a jOOQ insert with no execute even when the type is named later in the file`() {
+        val text = "private val s = Submission.SUBMISSION_\ndsl.insertInto(s)\n.set(s.STATE, \"X\")\nval t = s.SUBMISSION_TYPE\n"
+        assertEquals(1, scan("F.kt", text).size)
+    }
+
     private fun scan(
         name: String,
         text: String,
@@ -98,8 +104,9 @@ class SubmissionTypeFixtureScanTest {
         aliases.forEach { alias ->
             Regex("""insertInto\(\s*${Regex.escape(alias)}\s*\)""").findAll(text).forEach { m ->
                 val end = text.indexOf(".execute()", m.range.last)
-                val body = if (end < 0) text.substring(m.range.first) else text.substring(m.range.first, end)
-                sites += m.range.first to TYPE_JOOQ.containsMatchIn(body)
+                // An insert with no .execute() cannot be bounded, so it fails closed instead of reading to end of file.
+                val named = end >= 0 && TYPE_JOOQ.containsMatchIn(text.substring(m.range.first, end))
+                sites += m.range.first to named
             }
         }
         if (sites.isEmpty()) return listOf("$name: listed file holds no insert site")
