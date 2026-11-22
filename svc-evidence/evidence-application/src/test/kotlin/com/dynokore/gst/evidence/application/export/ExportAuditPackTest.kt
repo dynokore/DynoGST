@@ -207,7 +207,7 @@ class ExportAuditPackTest {
     private fun PackageFiles.text(path: String) = String(bytes(path)!!)
 
     @Test
-    fun `INV-AC-25916 the stored package opens with the verifier and holds the report with the four fields of the latest run`() {
+    fun `INV-AC-25916 the stored package opens with the verifier and holds the four-field report`() {
         val r = rig()
         val job = r.useCase.execute(pending)
         job.state shouldBe AuditPackState.READY
