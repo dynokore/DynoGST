@@ -124,7 +124,7 @@ class JobRuntimeIT {
     }
 
     @Test
-    fun `INV-AC-2663 the runtime holds exactly the jobs idempotency-key-purge, pack-stage and accreditation-step-retry`(
+    fun `the runtime holds exactly the jobs idempotency-key-purge, pack-stage and accreditation-step-retry`(
         @TempDir mount: Path,
     ) {
         withRuntime(mount) { runtime ->

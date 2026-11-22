@@ -32,7 +32,7 @@ class StageIT {
     ) = StagingEvidenceReaderJooq(flow.dslContext).forPack(ref)
 
     @Test
-    fun `the stage records PASSED over the hash of the staged content and publishPack then publishes`() {
+    fun `INV-AC-26354 the stage records PASSED over the hash of the staged content and publishPack then publishes`() {
         val flow = PackReleaseFlow()
         val ref = signed(flow)
         val outcome = flow.stage.run(ref)
@@ -49,7 +49,7 @@ class StageIT {
     }
 
     @Test
-    fun `INV-AC-2663 a pack the sandbox rejects has a FAILED record and publishPack is refused`() {
+    fun `INV-AC-26354 a pack the sandbox rejects has a FAILED record and publishPack is refused`() {
         val flow = PackReleaseFlow()
         val ref = signed(flow)
         flow.pipeline.rejected = true
@@ -139,7 +139,7 @@ class StageIT {
     }
 
     @Test
-    fun `the submissions the stage sends are those of the replay, one verdict each`() {
+    fun `INV-AC-26354 the submissions the stage sends are those of the replay, one verdict each`() {
         val flow = PackReleaseFlow()
         val ref = signed(flow)
         flow.stage.run(ref).detail shouldBe "all 2 submissions accepted"
