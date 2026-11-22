@@ -146,7 +146,10 @@ class OwningServiceEdgeTest {
         } finally {
             server.stop(0)
         }
-        assertEquals(listOf("GET /probe/PAYLOAD", "GET /probe/SUBMISSION", "GET /probe/MASTERDATA"), seen.toList())
+        assertEquals(
+            listOf("GET /probe/PAYLOAD", "GET /probe/SUBMISSION", "GET /probe/MASTERDATA", "GET /probe/EVIDENCE"),
+            seen.toList(),
+        )
     }
 
     private class Recording : ResilienceRegistry {

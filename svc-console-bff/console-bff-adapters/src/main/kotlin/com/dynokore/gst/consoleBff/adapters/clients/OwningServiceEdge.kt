@@ -23,6 +23,7 @@ enum class OwningService(
     PAYLOAD("console-bff->payload-svc", "console.payload-svc-url", EDGE_TIMEOUT),
     SUBMISSION("console-bff->submission-svc", "console.submission-svc-url", EDGE_TIMEOUT),
     MASTERDATA("console-bff->masterdata-svc", "console.masterdata-svc-url", EDGE_TIMEOUT),
+    EVIDENCE("console-bff->evidence-svc", "console.evidence-svc-url", EDGE_TIMEOUT),
 }
 
 /** The one place that names the edges, base URLs and timeouts of the owning-service clients. */

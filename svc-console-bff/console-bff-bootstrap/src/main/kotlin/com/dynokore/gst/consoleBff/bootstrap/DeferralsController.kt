@@ -21,6 +21,7 @@ import java.time.ZoneOffset
 import java.util.UUID
 import com.dynokore.gst.consoleBff.contract.model.Deferral as WireDeferral
 import com.dynokore.gst.consoleBff.contract.model.DeferralTarget as WireTarget
+import com.dynokore.gst.consoleBff.contract.model.DeferralTargetResponse as WireTargetResponse
 
 /** A refusal carrying its closed problem answer; [DeferralsProblemAdvice] writes it. */
 class DeferralsRefusal(
@@ -87,7 +88,11 @@ open class DeferralsController(
         WireDeferral(
             deferralId = deferral.deferralId,
             entityRef = deferral.entityRef,
-            target = WireTarget(WireTarget.Kind.forValue(deferral.target.kind.name), deferral.target.ref),
+            target =
+                WireTargetResponse(
+                    WireTargetResponse.Kind.forValue(deferral.target.kind.name),
+                    deferral.target.ref,
+                ),
             state = WireDeferral.State.forValue(deferral.state.name),
             deferredBy = deferral.deferredBy,
             deferredAt = deferral.deferredAt.atOffset(ZoneOffset.UTC),
