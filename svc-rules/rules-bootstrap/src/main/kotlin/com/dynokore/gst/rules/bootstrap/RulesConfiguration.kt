@@ -83,6 +83,7 @@ import com.dynokore.gst.rules.application.ListActiveRegulatoryPacks
 import com.dynokore.gst.rules.application.ListCursorKey
 import com.dynokore.gst.rules.application.MappingAcknowledgementPort
 import com.dynokore.gst.rules.application.MappingPackAuthoring
+import com.dynokore.gst.rules.application.MappingPackBundleDiff
 import com.dynokore.gst.rules.application.MappingPackCollaborators
 import com.dynokore.gst.rules.application.NamedPackVersions
 import com.dynokore.gst.rules.application.PackActionAuthority
@@ -624,6 +625,14 @@ class RulesConfiguration {
             if (decision.source != DecisionSource.LOCAL) throw unavailable("the permission decision is not available")
             decision.allowed
         }
+
+    /** The pure diff of a mapping-pack bundle part against the active pack (INV-T-26954), served by INV-T-26960. */
+    @Bean
+    fun mappingPackBundleDiff(): MappingPackBundleDiff = MappingPackBundleDiff()
+
+    /** The armed-pack lookup that `diffMappingPackBundle` reads the active mapping pack through; it only reads. */
+    @Bean
+    fun armedPackLookup(dsl: DSLContext): ArmedPackLookup = ArmedPackLookup(dsl)
 
     @Bean
     fun approveRegulatoryPack(

@@ -4,6 +4,7 @@ import com.dynokore.gst.catalogue.ErrorCode
 import com.dynokore.gst.rules.adapters.packs.EngineVersion
 import com.dynokore.gst.rules.adapters.persistence.IMPORT_REJECTED_CODE
 import com.dynokore.gst.rules.adapters.persistence.JooqMappingImportRecordStore
+import com.dynokore.gst.rules.adapters.persistence.ArmedPackLookup
 import com.dynokore.gst.rules.adapters.persistence.JooqMappingPackStore
 import com.dynokore.gst.rules.adapters.persistence.JooqPackCorrectionStore
 import com.dynokore.gst.rules.adapters.persistence.MappingImportRecordRow
@@ -27,7 +28,12 @@ import com.dynokore.gst.rules.application.ImportRegulatoryPack
 import com.dynokore.gst.rules.application.ImportStatusAnswer
 import com.dynokore.gst.rules.application.ListActiveRegulatoryPacks
 import com.dynokore.gst.rules.application.MapTaxCodeCommand
+import com.dynokore.gst.rules.application.MappingBundleRule
 import com.dynokore.gst.rules.application.MappingPackAuthoring
+import com.dynokore.gst.rules.application.MappingPackBundleDiff
+import com.dynokore.gst.rules.application.MappingPackBundleDiffResult
+import com.dynokore.gst.rules.application.MappingPackChange
+import com.dynokore.gst.rules.application.PackCorrectionPermissionPort
 import com.dynokore.gst.rules.application.MappingPackResult
 import com.dynokore.gst.rules.application.PackActionCommand
 import com.dynokore.gst.rules.application.PackCurrencyMonitor
@@ -54,11 +60,15 @@ import com.dynokore.gst.rules.contract.model.MappingImportRecord
 import com.dynokore.gst.rules.contract.model.MappingImportRecordPage
 import com.dynokore.gst.rules.contract.model.MappingImportRecordRejectedRowsInner
 import com.dynokore.gst.rules.contract.model.MappingPack
+import com.dynokore.gst.rules.contract.model.MappingPackBundlePart
+import com.dynokore.gst.rules.contract.model.MappingPackDiff
 import com.dynokore.gst.rules.contract.model.RegulatoryPack
 import com.dynokore.gst.rules.contract.model.ReprocessingRun
 import com.dynokore.gst.rules.domain.pack.PackStatus
+import com.dynokore.gst.rules.domain.pack.PackLayers.MAPPING_PACK_TYPE
 import com.dynokore.gst.rules.domain.pack.SourceClass
 import com.dynokore.gst.rules.domain.resolution.TransactionDate
+import com.dynokore.platform.rulepackkernel.PackType
 import com.dynokore.platform.serviceruntime.http.ClosedErrorCode
 import com.dynokore.platform.serviceruntime.logging.CorrelationContext
 import com.dynokore.platform.serviceruntime.replica.StructureReplica
@@ -107,6 +117,9 @@ open class PacksController(
     private val reprocessing: ReprocessPopulation,
     private val corrections: JooqPackCorrectionStore,
     private val structure: ObjectProvider<StructureReplica>,
+    private val bundleDiff: MappingPackBundleDiff,
+    private val armedPacks: ArmedPackLookup,
+    private val permissions: PackCorrectionPermissionPort,
 ) : MappingPacksApi,
     RegulatoryPacksApi {
     /** The armed regulatory packs of the platform layer for the installer; the caller check is the generated one. */
@@ -492,6 +505,72 @@ open class PacksController(
                 .body(ByteArrayResource(file.toByteArray(Charsets.UTF_8)))
         }
 
+    /**
+     * The diff of a bundle part against the tenant's active mapping pack (INV-T-26960; INV-REQ-1128 behaviour 4).
+     * Read-only: the permission `mapping-pack.author` is decided per request first, then the entries of the active
+     * pack are read and compared by the use case; no store write and no audit entry.
+     */
+    override fun diffMappingPackBundle(mappingPackBundlePart: MappingPackBundlePart): ResponseEntity<MappingPackDiff> {
+        if (!permissions.mayDo(actor(), MAPPING_PACK_AUTHOR)) {
+            throw closed(ClosedErrorCode.ACCESS_DENIED, "the diff is not permitted")
+        }
+        val proposed =
+            mappingPackBundlePart.propertyEntries.map {
+                MappingBundleRule(
+                    it.internalTaxCode,
+                    it.description.orEmpty(),
+                    it.irasCode,
+                    it.rate.orEmpty(),
+                    it.sourceClass.value,
+                    it.citation,
+                )
+            }
+        return transactions.inTransaction {
+            val active = activeRules()
+            when (val result = bundleDiff.diff(proposed, active)) {
+                is MappingPackBundleDiffResult.Changes -> {
+                    ResponseEntity.ok(MappingPackDiff(result.changes.map(::changeOf)))
+                }
+
+                is MappingPackBundleDiffResult.DuplicateInternalTaxCode -> {
+                    check(result.side == MappingPackBundleDiffResult.Side.BUNDLE) { "the active pack repeats a code" }
+                    throw checkNotNull(refusalOf(MappingPackResult.Refused(RefusalReason.INPUT_INVALID)))
+                }
+            }
+        }
+    }
+
+    /** The rules of the active mapping pack of the bound tenant as the export shows them; none when none is active. */
+    private fun activeRules(): List<MappingBundleRule> {
+        val today = LocalDate.ofInstant(clock.instant(), ZoneOffset.UTC)
+        val version =
+            armedPacks.resolve(PackType(MAPPING_PACK_TYPE), tenants.current(), today)?.takeIf {
+                it.tenant == tenants.current()
+            } ?: return emptyList()
+        val catalogue =
+            catalogues.catalogueAt(tenants.current(), TransactionDate(today))
+                ?: throw unavailable("the IRAS catalogue is not readable")
+        return packs.entryViews(version.manifest.packId.value, null, Int.MAX_VALUE, null, null).map {
+            val code = catalogue.entryOf(it.irasCode)
+            MappingBundleRule(
+                it.internalTaxCode,
+                code?.group.orEmpty(),
+                it.irasCode,
+                code?.annexERate.orEmpty(),
+                it.sourceClass.name,
+                it.citation,
+            )
+        }
+    }
+
+    private fun changeOf(change: MappingPackChange) =
+        com.dynokore.gst.rules.contract.model.MappingPackChange(
+            path = change.path,
+            change = com.dynokore.gst.rules.contract.model.MappingPackChange.Change.forValue(change.change.name),
+            current = change.current,
+            proposed = change.proposed,
+        )
+
     override fun listMappingImportRecords(
         fileHash: String,
         entityRef: String?,
@@ -638,6 +717,9 @@ open class PacksController(
 
         /** The scoped permission of `reprocessPopulation`: equals `x-operation.permission` of the pinned contract. */
         const val REGULATORY_PACK_REPROCESS = "regulatory-pack.reprocess"
+
+        /** The scoped permission of `diffMappingPackBundle`: equals `x-operation.permission` of the pinned contract. */
+        const val MAPPING_PACK_AUTHOR = "mapping-pack.author"
     }
 
     private fun actor(): String = checkNotNull(tenants.currentActor()) { "no actor is bound" }

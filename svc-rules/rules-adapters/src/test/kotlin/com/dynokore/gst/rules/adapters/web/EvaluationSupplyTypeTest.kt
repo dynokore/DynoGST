@@ -197,8 +197,8 @@ class EvaluationSupplyTypeTest {
     @Test
     fun `INV-AC-24844 an entry with supplyType ZERO_RATED gives ZERO_RATED on both operations`() {
         val c = controller(both)
-        answer(c, "SR").supplyType shouldBe EvaluationResult.SupplyType.ZERO_RATED
-        answer(c, "SR", draft = true).supplyType shouldBe EvaluationResult.SupplyType.ZERO_RATED
+        answer(c, "SR").supplyType shouldBe "ZERO_RATED"
+        answer(c, "SR", draft = true).supplyType shouldBe "ZERO_RATED"
     }
 
     @Test
@@ -212,8 +212,8 @@ class EvaluationSupplyTypeTest {
     fun `INV-AC-24844 the version in force at the transaction date decides, not a newer or older one`() {
         val old = catalogue(code("SR", "EXEMPT"), code("NA", "EXEMPT"), code("ZR", null))
         val c = controller(both, old)
-        answer(c, "SR", date = "2026-03-31").supplyType shouldBe EvaluationResult.SupplyType.EXEMPT
-        answer(c, "SR", date = "2026-04-01").supplyType shouldBe EvaluationResult.SupplyType.ZERO_RATED
+        answer(c, "SR", date = "2026-03-31").supplyType shouldBe "EXEMPT"
+        answer(c, "SR", date = "2026-04-01").supplyType shouldBe "ZERO_RATED"
     }
 
     @Test
@@ -235,8 +235,8 @@ class EvaluationSupplyTypeTest {
         val c = controller(both)
         val sr = answer(c, "SR")
         val na = answer(c, "NA")
-        sr.supplyType shouldBe EvaluationResult.SupplyType.ZERO_RATED
-        na.supplyType shouldBe EvaluationResult.SupplyType.EXEMPT
+        sr.supplyType shouldBe "ZERO_RATED"
+        na.supplyType shouldBe "EXEMPT"
         (sr.supplyType == na.supplyType) shouldBe false
     }
 

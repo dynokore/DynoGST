@@ -558,8 +558,7 @@ open class EvaluationController(
     private fun supplyTypeOf(
         catalogue: CodeCatalogue?,
         code: String,
-    ): EvaluationResult.SupplyType? =
-        catalogue?.entryOf(code)?.supplyType?.let { EvaluationResult.SupplyType.forValue(it) }
+    ): String? = catalogue?.entryOf(code)?.supplyType
 
     /** The four classification fields of the answer; null when none is answered. */
     private data class Fields(
