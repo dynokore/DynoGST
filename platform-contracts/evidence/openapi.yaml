@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: evidence API
-  version: 1.21.0
+  version: 1.22.0
   description: >-
     Contract-first source of truth for evidence (API-01, STK-44). The
     `evidence-contract` module generates its server interfaces and DTOs
@@ -295,7 +295,13 @@ paths:
         the evidence is in a tier whose expected retrieval time exceeds the
         interactive limit and 200 otherwise; the client polls
         `getEvidenceRetrieval` and repeats the lookup when it is READY
-        (INV-REQ-664).
+        (INV-REQ-664). The lookup is entity-scoped: the request is decided
+        per request for `enquiry-lookup.reverse`, and the result holds only
+        rows of the entities the caller's grant of that key covers; an
+        entity-scope grant of the key is allowed. The service reads no row
+        of another entity, and a client does not filter after the call. A
+        caller whose grant covers no entity is refused with `403` and the
+        code SRT-004, as a caller without the key already is.
       tags: [lookup]
       x-principal: reporting
       x-caller-auth: end-user
