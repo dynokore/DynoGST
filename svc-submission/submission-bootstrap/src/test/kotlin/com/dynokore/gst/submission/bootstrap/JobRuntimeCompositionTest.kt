@@ -25,9 +25,12 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner
 import org.springframework.context.ApplicationContext
 import org.springframework.core.io.ClassPathResource
 import org.springframework.objenesis.ObjenesisStd
+import org.springframework.scheduling.TaskScheduler
+import org.springframework.scheduling.Trigger
 import org.springframework.scheduling.annotation.ScheduledAnnotationBeanPostProcessor
 import org.springframework.scheduling.config.CronTask
 import org.springframework.scheduling.support.CronExpression
+import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Clock
 import java.time.Duration
@@ -35,6 +38,9 @@ import java.time.Instant
 import java.time.ZoneOffset
 import java.time.ZonedDateTime
 import java.util.UUID
+import java.util.concurrent.Delayed
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.TimeUnit
 
 /** TPL-18 (P109, INV-Q-15328 A): the job runtime of service-runtime is built by the service's own composition. */
 class JobRuntimeCompositionTest {
@@ -171,21 +177,108 @@ class JobRuntimeCompositionTest {
     }
 
     @Test
-    fun `the production setting schedules one cron task of the waiting-sweep cron`(
+    fun `INV-AC-27788 the production setting schedules the five cron tasks through a scheduler that runs none`(
         @TempDir dir: Path,
     ) {
-        SubmissionContext.online(dir).withPropertyValues("inv.submission.job-scheduling.enabled=true").run { context ->
-            context.startupFailure shouldBe null
-            context.containsBean("jobScheduling") shouldBe true
-            context.cronTasks().map { it.expression }.toSet() shouldBe
-                setOf(
-                    JobRuntimeConfiguration.WAITING_SWEEP.schedule.cron,
-                    context.environment.getProperty("inv.compliance-evaluation.cron"),
-                    context.environment.getProperty("inv.backlog-evaluation.cron"),
-                    context.environment.getProperty("inv.unsubmitted-count.cron"),
-                )
-            context.cronTasks().size shouldBe 5
+        val scheduler = RecordingScheduler()
+        SubmissionContext
+            .online(dir)
+            .withAllowBeanDefinitionOverriding(true)
+            .withBean("taskScheduler", TaskScheduler::class.java, { scheduler })
+            .withPropertyValues("inv.submission.job-scheduling.enabled=true")
+            .run { context ->
+                context.startupFailure shouldBe null
+                context.containsBean("jobScheduling") shouldBe true
+                context.cronTasks().map { it.expression }.toSet() shouldBe
+                    setOf(
+                        JobRuntimeConfiguration.WAITING_SWEEP.schedule.cron,
+                        context.environment.getProperty("inv.compliance-evaluation.cron"),
+                        context.environment.getProperty("inv.backlog-evaluation.cron"),
+                        context.environment.getProperty("inv.unsubmitted-count.cron"),
+                    )
+                context.cronTasks().size shouldBe 5
+                scheduler.recorded.size shouldBe 5
+                scheduler.ran shouldBe 0
+            }
+    }
+
+    @Test
+    fun `INV-AC-27788 the test sources enable job scheduling in exactly one file`() {
+        val module = Path.of(System.getProperty("user.dir"))
+        val literal = "job-scheduling." + "enabled=true"
+        val root = module.resolve("src/test/kotlin")
+        val found =
+            Files.walk(root).use { paths ->
+                paths
+                    .filter { it.toString().endsWith(".kt") && Files.isRegularFile(it) }
+                    .filter { Files.readString(it).contains(literal) }
+                    .map { module.relativize(it).toString().replace('\\', '/') }
+                    .toList()
+            }
+        found shouldBe
+            listOf("src/test/kotlin/com/dynokore/gst/submission/bootstrap/JobRuntimeCompositionTest.kt")
+    }
+
+    private object NeverRuns : ScheduledFuture<Any?> {
+        override fun getDelay(unit: TimeUnit): Long = Long.MAX_VALUE
+
+        override fun compareTo(other: Delayed): Int = if (other === this) 0 else -1
+
+        override fun cancel(mayInterruptIfRunning: Boolean): Boolean = true
+
+        override fun isCancelled(): Boolean = false
+
+        override fun isDone(): Boolean = false
+
+        override fun get(): Any? = throw UnsupportedOperationException()
+
+        override fun get(
+            timeout: Long,
+            unit: TimeUnit,
+        ): Any? = throw UnsupportedOperationException()
+    }
+
+    /** A [TaskScheduler] that records every task handed to it and never runs one. */
+    private class RecordingScheduler : TaskScheduler {
+        val recorded = mutableListOf<Runnable>()
+        var ran = 0
+
+        private fun record(task: Runnable): ScheduledFuture<*> {
+            recorded += task
+            return NeverRuns
         }
+
+        override fun schedule(
+            task: Runnable,
+            trigger: Trigger,
+        ): ScheduledFuture<*>? = record(task)
+
+        override fun schedule(
+            task: Runnable,
+            startTime: Instant,
+        ): ScheduledFuture<*> = record(task)
+
+        override fun scheduleAtFixedRate(
+            task: Runnable,
+            startTime: Instant,
+            period: Duration,
+        ): ScheduledFuture<*> = record(task)
+
+        override fun scheduleAtFixedRate(
+            task: Runnable,
+            period: Duration,
+        ): ScheduledFuture<*> = record(task)
+
+        override fun scheduleWithFixedDelay(
+            task: Runnable,
+            startTime: Instant,
+            delay: Duration,
+        ): ScheduledFuture<*> = record(task)
+
+        override fun scheduleWithFixedDelay(
+            task: Runnable,
+            delay: Duration,
+        ): ScheduledFuture<*> = record(task)
     }
 
     @Test

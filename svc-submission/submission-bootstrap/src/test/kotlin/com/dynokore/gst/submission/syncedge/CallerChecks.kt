@@ -94,12 +94,20 @@ class CallerChecks(
         val before = stored()
         val calls = Doubles.reached.size
         val answer = send(operation, headers)
+        val after = stored()
         val good =
-            answer.statusCode() == 403 && "SRT-004" in answer.body() && before == stored() &&
+            answer.statusCode() == 403 && "SRT-004" in answer.body() && before == after &&
                 Doubles.reached.size == calls
+        val changed =
+            (before.keys + after.keys)
+                .sorted()
+                .filter {
+                    before[it] != after[it]
+                }.map { "$it: ${before[it]} -> ${after[it]}" }
+        val rows = if (changed.isEmpty()) "" else " rows changed: ${changed.joinToString("; ")}"
         return "${operation.label} ($what): ${answer.statusCode()} ${answer.body().take(
             BODY_SHOWN,
-        )}".takeUnless { good }
+        )}$rows".takeUnless { good }
     }
 
     fun send(

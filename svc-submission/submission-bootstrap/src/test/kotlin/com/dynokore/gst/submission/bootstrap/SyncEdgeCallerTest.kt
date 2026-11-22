@@ -8,6 +8,7 @@ import com.dynokore.gst.submission.syncedge.MappedHandler
 import com.dynokore.gst.submission.syncedge.Operation
 import com.dynokore.gst.submission.syncedge.SourceScan
 import com.dynokore.gst.submission.syncedge.TestIdentity
+import com.dynokore.platform.serviceruntime.eventloop.EventLoops
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
@@ -15,6 +16,7 @@ import org.junit.jupiter.api.io.TempDir
 import org.springframework.boot.test.context.FilteredClassLoader
 import org.springframework.context.ConfigurableApplicationContext
 import org.springframework.core.io.ClassPathResource
+import org.springframework.scheduling.annotation.ScheduledAnnotationBeanPostProcessor
 import java.nio.file.Path
 
 /**
@@ -66,8 +68,12 @@ class SyncEdgeCallerTest {
         block: (ConfigurableApplicationContext) -> Unit,
     ) {
         SubmissionContext
-            .startServlet(dir, listOf(TestIdentity::class.java), properties(services), classes)
-            .use(block)
+            .startServlet(
+                dir,
+                listOf(TestIdentity::class.java),
+                arrayOf(*properties(services), EVENT_LOOPS_OFF),
+                classes,
+            ).use(block)
     }
 
     @Test
@@ -164,7 +170,27 @@ class SyncEdgeCallerTest {
         SourceScan.findings(root, namedCallers(operations()).toSet()).shouldBeEmpty()
     }
 
+    @Test
+    fun `INV-AC-27788 the servlet test context holds no jobScheduling bean and schedules no task`(
+        @TempDir dir: Path,
+    ) {
+        serve(dir, namedCallers(operations()), loader) { context ->
+            context.containsBean("jobScheduling") shouldBe false
+            context.getBean(ScheduledAnnotationBeanPostProcessor::class.java).scheduledTasks.size shouldBe 0
+        }
+    }
+
+    @Test
+    fun `INV-AC-27789 the caller-check context holds no event loop bean`(
+        @TempDir dir: Path,
+    ) {
+        serve(dir, namedCallers(operations()), loader) { context ->
+            context.getBeansOfType(EventLoops::class.java).size shouldBe 0
+        }
+    }
+
     private companion object {
+        const val EVENT_LOOPS_OFF = "service-runtime.event-loops.enabled=false"
         const val INTERNAL = "/internal/v1/"
         const val PUBLIC = "/v1/"
     }

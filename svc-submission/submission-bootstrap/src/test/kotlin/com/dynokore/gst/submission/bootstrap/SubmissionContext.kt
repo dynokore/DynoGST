@@ -80,7 +80,7 @@ object SubmissionContext {
                 *properties,
             )
             // default properties rank below application.yaml, whose key has no fallback: pass it as an argument
-            .run("--$ACK_THRESHOLD=120")
+            .run("--$ACK_THRESHOLD=120", "--inv.submission.job-scheduling.enabled=false")
     }
 
     /** Over the Testcontainers database; the login password and the binding key come from a mounted secret store. */
