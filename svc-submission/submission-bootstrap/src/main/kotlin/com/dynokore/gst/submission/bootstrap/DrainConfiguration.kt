@@ -23,8 +23,8 @@ import com.dynokore.gst.submission.application.queue.SentRecovery
 import com.dynokore.gst.submission.application.queue.SubmissionWorker
 import com.dynokore.gst.submission.application.queue.TransportClient
 import com.dynokore.gst.submission.application.readiness.HoldingChecks
-import com.dynokore.gst.submission.application.readiness.ReadinessEntrySource
 import com.dynokore.gst.submission.application.readiness.OutboxReadinessSignals
+import com.dynokore.gst.submission.application.readiness.ReadinessEntrySource
 import com.dynokore.gst.submission.application.readiness.ReadinessInputSource
 import com.dynokore.gst.submission.application.readiness.ReadinessSignalMemory
 import com.dynokore.gst.submission.application.readiness.ReadinessSignals

@@ -50,6 +50,7 @@ sealed interface ReadinessRunResult {
  * Runs the period readiness check (INV-REQ-71): the counter verdict combined with the completeness gate, one stored
  * check per determined run, none when the data is unavailable. Appends in the caller's open tenant transaction.
  */
+@Suppress("LongParameterList") // the ports of one use case: three sources, the recorder, the clock, two signal ports
 class RunReadiness(
     private val entries: ReadinessEntrySource,
     private val inputs: ReadinessInputSource,

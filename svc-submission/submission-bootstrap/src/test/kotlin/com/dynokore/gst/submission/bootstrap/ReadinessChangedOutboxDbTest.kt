@@ -187,7 +187,7 @@ class ReadinessChangedOutboxDbTest {
     fun `INV-AC-26605 the runs of the criterion stage one event exactly when the verdict or the counts changed`(
         @TempDir dir: Path,
     ) = run(dir) {
-        val d1 = doc(a, states = listOf("ACKNOWLEDGED"))
+        doc(a, states = listOf("ACKNOWLEDGED"))
         val d2 = doc(a, states = listOf("QUEUED"))
         val d3 = doc(a, states = listOf("BLOCKED"))
         val first = event(period, entity, "NOT_READY", 2, mapOf("ACKNOWLEDGED" to 1, "BLOCKED" to 1, "QUEUED" to 1))
