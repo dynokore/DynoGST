@@ -248,7 +248,8 @@ class PayloadReadyAggregateIdBoundaryTest {
         val endpointE = endpoint.findAll(xmlE).map { it.groupValues[2] }.toList()
         endpointE.size shouldBe 1
         endpointE[0] shouldNotBe "POS"
-        endpoint.replace(note.replace(xmlD, "")) { "${it.groupValues[1]}${endpointE[0]}${it.groupValues[3]}" } shouldBe xmlE
+        endpoint.replace(note.replace(xmlD, "")) { "${it.groupValues[1]}${endpointE[0]}${it.groupValues[3]}" } shouldBe
+            xmlE
     }
 
     /** The four events go through the two production inbox consumers, one poll each. */
