@@ -28,6 +28,7 @@ class ExportAuditPack(
     private val integrity: IntegrityStore,
     private val chainIntegrity: ExportChainIntegrity,
     private val clock: Clock,
+    private val verifier: (PackageFiles) -> PackageVerification = ::verifyAuditPack,
 ) {
     fun execute(job: AuditPackExportJob): AuditPackExportJob {
         if (job.state != AuditPackState.PENDING) return job
@@ -75,7 +76,7 @@ class ExportAuditPack(
         }
 
     private fun refuseInvalid(files: PackageFiles) {
-        val verification = verify(files)
+        val verification = verifier(files)
         if (verification is PackageVerification.Invalid) {
             val codes = verification.problems.take(PROBLEMS_SHOWN).joinToString(", ") { it.code.name }
             throw Stop("package invalid: $codes")
@@ -122,7 +123,8 @@ class ExportAuditPack(
     }
 }
 
-private fun verify(files: PackageFiles): PackageVerification =
+/** The production verification: [PackageVerifier] over a view of the package files. */
+fun verifyAuditPack(files: PackageFiles): PackageVerification =
     PackageVerifier.verify(
         object : PackageSource {
             override fun paths(): Set<String> = files.paths.toSet()
