@@ -117,6 +117,7 @@ class SubmissionQueue(
             } else {
                 when (queueLocked(doc, next.version, Lane.LIVE, rows)) {
                     EnqueueResult.Queued -> ReleaseResult.Released(next.version)
+
                     is EnqueueResult.Waiting,
                     EnqueueResult.NotScheduled,
                     -> ReleaseResult.NothingToRelease
