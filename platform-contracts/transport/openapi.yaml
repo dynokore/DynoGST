@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: transport API
-  version: 1.13.0
+  version: 1.14.0
   description: >-
     Contract-first source of truth for transport (API-01, STK-44). The
     `transport-contract` module generates its server interfaces and DTOs
@@ -647,6 +647,92 @@ paths:
                     correlationId: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
         default:
           $ref: '#/components/responses/Error'
+  /internal/v1/transport/connections/{connectionRef}/throughput-ceiling:
+    put:
+      operationId: setThroughputCeiling
+      summary: Set the throughput ceiling of an AP connection
+      description: >-
+        Console command to console-bff (sync-edges.yaml `console-bff ->
+        transport-svc`, kind console). `integration.engineer` sets the
+        throughput ceiling of the connection at or below the rate agreed with
+        the AP, which is recorded as `agreedRate` on the connection record at
+        connection set-up and is never set by this operation (INV-REQ-1317,
+        owner ruling 2026-11-18 option A; tighten-only). A ceiling above the
+        agreed rate is refused with HTTP 422 and the code POL-008 (looser than
+        a broader scope, tighten-only); a connection with no agreed rate
+        recorded is refused with HTTP 422 and the code POL-010 (bound
+        unavailable, fail closed); nothing is stored in either case. Setting
+        the stored ceiling again is a no-op. The response is the connection
+        record. The checks belong to the svc-transport task that depends on
+        this contract task.
+      tags: [administration]
+      x-principal: filing-workflow
+      x-caller-auth: end-user
+      x-timeout: 2000
+      x-sync-edge: console-bff->transport-svc
+      x-error-codes: [SRT-001, SRT-005, POL-008, POL-010]
+      x-requirements: [INV-REQ-1317]
+      x-operation:
+        role: integration.engineer
+        scope: tenant
+        precondition: "The connection exists (INV-REQ-1317, connection scope)."
+        reversibility: UNDOABLE
+        repeatKey: "(connectionRef, Idempotency-Key) - a repeat returns the original result"
+      parameters:
+        - name: connectionRef
+          in: path
+          required: true
+          schema: { type: string, maxLength: 40 }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetThroughputCeilingRequest'
+            examples:
+              default:
+                value:
+                  throughputCeiling: 100
+      responses:
+        '200':
+          description: The connection record after the ceiling was set.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApConnection'
+              examples:
+                default:
+                  value: { connectionRef: "CONN-01", adapterRef: "AP-PRIMARY", throughputCeiling: 100, agreedRate: 120, entityRefs: ["ENT-CL0043"], version: 4 }
+        '400':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '422':
+          description: >-
+            Refused: POL-008 (the ceiling is above the agreed rate) or POL-010
+            (no agreed rate is recorded on the connection).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '../service-runtime/schemas/error-envelope.schema.json'
+              examples:
+                POL-008:
+                  value:
+                    type: "about:blank"
+                    title: "Looser than a broader scope"
+                    status: 422
+                    code: "POL-008"
+                    correlationId: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+                POL-010:
+                  value:
+                    type: "about:blank"
+                    title: "Bound unavailable"
+                    status: 422
+                    code: "POL-010"
+                    correlationId: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+        default:
+          $ref: '#/components/responses/Error'
   /internal/v1/transport/connections/{connectionRef}/acknowledgement-route:
     put:
       operationId: electAcknowledgementRoute
@@ -1025,12 +1111,26 @@ components:
           type: number
           exclusiveMinimum: 0
           description: 'Throughput ceiling of the connection, in documents per minute. Defaults to the rate agreed with the AP, captured at connection set-up; a tenant may set a lower value only (tighten-only, INV-REQ-1317).'
+        agreedRate:
+          type: number
+          exclusiveMinimum: 0
+          description: 'The rate agreed with the AP, in documents per minute, captured at connection set-up and never set by setThroughputCeiling (INV-REQ-1317).'
         entityRefs:
           type: array
           uniqueItems: true
           items: { type: string, minLength: 1, maxLength: 40 }
         version: { type: integer, minimum: 1 }
       required: [connectionRef, adapterRef, entityRefs, version]
+    SetThroughputCeilingRequest:
+      type: object
+      description: 'Sets the throughput ceiling of the connection at or below its agreed rate (INV-REQ-1317, tighten-only).'
+      properties:
+        throughputCeiling:
+          type: number
+          exclusiveMinimum: 0
+          description: 'Throughput ceiling of the connection, in documents per minute.'
+      required: [throughputCeiling]
+      additionalProperties: false
     SetConnectionEntitiesRequest:
       type: object
       description: 'Replaces the whole list of entities assigned to the connection.'

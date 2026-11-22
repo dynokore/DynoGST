@@ -69,3 +69,7 @@ rotateCredential.SRT-010	operation_error_code	openapi.yaml	INV-REQ-957
 rotateCredential.SUB-026	operation_error_code	openapi.yaml	INV-REQ-957
 rotateCredential.SUB-027	operation_error_code	openapi.yaml	INV-REQ-957
 rotateCredential.SUB-028	operation_error_code	openapi.yaml	INV-REQ-957
+# INV-T-24958. setThroughputCeiling and the agreed rate of ApConnection (INV-REQ-1317, owner ruling 2026-11-18 option A).
+setThroughputCeiling	operation	openapi.yaml	INV-REQ-1317
+SetThroughputCeilingRequest.throughputCeiling	schema_property	openapi.yaml	INV-REQ-1317
+ApConnection.agreedRate	schema_property	openapi.yaml	INV-REQ-1317
