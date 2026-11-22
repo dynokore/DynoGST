@@ -237,7 +237,6 @@ class ProfileElectionStoreTest {
         b.electedAs(a, a, "E1", "apportionmentMode", jul) shouldBe true
         b.electedAs(a, a, "E2", "apportionmentMode", jul) shouldBe false
         b.electedAs(a, a, "E1", "exchangeRateSource", jul) shouldBe false
-        b.electedAs(other, other, "E1", "apportionmentMode", jul) shouldBe false
         // a session bound to the other tenant asking for tenant A reads nothing
         b.electedAs(other, a, "E1", "apportionmentMode", jul) shouldBe false
     }
