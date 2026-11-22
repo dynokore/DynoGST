@@ -375,9 +375,8 @@ paths:
         A read-only query: it stores nothing, changes nothing and transmits
         nothing; POST is used only because the request carries a list in its
         body. Documents that cannot be projected are listed in
-        `excludedDocuments` with a closed reason. The operation is a read; the
-        service checks the scoped key `backfill.approve` (`x-operation`) per
-        request, never a role name.
+        `excludedDocuments` with a closed reason. The permission decision
+        (`x-operation`) is added later, additively, with the console flow.
       tags: [backfill]
       x-principal: reporting
       x-caller-auth: end-user
@@ -385,13 +384,6 @@ paths:
       x-timeout: 2000
       x-error-codes: []
       x-requirements: [INV-REQ-1090]
-      x-operation:
-        kind: PERMISSION
-        permission: backfill.approve
-        scope: entity
-        precondition: The entity is registered and the period exists.
-        reversibility: UNDOABLE
-        repeatKey: None, a read; the same documents give the same projection.
       parameters:
         - $ref: '#/components/parameters/EntityRef'
         - $ref: '#/components/parameters/PeriodRef'
