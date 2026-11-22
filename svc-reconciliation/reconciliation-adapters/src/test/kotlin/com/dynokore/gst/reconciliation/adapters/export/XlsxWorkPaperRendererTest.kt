@@ -70,6 +70,39 @@ class XlsxWorkPaperRendererTest {
     private fun rows(sheet: Sheet): List<List<String>> =
         (0..sheet.lastRowNum).map { r -> sheet.getRow(r).map { it.stringCellValue } }
 
+    private fun timing(classes: List<WorkPaperVarianceShare>) =
+        fixture().copy(
+            boxes =
+                listOf(
+                    ExportBox("B1", "90.00", "100.00", "10.00", classes, listOf("D8", "D9"), emptyList()),
+                ),
+        )
+
+    private fun boxCells(export: WorkPaperExport): Pair<String, String> {
+        read(renderer.render(export, ExportFormat.SPREADSHEET).bytes).use { wb ->
+            val sheet = wb.getSheet("Boxes")
+            val rows = rows(sheet)
+            val header = rows[0]
+            return rows[1][header.indexOf("variance class")] to rows[1][header.indexOf("supporting documents")]
+        }
+    }
+
+    @Test
+    fun `INV-AC-27681 the boxes sheet shows TIMING_DIFFERENCE 10_00 and the references D8 and D9`() {
+        val (cls, docs) = boxCells(timing(listOf(WorkPaperVarianceShare("TIMING_DIFFERENCE", "10.00"))))
+        assertEquals("TIMING_DIFFERENCE 10.00", cls)
+        assertEquals("D8\nD9", docs)
+    }
+
+    @Test
+    fun `INV-AC-27681 with no class no cell of the workbook holds TIMING_DIFFERENCE`() {
+        val bytes = renderer.render(timing(emptyList()), ExportFormat.SPREADSHEET).bytes
+        read(bytes).use { wb ->
+            val all = (0 until wb.numberOfSheets).flatMap { rows(wb.getSheetAt(it)) }.flatten()
+            assertEquals(false, all.any { it.contains("TIMING_DIFFERENCE") })
+        }
+    }
+
     @Test
     fun `INV-AC-24329 content type is the spreadsheet media type`() {
         assertEquals(ExportContentTypes.SPREADSHEET, renderer.render(fixture(), ExportFormat.SPREADSHEET).contentType)

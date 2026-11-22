@@ -110,6 +110,25 @@ class PdfWorkPaperRendererTest {
                 .toSet()
         }
 
+    private fun timing(classes: List<WorkPaperVarianceShare>) =
+        fixture().copy(
+            boxes = listOf(ExportBox("B1", "90.00", "100.00", "10.00", classes, listOf("D8", "D9"), emptyList())),
+        )
+
+    @Test
+    fun `INV-AC-27681 the PDF text holds TIMING_DIFFERENCE 10_00 and the references D8 and D9`() {
+        val text =
+            pages(render(timing(listOf(WorkPaperVarianceShare("TIMING_DIFFERENCE", "10.00")))).bytes).joinToString("")
+        assertTrue(text.contains("TIMING_DIFFERENCE10.00"), text)
+        assertTrue(text.contains("D8D9"), text)
+    }
+
+    @Test
+    fun `INV-AC-27681 with no class the PDF text does not hold TIMING_DIFFERENCE`() {
+        val text = pages(render(timing(emptyList())).bytes).joinToString("")
+        assertFalse(text.contains("TIMING_DIFFERENCE"), text)
+    }
+
     @Test
     fun `INV-AC-24540 content type is PDF and the bytes start with the PDF magic`() {
         val r = render(fixture())

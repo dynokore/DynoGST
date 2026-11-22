@@ -16,10 +16,12 @@ import com.dynokore.gst.reconciliation.application.workpaper.StoredAttestation
 import com.dynokore.gst.reconciliation.application.workpaper.WorkPaperVarianceShare
 import com.dynokore.gst.reconciliation.domain.annotation.Annotation
 import com.dynokore.gst.reconciliation.domain.run.ReconcilingItem
+import com.dynokore.gst.reconciliation.domain.variance.VarianceClass
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import org.junit.jupiter.api.Test
+import java.lang.reflect.Modifier
 import java.math.BigDecimal
 import java.time.Clock
 import java.time.Instant
@@ -259,5 +261,86 @@ class ExportWorkPaperTest {
         boxes[0].items.map { it.amount } shouldBe listOf("1.00", "3.00", "4.00")
         boxes[1].supportingDocuments shouldBe listOf("D4")
         boxes[1].items.map { it.amount } shouldBe listOf("2.00")
+    }
+
+    private fun annotationsOf(vararg rows: StoredAnnotation) =
+        object : RunAnnotations {
+            override fun latest(
+                tenant: String,
+                runId: String,
+                box: String,
+            ) = all(tenant, runId).lastOrNull { it.annotation.box == box }
+
+            override fun all(
+                tenant: String,
+                runId: String,
+            ) = if (tenant == "T1" && runId == "R1") rows.toList() else emptyList()
+
+            override fun insert(
+                tenant: String,
+                stored: StoredAnnotation,
+            ) = error("export stores nothing")
+        }
+
+    private fun exportWith(fake: RunAnnotations): List<ExportBox> {
+        seed()
+        ExportWorkPaper(GetWorkPaper(reader, fake, attestations), fake, itemsPort, source, renderer, clock)
+            .execute("T1", "R1", ExportFormat.SPREADSHEET)
+        return rendered.single().first.boxes
+    }
+
+    private fun tokens(name: String): List<String> =
+        name
+            .replace(Regex("(?<=[a-z0-9])(?=[A-Z])"), " ")
+            .split(Regex("[^A-Za-z0-9]+"))
+            .filter { it.isNotEmpty() }
+            .map { it.lowercase() }
+
+    private val paymentTokens = setOf("pay", "paid", "payment", "payments")
+
+    private fun paymentLike(name: String) = tokens(name).any { it in paymentTokens }
+
+    private fun memberNames(type: Class<*>) =
+        type.declaredFields.filterNot { Modifier.isStatic(it.modifiers) }.map { it.name }
+
+    @Test
+    fun `INV-AC-27681 an annotated TIMING_DIFFERENCE box exports the class share and its references`() {
+        val fake =
+            annotationsOf(
+                StoredAnnotation(
+                    "R1",
+                    Annotation("B1", VarianceClass.TIMING_DIFFERENCE, listOf("D8", "D9")),
+                    "U1",
+                    attestedAt,
+                ),
+            )
+        val b = exportWith(fake).single { it.box == "B1" }
+        b.varianceClasses shouldBe listOf(WorkPaperVarianceShare("TIMING_DIFFERENCE", "10.00"))
+        (b.supportingDocuments.containsAll(listOf("D8", "D9"))) shouldBe true
+    }
+
+    @Test
+    fun `INV-AC-27681 with no annotation nothing is classified TIMING_DIFFERENCE and B1 stays UNEXPLAINED`() {
+        val boxes = exportWith(annotationsOf())
+        boxes.flatMap { it.varianceClasses }.none { it.varianceClass == "TIMING_DIFFERENCE" } shouldBe true
+        boxes.single { it.box == "B1" }.varianceClasses shouldBe listOf(WorkPaperVarianceShare("UNEXPLAINED", "10.00"))
+    }
+
+    @Test
+    fun `INV-AC-27681 no export or annotation type has a member named like a payment date`() {
+        val names =
+            listOf(
+                ExportBox::class.java,
+                WorkPaperExport::class.java,
+                Annotation::class.java,
+            ).flatMap { memberNames(it) }
+        (names.isNotEmpty()) shouldBe true
+        names.filter { paymentLike(it) } shouldBe emptyList()
+    }
+
+    @Test
+    fun `INV-AC-27681 the payment name check passes payload and fails payment look-alikes`() {
+        listOf("payload", "payloadSize").forEach { paymentLike(it) shouldBe false }
+        listOf("paymentDate", "paidOn", "PAYMENT_DATE", "payDate").forEach { paymentLike(it) shouldBe true }
     }
 }
