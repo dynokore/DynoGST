@@ -13,6 +13,7 @@ dependencies {
     implementation(project(":notification-contract"))
     implementation(libs.platform.serviceRuntime.impl)
     implementation(libs.platform.productRuntime.impl)
+    implementation(libs.gstCatalogue)
     implementation(libs.platform.outboxAndQueue.impl)
     implementation(libs.platform.tenancyKernel.impl)
     implementation(libs.springBoot.starterWeb)
@@ -29,5 +30,6 @@ dependencies {
     testImplementation(libs.assertj.core)
     testImplementation(libs.snakeyaml)
     testImplementation(project(":notification-application"))
+    testImplementation(project(":notification-domain"))
     testImplementation(testFixtures(project(":notification-adapters")))
 }
