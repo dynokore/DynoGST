@@ -50,7 +50,14 @@ class SendNetworkDocument(
         val adapter = connections.adapterFor(entity) ?: throw NoApConnectionRecord(entity)
         val attempt = attempts.begin(entity, doc, adapter, clock.instant())
         val outcome =
-            runCatching { sender.send(doc, payload, recipient, adapter) }.getOrElse { TransportOutcome.TransientFailure }
+            runCatching {
+                sender.send(
+                    doc,
+                    payload,
+                    recipient,
+                    adapter,
+                )
+            }.getOrElse { TransportOutcome.TransientFailure }
         attempts.complete(attempt, outcome, clock.instant())
         return outcome
     }

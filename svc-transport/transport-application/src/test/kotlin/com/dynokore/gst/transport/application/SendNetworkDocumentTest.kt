@@ -100,7 +100,12 @@ class SendNetworkDocumentTest {
     private val log = Log()
     private val connections = Connections().also { it.assign(e1, a1) }
     private val useCase =
-        SendNetworkDocument(sender, log, connections, Clock.fixed(Instant.parse("2026-11-22T00:00:00Z"), ZoneOffset.UTC))
+        SendNetworkDocument(
+            sender,
+            log,
+            connections,
+            Clock.fixed(Instant.parse("2026-11-22T00:00:00Z"), ZoneOffset.UTC),
+        )
     private val payload = "<Invoice/>".toByteArray()
 
     init {
