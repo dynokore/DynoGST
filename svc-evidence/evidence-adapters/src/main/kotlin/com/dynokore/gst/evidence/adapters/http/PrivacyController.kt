@@ -16,6 +16,7 @@ import com.dynokore.gst.evidence.contract.model.RecordSecurityCaseRequest
 import com.dynokore.gst.evidence.contract.model.SecurityCase
 import com.dynokore.gst.evidence.domain.cases.CaseOutcome
 import com.dynokore.gst.evidence.domain.cases.RequestKind
+import com.dynokore.platform.configresolver.BusinessDate
 import com.dynokore.platform.serviceruntime.http.ClosedErrorCode
 import com.dynokore.platform.serviceruntime.http.IdempotencyOutcome
 import com.dynokore.platform.serviceruntime.http.IdempotencyStore
@@ -35,8 +36,6 @@ import tools.jackson.databind.ObjectMapper
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.time.Clock
-import java.time.LocalDate
-import java.time.ZoneOffset
 import java.util.Locale
 import java.util.UUID
 
@@ -115,7 +114,7 @@ open class PrivacyController(
                 openPrivacyCaseRequest.receivedOn,
                 openPrivacyCaseRequest.requestReference,
             )
-        val today = LocalDate.now(clock.withZone(ZoneOffset.UTC))
+        val today = BusinessDate.today(clock)
         val outcome =
             transactions.inTransaction {
                 idempotency.once(tenant, caller.actor, idempotencyKey, fingerprint(OPEN_PATH, openPrivacyCaseRequest)) {

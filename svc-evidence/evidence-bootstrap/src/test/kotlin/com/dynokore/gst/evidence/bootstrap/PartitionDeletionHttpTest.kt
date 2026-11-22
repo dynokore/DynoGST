@@ -184,7 +184,7 @@ class PartitionDeletionHttpTest {
             sql(
                 "insert into evidence.$it (id, tenant_id, entity_ref, period_ref, seq, evidence_type, content, " +
                     "content_hash, previous_hash, recorded_at) " +
-                    "values (gen_random_uuid(), ?, ?, ?, 1, 'X', ?, ?, null, now())",
+                    "values (gen_random_uuid(), ?, ?, ?, 1, 'X', ?, ?, null, $NOW)",
                 tenant,
                 ENTITY,
                 period,
@@ -219,9 +219,9 @@ class PartitionDeletionHttpTest {
         if (authority.notice) {
             val (notified, closes) =
                 if (authority.windowOpen) {
-                    "now() - interval '20 days'" to "now() + interval '10 days'"
+                    "$NOW - interval '20 days'" to "$NOW + interval '10 days'"
                 } else {
-                    "now() - interval '90 days'" to "now() - interval '60 days'"
+                    "$NOW - interval '90 days'" to "$NOW - interval '60 days'"
                 }
             sql(
                 "insert into evidence.retention_notice values (?, ?, $notified, 30, $closes)",
@@ -231,7 +231,7 @@ class PartitionDeletionHttpTest {
         }
         listOf("u-approver-1", "u-approver-2").filter { authority.approvals }.forEach {
             sql(
-                "insert into evidence.retention_approval values (?, ?, ?, 'retention.delete.approve', now())",
+                "insert into evidence.retention_approval values (?, ?, ?, 'retention.delete.approve', $NOW)",
                 tenant,
                 id,
                 it,
@@ -241,7 +241,7 @@ class PartitionDeletionHttpTest {
             sql(
                 "insert into evidence.legal_hold " +
                     "(tenant_id, entity_ref, period_ref, reason, status, placed_at, placed_by) " +
-                    "values (?, ?, ?, 'audit', 'ACTIVE', now(), 'u-hold')",
+                    "values (?, ?, ?, 'audit', 'ACTIVE', $NOW, 'u-hold')",
                 tenant,
                 ENTITY,
                 period,
@@ -687,6 +687,9 @@ class PartitionDeletionHttpTest {
         const val LOCK_PROPERTY = "evidence.retention.archive-lock-period"
         const val LOCK_PERIOD = "PT1H"
         const val ENTITY = "ENT-A"
+
+        /** The seeds are dated from the context clock (INV-T-27351), never from the database's now(). */
+        private val NOW = "timestamptz '${RetentionService.FIXED_CLOCK.instant()}'"
         val PER_REQUEST = listOf("correlationId", "correlation_id", "instance", "traceId")
         const val PATH = "/internal/v1/evidence/partitions/"
         const val OPERATION = "evidence.partition_deletion_operation"

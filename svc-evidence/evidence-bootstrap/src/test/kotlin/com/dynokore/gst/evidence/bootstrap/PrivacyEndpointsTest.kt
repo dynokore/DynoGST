@@ -276,6 +276,15 @@ class PrivacyEndpointsTest {
     }
 
     @Test
+    fun `INV-AC-27350 the Singapore date of the fixed clock is accepted as received on and a later one is refused`() {
+        val t = handlerTenant()
+        open(HANDLER, t, openBody("REQ-SGT", receivedOn = "2026-03-11")).status shouldBe 201
+        rows(t) shouldBe 1
+        open(HANDLER, t, openBody("REQ-LATER", receivedOn = "2026-03-12")).status shouldBe 422
+        rows(t) shouldBe 1
+    }
+
+    @Test
     fun `INV-AC-10587 a lead of 5 is refused POL-013 and a lead of 14 is stored`() {
         val t = handlerTenant()
         val refused = setPolicy(t, "SHORTER", mapOf("noticeLeadDays" to LEAD_BELOW_MIN))

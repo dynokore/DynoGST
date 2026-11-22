@@ -167,7 +167,7 @@ class VpSetPermissionTest {
                     "tenant.admin",
                     GrantScope.TENANT,
                     expired.value.toString(),
-                    Instant.now().minusSeconds(60),
+                    RetentionService.FIXED_CLOCK.instant().minusSeconds(60),
                 )
             held(s, expired, lapsed)
             refused(s, expired, "TENANT", null)

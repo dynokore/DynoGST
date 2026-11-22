@@ -33,6 +33,7 @@ import com.dynokore.gst.evidence.domain.retention.NoticeWindow
 import com.dynokore.gst.evidence.domain.retention.RetentionTier
 import com.dynokore.platform.auditlog.AuditEntry
 import com.dynokore.platform.auditlog.AuditWriter
+import com.dynokore.platform.configresolver.BusinessDate
 import com.dynokore.platform.outboxandqueue.CausationId
 import com.dynokore.platform.outboxandqueue.CorrelationId
 import com.dynokore.platform.outboxandqueue.EntityRef
@@ -253,7 +254,7 @@ class JooqRetentionRecords(
             if (row == null || last == null) {
                 null
             } else {
-                val today = LocalDate.now(clock.withZone(ZoneOffset.UTC))
+                val today = BusinessDate.today(clock)
                 val years = RetentionTier.entries.maxOf { effective.years(row.entityRef.req(), it, today) }
                 last
                     .plusDays(1)

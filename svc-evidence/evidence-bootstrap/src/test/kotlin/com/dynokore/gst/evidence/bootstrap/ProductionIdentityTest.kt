@@ -2,6 +2,7 @@ package com.dynokore.gst.evidence.bootstrap
 
 import com.dynokore.gst.evidence.adapters.EvidenceDb
 import com.dynokore.gst.evidence.domain.retention.RetentionTier
+import com.dynokore.gst.evidence.retention.FixedDomainClock
 import com.dynokore.gst.evidence.retention.RetentionService
 import com.dynokore.gst.evidence.retention.WorkloadTokensOnly
 import com.dynokore.platform.serviceruntime.replica.AuthorityChanged
@@ -151,7 +152,7 @@ class ProductionIdentityTest {
         val context: ConfigurableApplicationContext =
             EvidenceContext.startServlet(
                 dir,
-                listOf(WorkloadTokensOnly::class.java),
+                listOf(WorkloadTokensOnly::class.java, FixedDomainClock::class.java),
                 arrayOf(
                     "evidence.identity-provider.issuer-uri=$issuer",
                     "evidence.identity-provider.jwk-set-uri=$jwkSetUri",

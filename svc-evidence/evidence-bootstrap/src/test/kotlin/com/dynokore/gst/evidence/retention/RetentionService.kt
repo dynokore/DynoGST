@@ -5,6 +5,7 @@ import com.dynokore.gst.evidence.application.retention.EffectiveRetention
 import com.dynokore.gst.evidence.application.retention.RetentionPolicy
 import com.dynokore.gst.evidence.bootstrap.EvidenceContext
 import com.dynokore.gst.evidence.domain.retention.RetentionTier
+import com.dynokore.platform.configresolver.BusinessDate
 import com.dynokore.platform.configresolver.PolicyReader
 import com.dynokore.platform.configresolver.PolicyScope
 import com.dynokore.platform.configresolver.SelectedOption
@@ -30,9 +31,10 @@ import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.nio.file.Path
+import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
-import java.time.ZoneId
+import java.time.ZoneOffset
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
 
@@ -81,7 +83,11 @@ class RetentionService(
     private val reader = context.getBean(PolicyReader::class.java)
 
     /** The grants of the context's one authority replica (INV-T-9236). */
-    val grants = ReplicaGrants(context.getBean(AuthorityReplica::class.java))
+    val grants =
+        ReplicaGrants(
+            context.getBean(AuthorityReplica::class.java),
+            context.getBean(Clock::class.java) as AdvanceableClock,
+        )
 
     /** A tenant of its own: the rows of one test never meet another's. */
     fun newTenant(): TenantId = TenantId(UUID.randomUUID())
@@ -267,9 +273,10 @@ class RetentionService(
         tenant: TenantId,
         entity: String,
         tier: RetentionTier,
+        asOf: LocalDate = today(),
     ): Int =
         scope.bind(tenant, "svc:evidence-svc") {
-            runner.inTransaction { effective.years(entity, tier, today()) }
+            runner.inTransaction { effective.years(entity, tier, asOf) }
         }
 
     fun years(
@@ -351,7 +358,11 @@ class RetentionService(
 
         private val versions = AtomicLong()
 
-        fun today(): LocalDate = LocalDate.now(ZoneId.of("Asia/Singapore"))
+        /** The fixed instant: a UTC time in 16:00-24:00, when the Singapore date is the next UTC day. */
+        val FIXED_CLOCK: Clock = Clock.fixed(Instant.parse("2026-03-10T20:00:00Z"), ZoneOffset.UTC)
+
+        /** The business date of [clock] (INV-Q-2940); the zone of [clock] never matters. */
+        fun today(clock: Clock = FIXED_CLOCK): LocalDate = BusinessDate.today(clock)
 
         /** The service for one test; the callers `control-plane-svc`, `access-svc`, `console-bff` have tokens. */
         fun start(
@@ -367,7 +378,7 @@ class RetentionService(
             return RetentionService(
                 EvidenceContext.startServlet(
                     dir,
-                    beans,
+                    beans + FixedDomainClock::class.java,
                     arrayOf(
                         "evidence.identity-provider.jwk-set-uri=${TestIdentity.jwkSetUri}",
                         "service-runtime.workload-identity.callers[0].service=control-plane-svc",

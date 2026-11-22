@@ -18,6 +18,7 @@ import java.util.concurrent.atomic.AtomicLong
  */
 class ReplicaGrants(
     private val replica: AuthorityReplica,
+    private val clock: AdvanceableClock,
 ) {
     private val version = AtomicLong(0)
 
@@ -30,7 +31,7 @@ class ReplicaGrants(
     /** The feed is gone beyond the lag bound: the replica is stale, so the fallback or DEGRADED decides. */
     fun stale() {
         replica.onDisconnected()
-        Thread.sleep(replica.lagBound.toMillis() + MARGIN_MS)
+        clock.advance(replica.lagBound.plusMillis(MARGIN_MS))
     }
 
     /** One grant record of [principal] in [tenant]; [grantRef] names it, a later record of the same ref replaces it. */
@@ -58,7 +59,7 @@ class ReplicaGrants(
         scope: GrantScope,
         scopeRef: String?,
         validUntil: Instant? = null,
-    ) = RoleGrant(role, scope, scopeRef, Instant.now().minusSeconds(DAY), validUntil)
+    ) = RoleGrant(role, scope, scopeRef, clock.instant().minusSeconds(DAY), validUntil)
 
     /** The principal is deleted: every earlier grant of it is void. */
     fun voidPrincipal(
@@ -76,8 +77,8 @@ class ReplicaGrants(
         current()
     }
 
-    private companion object {
-        const val DAY = 86_400L
+    companion object {
+        private const val DAY = 86_400L
         const val MARGIN_MS = 300L
     }
 }
