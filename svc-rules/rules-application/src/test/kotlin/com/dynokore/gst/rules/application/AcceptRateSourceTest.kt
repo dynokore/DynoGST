@@ -102,12 +102,12 @@ class AcceptRateSourceTest {
 
     @Test
     fun `INV-AC-27497 case 5 a source that is not INFERRED is refused as unknown`() {
-        refused(run(source = "S2"), RefusalReason.UNKNOWN_ENTRY)
+        refused(run(source = "S2"), RefusalReason.RATE_SOURCE_NOT_INFERRED)
     }
 
     @Test
     fun `INV-AC-27497 case 5 the unknown source S9 is refused`() {
-        refused(run(source = "S9"), RefusalReason.UNKNOWN_ENTRY)
+        refused(run(source = "S9"), RefusalReason.RATE_SOURCE_NOT_INFERRED)
     }
 
     @Test
@@ -120,7 +120,7 @@ class AcceptRateSourceTest {
 
     @Test
     fun `INV-AC-27497 look-alike source S10 against S1 is refused as unknown`() {
-        refused(run(source = "S10"), RefusalReason.UNKNOWN_ENTRY)
+        refused(run(source = "S10"), RefusalReason.RATE_SOURCE_NOT_INFERRED)
     }
 
     @Test

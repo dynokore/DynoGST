@@ -101,6 +101,10 @@ object MappingPackMapping {
                 closed(ClosedErrorCode.CONTRACT_VIOLATION, "the request is not valid for a mapping pack")
             }
 
+            RefusalReason.RATE_SOURCE_NOT_INFERRED -> {
+                closed(ClosedErrorCode.NOT_FOUND, "no such inferred rate source: $named")
+            }
+
             RefusalReason.UNKNOWN_ENTRY -> {
                 closed(ClosedErrorCode.NOT_FOUND, "no such entry: $named")
             }

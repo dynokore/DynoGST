@@ -52,9 +52,9 @@ sealed interface AcceptRateSourceResult {
     ) : AcceptRateSourceResult
 
     /**
-     * Refused, nothing stored: [RefusalReason.INPUT_INVALID] for a rationale or expiry, [RefusalReason.UNKNOWN_ENTRY]
-     * for a source that is not INFERRED in the scope pack in force, [RefusalReason.RATE_SOURCE_UNAVAILABLE] when the
-     * scope pack cannot answer.
+     * Refused, nothing stored: [RefusalReason.INPUT_INVALID] for a rationale or expiry,
+     * [RefusalReason.RATE_SOURCE_NOT_INFERRED] for a source that is unknown or not INFERRED in the scope pack in force,
+     * [RefusalReason.RATE_SOURCE_UNAVAILABLE] when the scope pack cannot answer.
      */
     data class Refused(
         val reason: RefusalReason,
@@ -109,7 +109,7 @@ class AcceptRateSource(
         return when {
             !valid -> RefusalReason.INPUT_INVALID
             inferred == null -> RefusalReason.RATE_SOURCE_UNAVAILABLE
-            command.sourceId !in inferred -> RefusalReason.UNKNOWN_ENTRY
+            command.sourceId !in inferred -> RefusalReason.RATE_SOURCE_NOT_INFERRED
             else -> null
         }
     }
