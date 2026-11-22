@@ -59,6 +59,7 @@ sealed interface AcceptRateSourceResult {
     data class Refused(
         val reason: RefusalReason,
         val actor: String,
+        val names: List<String> = emptyList(),
     ) : AcceptRateSourceResult
 }
 
@@ -77,9 +78,21 @@ class AcceptRateSource(
         val permitted = authority.holdsTenant(command.actor, command.tenant, MappingPackPermissions.APPROVE)
         val reason = if (permitted) refusalOf(command, today) else null
         return when {
-            !permitted -> AcceptRateSourceResult.NotPermitted(command.actor)
-            reason != null -> AcceptRateSourceResult.Refused(reason, command.actor)
-            else -> record(command)
+            !permitted -> {
+                AcceptRateSourceResult.NotPermitted(command.actor)
+            }
+
+            reason != null -> {
+                AcceptRateSourceResult.Refused(
+                    reason,
+                    command.actor,
+                    if (reason == RefusalReason.RATE_SOURCE_NOT_INFERRED) listOf(command.sourceId) else emptyList(),
+                )
+            }
+
+            else -> {
+                record(command)
+            }
         }
     }
 

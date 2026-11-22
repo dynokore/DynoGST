@@ -2,6 +2,7 @@ package com.dynokore.gst.rules.application
 
 import com.dynokore.platform.tenancykernel.TenantId
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import org.junit.jupiter.api.Test
 import java.time.Clock
 import java.time.Instant
@@ -64,8 +65,9 @@ class AcceptRateSourceTest {
     private fun refused(
         result: AcceptRateSourceResult,
         reason: RefusalReason,
+        names: List<String> = emptyList(),
     ) {
-        result shouldBe AcceptRateSourceResult.Refused(reason, "U1")
+        result shouldBe AcceptRateSourceResult.Refused(reason, "U1", names)
         store.writes shouldBe emptyList()
     }
 
@@ -102,12 +104,12 @@ class AcceptRateSourceTest {
 
     @Test
     fun `INV-AC-27497 case 5 a source that is not INFERRED is refused as unknown`() {
-        refused(run(source = "S2"), RefusalReason.RATE_SOURCE_NOT_INFERRED)
+        refused(run(source = "S2"), RefusalReason.RATE_SOURCE_NOT_INFERRED, listOf("S2"))
     }
 
     @Test
     fun `INV-AC-27497 case 5 the unknown source S9 is refused`() {
-        refused(run(source = "S9"), RefusalReason.RATE_SOURCE_NOT_INFERRED)
+        refused(run(source = "S9"), RefusalReason.RATE_SOURCE_NOT_INFERRED, listOf("S9"))
     }
 
     @Test
@@ -120,7 +122,9 @@ class AcceptRateSourceTest {
 
     @Test
     fun `INV-AC-27497 look-alike source S10 against S1 is refused as unknown`() {
-        refused(run(source = "S10"), RefusalReason.RATE_SOURCE_NOT_INFERRED)
+        refused(run(source = "S10"), RefusalReason.RATE_SOURCE_NOT_INFERRED, listOf("S10"))
+        AcceptRateSourceResult.Refused(RefusalReason.UNKNOWN_ENTRY, "U1", listOf("S10")) shouldNotBe
+            AcceptRateSourceResult.Refused(RefusalReason.RATE_SOURCE_NOT_INFERRED, "U1", listOf("S10"))
     }
 
     @Test
