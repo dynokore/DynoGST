@@ -86,6 +86,9 @@ overrideValidation.403	operation_response	openapi.yaml	INV-REQ-500
 code	property	schemas/payload-rejected-payload.schema.json	INV-REQ-940
 remediationOwner	property	schemas/payload-rejected-payload.schema.json	INV-REQ-940
 disposition	property	schemas/payload-rejected-payload.schema.json	INV-REQ-940
+# INV-T-27134: optional decisions member of the PayloadRejected payload (INV-REQ-1182).
+decisions	property	schemas/payload-rejected-payload.schema.json	INV-REQ-1182
+assertionText	property	schemas/payload-rejected-payload.schema.json	INV-REQ-1182
 getLatestDocumentVersion	operation	openapi.yaml	INV-REQ-500
 getLatestDocumentVersion.SRT-005	operation_error_code	openapi.yaml	INV-REQ-500
 LatestDocumentVersion.docUuid	schema_property	openapi.yaml	INV-REQ-500

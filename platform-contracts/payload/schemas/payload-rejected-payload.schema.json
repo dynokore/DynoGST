@@ -63,6 +63,83 @@
       "maxLength": 128,
       "description": "The effective owner of that code, as Exception.remediationOwner of console-bff/openapi.yaml (INV-REQ-940). Absent when the producer does not know it; never guessed by the consumer."
     },
+    "decisions": {
+      "type": "array",
+      "minItems": 1,
+      "description": "The decision entry of a PAY-002 block (INV-REQ-1182, INV-REQ-3650): one entry per failed rule, recorded by evidence-svc as the system of record for traces. Optional: readers tolerate its absence (an event of another code, or from a producer that does not know it). The item shape equals DecisionTraceEntry of evidence/openapi.yaml.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}-[0-9]{3}$"
+          },
+          "ruleId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "packVersions": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "properties": {
+                "packIdentifier": {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                "version": {
+                  "type": "string",
+                  "maxLength": 40
+                }
+              },
+              "required": [
+                "packIdentifier",
+                "version"
+              ]
+            }
+          },
+          "inputs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                "value": {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                "businessTermId": {
+                  "type": "string",
+                  "pattern": "^IBT-[0-9]{3}$"
+                }
+              },
+              "required": [
+                "name",
+                "value"
+              ]
+            }
+          },
+          "assertionText": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "description": "The business-language text of the failed assertion, written from the pack that failed it (INV-REQ-1182). Optional."
+          }
+        },
+        "required": [
+          "code",
+          "ruleId",
+          "packVersions",
+          "inputs"
+        ]
+      }
+    },
     "disposition": {
       "type": "string",
       "minLength": 1,

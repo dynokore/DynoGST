@@ -354,12 +354,13 @@ topics:
   - topic: gst.payload.payload-rejected.v1
     event_type: com.dynokore.gst.payload.PayloadRejected.v1
     content_topic: true
-    record_topic: false
+    record_topic: true
     retained_while_resolvable: false
     producers:
       - payload-svc
     subscribers:
       - console-bff
+      - evidence-svc
       - notification-svc
       - submission-svc
   - topic: gst.payload.rendition-finding-changed.v1
@@ -1657,6 +1658,7 @@ replay_topics:
   - topic: gst.payload.replay-evidence.v1
     event_types:
       - com.dynokore.gst.payload.PayloadReady.v1
+      - com.dynokore.gst.payload.PayloadRejected.v1
       - com.dynokore.gst.platform.EvidenceArtefactRecorded.v1
       - com.dynokore.gst.platform.ReplayCompleted.v1
     content_topic: true
