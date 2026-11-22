@@ -1621,7 +1621,7 @@ variation_points:
     basis: "Coordinator ruling (high confidence, delegated by owner 2026-10-11): INV-REQ-1301: \"the looser option\"; conventions G1-G6 option A; INV-Q-2934, INV-Q-2936; for INV-T-3000; acknowledged_by: VP-40 tenant.admin: owner ruling INV-Q-3155; for INV-T-3148"
 - id: VP-41
   requirement: INV-REQ-1302
-  revision: 7ef7d1b4-9148-41f1-93a6-2caeb84f63be
+  revision: de66312b-3065-45b4-8a26-330f78399eb7
   title: "The reconciliation variance tolerance is a default per Box, or tenant values within the ceiling; a variance outside the taxonomy is always unexplained"
   class: PARAMETER
   class_modifiers: []
