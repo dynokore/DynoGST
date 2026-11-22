@@ -233,3 +233,13 @@ recordClientSignatory	operation	openapi.yaml	INV-REQ-899
 RecordClientSignatoryRequest.consentRef	schema_property	openapi.yaml	INV-REQ-899
 ClientSignatoryRecord.linkStatus	schema_property	openapi.yaml	INV-REQ-899
 receiveSignedLinkOutcomeRecorded	asyncapi_operation	asyncapi.yaml	INV-REQ-899
+correctCounterpartyData	operation	openapi.yaml	INV-REQ-886
+CorrectCounterpartyDataRequest.entityRef	schema_property	openapi.yaml	INV-REQ-886
+CorrectCounterpartyDataRequest.caseId	schema_property	openapi.yaml	INV-REQ-886
+CorrectCounterpartyDataRequest.field	schema_property	openapi.yaml	INV-REQ-886
+CorrectCounterpartyDataRequest.correctedValue	schema_property	openapi.yaml	INV-REQ-886
+CorrectCounterpartyDataRequest.reason	schema_property	openapi.yaml	INV-REQ-886
+CorrectCounterpartyDataRequest.field.legalName	schema_enum_value	openapi.yaml	INV-REQ-886
+CorrectCounterpartyDataRequest.field.addressLine1	schema_enum_value	openapi.yaml	INV-REQ-886
+CorrectCounterpartyDataRequest.field.addressLine2	schema_enum_value	openapi.yaml	INV-REQ-886
+CorrectCounterpartyDataRequest.field.postalCode	schema_enum_value	openapi.yaml	INV-REQ-886

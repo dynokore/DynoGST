@@ -3,3 +3,5 @@ openapi.yaml	/components/schemas/CreateConnectionRequest/properties/externalServ
 openapi.yaml	/components/schemas/CreateConnectionRequest/properties/externalService/enum	equals	["DIRECTORY","CHECK_GST_REGISTER","RATE_SOURCE"]	INV-REQ-834
 openapi.yaml	/components/schemas/CreateConnectionRequest/properties/environmentTag/x-extensible-enum	absent	-	INV-REQ-834
 openapi.yaml	/components/schemas/CreateConnectionRequest/properties/environmentTag/enum	equals	["PRODUCTION","SANDBOX"]	INV-REQ-834
+openapi.yaml	/components/schemas/CorrectCounterpartyDataRequest/properties/field/enum	equals	["legalName","addressLine1","addressLine2","postalCode"]	INV-REQ-886
+openapi.yaml	/components/schemas/CorrectCounterpartyDataRequest/properties/field/x-extensible-enum	absent	-	INV-REQ-886

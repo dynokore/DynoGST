@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: masterdata API
-  version: 1.25.0
+  version: 1.26.0
   description: >-
     Contract-first source of truth for masterdata (API-01, STK-44). The
     `masterdata-contract` module generates its server interfaces and DTOs
@@ -49,6 +49,8 @@ tags:
     description: The entity's own registration on the SG Peppol Directory and SMP, an onboarding checklist item confirmed by lookup (INV-REQ-320).
   - name: register-suggestions
     description: Suggestions from the GST register lookup for counterparties, confirmed by the operator (INV-REQ-1290).
+  - name: privacy
+    description: Correction of a counterparty's data going forward, on a privacy request; evidence is never modified (INV-REQ-886).
 paths:
   /internal/v1/masterdata/counterparties/resolution:
     get:
@@ -526,6 +528,71 @@ paths:
             application/problem+json:
               schema:
                 $ref: ../service-runtime/schemas/error-envelope.schema.json
+        default:
+          $ref: '#/components/responses/Error'
+  /internal/v1/masterdata/counterparties/{counterpartyRef}/corrections:
+    post:
+      operationId: correctCounterpartyData
+      summary: Correct one field of a counterparty going forward, on a privacy request
+      description: >-
+        Correction command to console-bff (INV-REQ-886). Appends one new
+        version of the counterparty in which only the named field differs;
+        earlier versions are never changed and stay readable through
+        `getCounterpartyHistory`. The permission is decided per request. A
+        request without `entityRef` is the service's own `400` SRT-001, and an
+        entity outside the principal's set is refused with `403` and the code
+        SRT-004 (as `resolveMasterDataGap`). console-bff appends the evidence
+        annotation after this call.
+      tags: [privacy]
+      x-principal: filing-workflow
+      x-caller-auth: end-user
+      x-entity-ref: entityRef
+      x-sync-edge: console-bff->masterdata-svc
+      x-timeout: 2000
+      x-error-codes: []
+      x-requirements: [INV-REQ-886]
+      x-operation:
+        kind: PERMISSION
+        permission: privacy-request.handle
+        scope: entity
+        precondition: "console-bff has verified that the privacy case named by `caseId` is OPEN; masterdata-svc records `caseId` and does not call evidence-svc."
+        reversibility: COMPENSABLE
+        repeatKey: "(counterpartyRef, Idempotency-Key) — a repeat with the same body returns the version first appended, unchanged; a further correction is a further version."
+      parameters:
+        - name: counterpartyRef
+          in: path
+          required: true
+          schema: { type: string, maxLength: 40 }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CorrectCounterpartyDataRequest'
+            examples:
+              default:
+                value:
+                  entityRef: "E-001"
+                  caseId: "3f2b8c1e-5d4a-4c7e-9b1a-2e6f0a7d9c11"
+                  field: "legalName"
+                  correctedValue: "Acme Trading Pte. Ltd."
+                  reason: "The data subject supplied the registered legal name."
+      responses:
+        '200':
+          description: The version appended by the correction; also the replay of a repeat with the same Idempotency-Key and body.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CounterpartyVersion'
+        '404':
+          description: SRT-005 - unknown counterpartyRef.
+          content:
+            application/problem+json:
+              schema:
+                $ref: ../service-runtime/schemas/error-envelope.schema.json
+        '422':
+          $ref: '#/components/responses/Error'
         default:
           $ref: '#/components/responses/Error'
   /internal/v1/masterdata/counterparties/bulk-resolution:
@@ -2279,6 +2346,37 @@ components:
           items:
             $ref: '#/components/schemas/ApprovedScheme'
       required: [partyRef, resolvedIdentifiers, providedBy]
+    CorrectCounterpartyDataRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        entityRef:
+          type: string
+          minLength: 1
+          maxLength: 40
+          description: The entity the correction belongs to (API-24).
+        caseId:
+          type: string
+          format: uuid
+          description: The privacy case this correction answers; recorded by masterdata-svc.
+        field:
+          type: string
+          enum: [legalName, addressLine1, addressLine2, postalCode]
+          x-enum-varnames: [LEGAL_NAME, ADDRESS_LINE_1, ADDRESS_LINE_2, POSTAL_CODE]
+          description: The one counterparty field to correct.
+        correctedValue:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: >-
+            The new value. The per-field maxima of the `Counterparty` schema
+            are enforced by the service with `400` SRT-001.
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Why the field is corrected.
+      required: [entityRef, caseId, field, correctedValue, reason]
     ResolveCounterpartyRequest:
       type: object
       properties:
