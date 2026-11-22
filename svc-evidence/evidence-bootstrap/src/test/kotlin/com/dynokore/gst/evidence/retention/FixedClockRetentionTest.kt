@@ -12,6 +12,7 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.springframework.core.env.Environment
 import java.nio.file.Path
 import java.time.Clock
 import java.time.Instant
@@ -138,6 +139,13 @@ class FixedClockRetentionTest {
         val start = Instant.parse("2026-03-10T20:00:00Z")
         RetentionService.start(dirA).use { a ->
             RetentionService.start(dirB).use { b ->
+                val portA = a.bean(Environment::class.java).getProperty("local.management.port")
+                val portB = b.bean(Environment::class.java).getProperty("local.management.port")
+                portA shouldNotBe null
+                portB shouldNotBe null
+                portA shouldNotBe "8081"
+                portB shouldNotBe "8081"
+                portA shouldNotBe portB
                 a.grants.stale()
                 val lagBound = a.bean(AuthorityReplica::class.java).lagBound
                 a.bean(Clock::class.java).instant() shouldBe

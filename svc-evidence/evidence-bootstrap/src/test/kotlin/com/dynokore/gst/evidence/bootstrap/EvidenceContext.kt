@@ -65,10 +65,9 @@ object EvidenceContext {
             .properties(
                 *overrides(mountRoot),
                 "spring.datasource.url=${EvidenceDb.jdbcUrl}",
+                "server.port=0",
                 *properties,
-            // Command-line arguments outrank application.yaml (management.server.port: 8081), which the builder
-            // properties above (defaults) do not: random ports let several contexts be open at once.
-            ).run("--server.port=0", "--management.server.port=0")
+            ).run("--management.server.port=0")
     }
 
     /** Over the Testcontainers database; the login password and the binding key come from a mounted secret store. */
