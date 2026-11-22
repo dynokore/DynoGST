@@ -76,28 +76,31 @@ class SubmissionRowSourceExtensionDbTest {
         )
     }
 
+    private class Ext(
+        val target: String,
+        val kind: String,
+        val ref: String?,
+        val original: String?,
+        val extended: String,
+    )
+
     private fun seedExtension(
         tenant: UUID,
-        entity: String,
-        period: String,
-        target: String,
-        kind: String,
-        ref: String?,
-        original: String?,
-        extended: String,
+        key: Pair<String, String>,
+        ext: Ext,
     ) = asTenant(tenant) {
         dsl.execute(
             "insert into submission.due_date_extension (tenant_id, entity_ref, period_ref, target, scope_kind, " +
                 "scope_ref, original_due_date, extended_due_date, iras_reference, source_event_id) " +
                 "values (?, ?, ?, ?, ?, ?, ?, ?, 'IRAS-1', ?)",
             tenant,
-            entity,
-            period,
-            target,
-            kind,
-            ref,
-            original?.let { LocalDate.parse(it) },
-            LocalDate.parse(extended),
+            key.first,
+            key.second,
+            ext.target,
+            ext.kind,
+            ext.ref,
+            ext.original?.let { LocalDate.parse(it) },
+            LocalDate.parse(ext.extended),
             UUID.randomUUID().toString(),
         )
     }
@@ -146,12 +149,12 @@ class SubmissionRowSourceExtensionDbTest {
         seedDoc(f.a, f.d3, f.entity, f.q, LocalDate.of(2026, 3, 20))
         seedDoc(f.a, f.d4, f.entity, f.r, LocalDate.of(2026, 4, 2))
         val sub = "SUBMISSION_DUE_DATE"
-        seedExtension(f.a, f.entity, f.p, sub, "PERIOD", null, "2026-04-30", "2026-05-14")
-        seedExtension(f.a, f.entity, f.q, sub, "DATE_RANGE", "2026-03-15/2026-03-31", null, "2026-06-01")
-        seedExtension(f.a, f.entity, f.r, "FILING_DUE_DATE", "PERIOD", null, "2026-04-30", "2026-05-31")
+        seedExtension(f.a, f.entity to f.p, Ext(sub, "PERIOD", null, "2026-04-30", "2026-05-14"))
+        seedExtension(f.a, f.entity to f.q, Ext(sub, "DATE_RANGE", "2026-03-15/2026-03-31", null, "2026-06-01"))
+        seedExtension(f.a, f.entity to f.r, Ext("FILING_DUE_DATE", "PERIOD", null, "2026-04-30", "2026-05-31"))
         // The second tenant extends the same entity and period; its rows are never applied to tenant A.
         seedDoc(f.b, "b1-${f.s}", f.entity, f.p, LocalDate.of(2026, 3, 20))
-        seedExtension(f.b, f.entity, f.p, sub, "PERIOD", null, "2026-04-30", "2027-01-01")
+        seedExtension(f.b, f.entity to f.p, Ext(sub, "PERIOD", null, "2026-04-30", "2027-01-01"))
         return f
     }
 
@@ -186,10 +189,11 @@ class SubmissionRowSourceExtensionDbTest {
     }
 
     @Test
-    fun `INV-AC-20729 the same Doc UUID in another entity is not affected`() {
+    fun `INV-AC-20729 a document of another entity in the same period name is not affected`() {
+        // doc_uuid is the register primary key, so the same Doc UUID cannot exist in two entities (reported as a gap).
         val f = fixture()
-        seedDoc(f.a, f.d1, f.other, f.p, LocalDate.of(2026, 3, 10))
-        read(f.a, f.other, f.p) shouldBe mapOf(f.d1 to Dates(register, null, null))
+        seedDoc(f.a, "d5-${f.s}", f.other, f.p, LocalDate.of(2026, 3, 10))
+        read(f.a, f.other, f.p) shouldBe mapOf("d5-${f.s}" to Dates(register, null, null))
         read(f.a, f.entity, f.p)[f.d1] shouldBe Dates(d0514, register, d0514)
     }
 }
