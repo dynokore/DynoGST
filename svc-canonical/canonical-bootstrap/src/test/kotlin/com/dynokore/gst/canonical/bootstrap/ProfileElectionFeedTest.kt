@@ -185,6 +185,60 @@ class ProfileElectionFeedTest {
         b.rows(other) shouldBe emptyList()
     }
 
+    private val modeItem = item("apportionmentMode", "CLAIMABLE_PORTION", "2026-03-01")
+    private val sourceItem = item("exchangeRateSource", "MAS_DAILY", "2026-03-01")
+
+    @Test
+    fun `INV-AC-26604 R1 R2 R4 the two attributes are stored through the handler and issuanceMode is not`(
+        @TempDir dir: Path,
+    ) = run(dir) { b ->
+        val entire = item("apportionmentMode", "ENTIRE_INVOICE", "2026-05-01")
+        b.handle(data(listOf(modeItem, entire, sourceItem, issuance))).getOrThrow() shouldBe HandleOutcome.APPLIED
+        b.rows() shouldBe
+            listOf(
+                "apportionmentMode=CLAIMABLE_PORTION@2026-03-01#8",
+                "apportionmentMode=ENTIRE_INVOICE@2026-05-01#8",
+                "exchangeRateSource=MAS_DAILY@2026-03-01#8",
+            )
+    }
+
+    @Test
+    fun `INV-AC-26604 R3 R4 an apportionmentMode BOTH, a 41 character or a blank rate source is a contract violation`(
+        @TempDir dir: Path,
+    ) = run(dir) { b ->
+        val reader = ProfileElectionReader()
+        val bad =
+            listOf(
+                item("apportionmentMode", "BOTH", "2026-03-01"),
+                item("exchangeRateSource", "X".repeat(41), "2026-03-01"),
+                item("exchangeRateSource", " ", "2026-03-01").replace("\" \"", "\"\""),
+            )
+        bad.forEach { b.handle(data(listOf(it))).exceptionOrNull() as? ContractViolation shouldNotBe null }
+        bad.forEach { assertThrows<ContractViolation> { reader.read(data(listOf(it)), t1) } }
+        reader.read(data(listOf(item("exchangeRateSource", "X".repeat(40), "2026-03-01"))), t1) shouldNotBe null
+        b.rows() shouldBe emptyList()
+    }
+
+    @Test
+    fun `INV-AC-26604 R5 a higher structure version replaces the value and a lower one is ignored`(
+        @TempDir dir: Path,
+    ) = run(dir) { b ->
+        b.handle(data(listOf(modeItem, sourceItem))).getOrThrow() shouldBe HandleOutcome.APPLIED
+        val mode2 = item("apportionmentMode", "ENTIRE_INVOICE", "2026-03-01")
+        val source2 = item("exchangeRateSource", "OTHER_SRC", "2026-03-01")
+        b.handle(data(listOf(mode2, source2), version = "7")).getOrThrow() shouldBe HandleOutcome.IGNORED
+        b.rows() shouldBe
+            listOf("apportionmentMode=CLAIMABLE_PORTION@2026-03-01#8", "exchangeRateSource=MAS_DAILY@2026-03-01#8")
+        b.handle(data(listOf(mode2, source2), version = "9")).getOrThrow() shouldBe HandleOutcome.APPLIED
+        b.rows() shouldBe
+            listOf("apportionmentMode=ENTIRE_INVOICE@2026-03-01#9", "exchangeRateSource=OTHER_SRC@2026-03-01#9")
+    }
+
+    @Test
+    fun `INV-AC-26604 R7 an event holding only issuanceMode is ignored and the reader returns null`() {
+        ProfileElectionReader().read(data(listOf(issuance)), t1) shouldBe null
+    }
+
     @Test
     fun `INV-AC-21466 subscription lists exactly the topic and event type under its own consumer name`() {
         ProfileElectionFeed.TOPIC shouldBe "gst.tenancy.entity-profile-changed.v1"

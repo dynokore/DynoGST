@@ -7,7 +7,7 @@ import org.jooq.DSLContext
 import java.time.LocalDate
 import java.util.UUID
 
-/** One effective-dated profile entry: `purchaseDateBasis` or `gstScheme.<KEY>`. */
+/** One effective-dated entry: `purchaseDateBasis`, `gstScheme.<KEY>`, `apportionmentMode`, `exchangeRateSource`. */
 data class ProfileElectionEntry(
     val attribute: String,
     val value: String,
@@ -74,6 +74,23 @@ class JooqProfileElections(
             .orderBy(PROFILE_ELECTION.EFFECTIVE_DATE.desc())
             .limit(1)
             .fetchOne { DateBasis.valueOf(checkNotNull(it.get(PROFILE_ELECTION.VALUE))) }
+
+    /** True exactly when a row of [attribute] for the tenant and entity has an effective date not after [on]. */
+    fun isElected(
+        tenantId: UUID,
+        entityRef: String,
+        attribute: String,
+        on: LocalDate,
+    ): Boolean =
+        dsl.fetchExists(
+            dsl
+                .selectOne()
+                .from(PROFILE_ELECTION)
+                .where(PROFILE_ELECTION.TENANT_ID.eq(tenantId))
+                .and(PROFILE_ELECTION.ENTITY_REF.eq(entityRef))
+                .and(PROFILE_ELECTION.ATTRIBUTE.eq(attribute))
+                .and(PROFILE_ELECTION.EFFECTIVE_DATE.le(on)),
+        )
 
     /** The scheme keys (without the `gstScheme.` prefix) whose entry in force on [on] is `ON`, ascending. */
     fun electedSchemesOf(

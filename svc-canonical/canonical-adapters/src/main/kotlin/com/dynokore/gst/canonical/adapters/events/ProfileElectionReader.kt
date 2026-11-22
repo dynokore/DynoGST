@@ -11,17 +11,18 @@ import java.time.LocalDate
 import java.time.format.DateTimeParseException
 
 /**
- * Reads the purchase date basis and GST scheme entries of an `EntityProfileChanged` event (INV-REQ-479, ruling
- * INV-Q-21422 A: event-carried state transfer). The tenant comes only from the envelope `tenantid` (CloudEvents
- * attribute), never from the data.
+ * Reads the purchase date basis, GST scheme, `apportionmentMode` and `exchangeRateSource` entries of an
+ * `EntityProfileChanged` event (INV-REQ-479, ruling INV-Q-21422 A: event-carried state transfer). The tenant comes
+ * only from the envelope `tenantid` (CloudEvents attribute), never from the data.
  *
  * No fact (null, a normal event): the node is not an `ENTITY` node, or no `node.profile` item names an election
- * attribute (`purchaseDateBasis` or `gstScheme.<KEY>`). Any other attribute (for example `issuanceMode`) is dropped.
+ * attribute (`purchaseDateBasis`, `gstScheme.<KEY>`, `apportionmentMode` or `exchangeRateSource`). Any other
+ * attribute (for example `issuanceMode`) is dropped.
  * Fails closed with [ContractViolation] (dead letter) once an election entry is present and: a `purchaseDateBasis`
- * value other than INVOICE_DATE and POSTING_DATE, a malformed scheme key or a value that is not a text of 1 to 40
- * characters, an `effectiveDate` that is missing or does not parse, a missing or non-integer `node.structureVersion`
- * or one below 1, a missing `entityRef`, or an envelope without a tenant (the platform tenant stands for a missing
- * `tenantid`).
+ * value other than INVOICE_DATE and POSTING_DATE, an `apportionmentMode` value other than CLAIMABLE_PORTION and
+ * ENTIRE_INVOICE, a malformed scheme key or a value that is not a text of 1 to 40 characters, an `effectiveDate`
+ * that is missing or does not parse, a missing or non-integer `node.structureVersion` or one below 1, a missing
+ * `entityRef`, or an envelope without a tenant (the platform tenant stands for a missing `tenantid`).
  */
 class ProfileElectionReader {
     private val json = JsonMapper.builder().build()
@@ -46,7 +47,8 @@ class ProfileElectionReader {
 
     private fun isElection(item: JsonNode): Boolean {
         val attribute = item.get(ATTRIBUTE)?.takeIf { it.isString }?.asString() ?: return false
-        return attribute == BASIS || attribute.startsWith(SCHEME_PREFIX)
+        return attribute == BASIS || attribute == APPORTIONMENT || attribute == RATE_SOURCE ||
+            attribute.startsWith(SCHEME_PREFIX)
     }
 
     private fun entry(item: JsonNode): ProfileElectionEntry {
@@ -59,7 +61,12 @@ class ProfileElectionReader {
                 ?.takeIf { it.length in 1..MAX_VALUE }
         val valid =
             value != null &&
-                if (attribute == BASIS) value in BASES else SCHEME_KEY.matches(attribute)
+                when (attribute) {
+                    BASIS -> value in BASES
+                    APPORTIONMENT -> value in MODES
+                    RATE_SOURCE -> true
+                    else -> SCHEME_KEY.matches(attribute)
+                }
         if (!valid) throw ContractViolation("$PROFILE item $attribute has no usable attribute or value")
         return ProfileElectionEntry(attribute, checkNotNull(value), effectiveDate(item, attribute))
     }
@@ -99,6 +106,9 @@ class ProfileElectionReader {
 
     private companion object {
         const val BASIS = "purchaseDateBasis"
+        const val APPORTIONMENT = "apportionmentMode"
+        const val RATE_SOURCE = "exchangeRateSource"
+        val MODES = setOf("CLAIMABLE_PORTION", "ENTIRE_INVOICE")
         const val SCHEME_PREFIX = "gstScheme."
         val SCHEME_KEY = Regex("^gstScheme\\.[A-Z0-9_-]{1,40}$")
         val BASES = setOf("INVOICE_DATE", "POSTING_DATE")
