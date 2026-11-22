@@ -8,6 +8,7 @@ import com.dynokore.platform.calendarandperiods.CalendarPackCoverageException
 import com.dynokore.platform.calendarandperiods.FilingFrequency
 import com.dynokore.platform.calendarandperiods.FrequencyChange
 import com.dynokore.platform.calendarandperiods.FrequencyHistory
+import com.dynokore.platform.calendarandperiods.NonBusinessDayRule
 import com.dynokore.platform.calendarandperiods.PackPeriodGenerator
 import com.dynokore.platform.calendarandperiods.PeriodRequest
 import java.time.LocalDate
@@ -62,6 +63,58 @@ class PeriodPlanner(
         deregistrationDate: LocalDate?,
         ruleOn: LocalDate? = null,
         explicitPack: CalendarPack? = null,
+    ): Plan = planWith(entity, entries, packOn, deregistrationDate, ruleOn, explicitPack, null)
+
+    /**
+     * Like [plan], but each period takes the VP-62 rule in force on its own filing due date (INV-REQ-82 behavior 4 and
+     * 5, INV-AC-27793). The rule-independent filing due date of a period is its due date in the plan made under
+     * `NO_MOVE` (the unadjusted date); VP-62 is resolved for the entity on that date, and the period, with its due
+     * date and other fields, comes from the plan made under the resolved rule. A refused or invalid plan is returned
+     * as it is (fail closed).
+     */
+    fun planByPeriodRule(
+        entity: EntityRecord,
+        entries: List<FrequencyEntry>,
+        packOn: LocalDate?,
+        deregistrationDate: LocalDate?,
+        explicitPack: CalendarPack? = null,
+    ): Plan {
+        val unadjusted = planWith(entity, entries, packOn, deregistrationDate, null, explicitPack, NonBusinessDayRule.NO_MOVE)
+        val moved = planWith(entity, entries, packOn, deregistrationDate, null, explicitPack, NonBusinessDayRule.NEXT_WORKING_DAY)
+        return when {
+            unadjusted !is Plan.Periods -> unadjusted
+            moved !is Plan.Periods -> moved
+            else -> choosePerPeriod(entity, unadjusted, moved)
+        }
+    }
+
+    private fun choosePerPeriod(
+        entity: EntityRecord,
+        unadjusted: Plan.Periods,
+        moved: Plan.Periods,
+    ): Plan {
+        val movedByStart = moved.periods.associateBy { it.start }
+        val chosen =
+            unadjusted.periods.map { base ->
+                when (rules.resolve(entity.groupRef, entity.ref, base.dueDate)) {
+                    NonBusinessDayRule.NO_MOVE -> base
+                    NonBusinessDayRule.NEXT_WORKING_DAY ->
+                        movedByStart[base.start]
+                            ?: return Plan.Invalid("the period starting ${base.start} is missing from the plan under the moving rule")
+                }
+            }
+        return Plan.Periods(chosen)
+    }
+
+    @Suppress("LongParameterList") // plan's parameters and the private rule override
+    private fun planWith(
+        entity: EntityRecord,
+        entries: List<FrequencyEntry>,
+        packOn: LocalDate?,
+        deregistrationDate: LocalDate?,
+        ruleOn: LocalDate?,
+        explicitPack: CalendarPack?,
+        ruleOverride: NonBusinessDayRule?,
     ): Plan {
         val registration = registrationDate(entity)
         val pack = explicitPack ?: registration?.let { packs.inForce(packOn ?: it) }
@@ -76,6 +129,7 @@ class PeriodPlanner(
                     checkNotNull(pack),
                     ruleOn ?: packOn ?: registration,
                     deregistrationDate,
+                    ruleOverride,
                 ),
             )
     }
@@ -86,6 +140,7 @@ class PeriodPlanner(
         val pack: CalendarPack,
         val ruleOn: LocalDate,
         val deregistrationDate: LocalDate?,
+        val ruleOverride: NonBusinessDayRule?,
     )
 
     /** Why nothing can be planned, or null when every input is there (fail closed). */
@@ -138,7 +193,7 @@ class PeriodPlanner(
             val history =
                 FrequencyHistory.of(sorted.map { FrequencyChange(it.effectiveFrom, FilingFrequency(it.frequency)) })
             val through = pack.windowsOf(FilingFrequency(sorted.last().frequency)).last().start
-            val rule = rules.resolve(entity.groupRef, entity.ref, inputs.ruleOn)
+            val rule = inputs.ruleOverride ?: rules.resolve(entity.groupRef, entity.ref, inputs.ruleOn)
             val request = PeriodRequest(inputs.registration, inputs.deregistrationDate, history, through, rule)
             Plan.Periods(
                 PackPeriodGenerator(pack).generate(request).map {

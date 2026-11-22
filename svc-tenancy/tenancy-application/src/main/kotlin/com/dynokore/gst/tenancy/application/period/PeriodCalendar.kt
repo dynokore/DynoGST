@@ -191,12 +191,11 @@ class DueDateRecomputation(
     ): Map<LocalDate, StoredPeriod>? {
         val active = history.entries(entity.id).filter { it.state == HistoryState.ACTIVE }
         return (
-            planner.plan(
+            planner.planByPeriodRule(
                 entity,
                 active,
                 from,
                 null,
-                from,
                 pack,
             ) as? Plan.Periods
         )?.periods?.associateBy { it.start }
