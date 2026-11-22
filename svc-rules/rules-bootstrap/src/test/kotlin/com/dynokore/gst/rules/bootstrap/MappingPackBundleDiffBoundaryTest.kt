@@ -2,6 +2,8 @@ package com.dynokore.gst.rules.bootstrap
 
 import com.dynokore.gst.catalogue.DeploymentForm
 import com.dynokore.gst.catalogue.OperationRoles
+import com.dynokore.gst.rules.adapters.packs.PackContentsReader
+import com.dynokore.gst.rules.domain.resolution.TransactionDate
 import com.dynokore.gst.rules.served.MovableClock
 import com.dynokore.gst.rules.served.PolicyFixtures
 import com.dynokore.gst.rules.served.ReplicaFallbackDouble
@@ -12,7 +14,9 @@ import com.dynokore.platform.serviceruntime.replica.AuthorityReplica
 import com.dynokore.platform.serviceruntime.replica.GrantScope
 import com.dynokore.platform.serviceruntime.replica.RoleGrant
 import com.dynokore.platform.serviceruntime.replica.RoleGrantState
+import com.dynokore.platform.tenancykernel.TenantContext
 import com.dynokore.platform.tenancykernel.TenantId
+import com.dynokore.platform.tenancykernel.TransactionRunner
 import io.kotest.assertions.withClue
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldNotContain
@@ -59,6 +63,9 @@ class MappingPackBundleDiffBoundaryTest
         @LocalServerPort port: Int,
         private val replica: AuthorityReplica,
         private val clock: MovableClock,
+        private val reader: PackContentsReader,
+        private val tx: TransactionRunner,
+        private val tenants: TenantContext,
     ) : MappingPackSupport(port) {
         private val tenant = DIFF_TENANT
 
@@ -164,12 +171,26 @@ class MappingPackBundleDiffBoundaryTest
             )
         }
 
+        /**
+         * The catalogue entry in force for the tenant today. The database is shared by the test classes of the JVM and
+         * each registers its own platform catalogue, so the group and rate the diff compares against are read.
+         */
+        private fun catalogueEntry(iras: String) =
+            checkNotNull(
+                tenants.bind(tenant, "boundary-test") {
+                    tx.inTransaction {
+                        reader.catalogueAt(tenant, TransactionDate(LocalDate.now(ZoneOffset.UTC)))
+                    }
+                },
+            ).entryOf(iras)!!
+
+        /** A rule of the bundle; [rate] defaults to the rate of the catalogue entry, so only a given rate differs. */
         private fun rule(
             code: String,
             iras: String,
-            rate: String,
-        ) = """{"internalTaxCode":"$code","description":"SUPPLY_STANDARD_RATED","irasCode":"$iras","rate":"$rate",""" +
-            """"sourceClass":"PRIMARY","citation":"cite-$code"}"""
+            rate: String? = null,
+        ) = """{"internalTaxCode":"$code","description":"${catalogueEntry(iras).group}","irasCode":"$iras",""" +
+            """"rate":"${rate ?: catalogueEntry(iras).annexERate}","sourceClass":"PRIMARY","citation":"cite-$code"}"""
 
         private fun part(vararg rules: String) = """{"bundleId":"B-26951","entries":[${rules.joinToString(",")}]}"""
 
@@ -190,11 +211,14 @@ class MappingPackBundleDiffBoundaryTest
         @Test
         fun `INV-AC-26951 a part differing in one rule answers 200 with one CHANGED change and no pack change`() {
             val before = activeState()
-            val answer = diff(part(rule("STD", "SR", "8"), rule("ZER", "ZR", "9")), newUser(withKey = true))
+            val current = catalogueEntry("SR").annexERate
+            val proposed = if (current == "8") "7" else "8"
+            val answer = diff(part(rule("STD", "SR", proposed), rule("ZER", "ZR")), newUser(withKey = true))
             withClue(answer.body()) { answer.statusCode() shouldBe 200 }
             json(answer) shouldBe
                 mapper.readTree(
-                    """{"changes":[{"path":"rules/STD/rate","change":"CHANGED","current":"9","proposed":"8"}]}""",
+                    """{"changes":[{"path":"rules/STD/rate","change":"CHANGED",""" +
+                        """"current":"$current","proposed":"$proposed"}]}""",
                 )
             activeState() shouldBe before
         }
