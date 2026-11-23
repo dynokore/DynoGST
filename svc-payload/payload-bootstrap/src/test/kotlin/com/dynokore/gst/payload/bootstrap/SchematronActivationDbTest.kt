@@ -48,6 +48,10 @@ class SchematronActivationDbTest {
     private val json = EnvelopeJson()
     private val document = "<doc/>".toByteArray()
 
+    private companion object {
+        val NEXT_OFFSET = java.util.concurrent.atomic.AtomicLong(1_000L)
+    }
+
     private class Log : EventLogReader {
         private val records = mutableMapOf<String, MutableList<LogRecord>>()
 
@@ -56,7 +60,8 @@ class SchematronActivationDbTest {
             envelopeJson: String,
         ) {
             val list = records.getOrPut(topic) { mutableListOf() }
-            list += LogRecord(list.size + 1L, envelopeJson)
+            // offsets rise over the whole JVM: the consumer of the configuration keeps one fixed name in the database
+            list += LogRecord(NEXT_OFFSET.incrementAndGet(), envelopeJson)
         }
 
         override fun read(
@@ -83,17 +88,33 @@ class SchematronActivationDbTest {
         val log = Log()
         private val consumerName = PackReplicaConfiguration.CONSUMER + "-" + UUID.randomUUID()
 
+        private val configuration = context.getBean(PackReplicaConfiguration::class.java)
+
+        /** The consumer of `RulePackActivated` exactly as the configuration builds it, over the in-memory log. */
+        private fun activatedConsumer(clock: Clock) =
+            configuration.rulePackActivatedConsumer(
+                catalogue,
+                log,
+                scope,
+                RebuildRequiredSink { },
+                clock,
+                dsl,
+                replica,
+                rules,
+                activation,
+            )
+
         private fun consumer(
             type: String,
             topic: String,
             clock: Clock = Clock.systemUTC(),
-        ) = JdbcInboxConsumer(
+        ) = if (type == RulePackEventsHandler.ACTIVATED_TYPE) activatedConsumer(clock) else JdbcInboxConsumer(
             ConsumerSubscription(consumerName, topic, PackReplicaConfiguration.SCHEMA),
             catalogue,
             log,
             scope,
             dsl,
-            RulePackEventsHandler(type, replica, rules, activation),
+            RulePackEventsHandler(type, replica, rules),
             RebuildRequiredSink { },
             clock,
         )
