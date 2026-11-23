@@ -12,6 +12,7 @@ dependencies {
     implementation(project(":payload-application"))
     implementation(project(":payload-domain"))
     implementation(project(":payload-contract"))
+    implementation(libs.platform.integrationCanon.impl)
     implementation(libs.platform.serviceRuntime.impl)
     implementation(libs.platform.productRuntime.impl)
     implementation(libs.platform.outboxAndQueue.impl)
