@@ -43,6 +43,7 @@ class ProfileApplierImplTest {
                 { _, _, c -> factFor(c) },
                 { _, _, vp -> current[vp] },
                 applier,
+                { _, _, _ -> null },
             )
 
         fun result() = applier.apply(ProfileApplyCommand("t1", "u1", "ENT-1", ProfileScope.TENANT, profile))

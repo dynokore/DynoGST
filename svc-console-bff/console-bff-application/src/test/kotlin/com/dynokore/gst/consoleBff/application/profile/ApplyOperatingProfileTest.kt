@@ -40,6 +40,7 @@ class ApplyOperatingProfileTest {
                         listOf(ProfileValueChange("VP-01", "PLATFORM_IDENTITY", "CUSTOMER_OIDC")),
                     )
                 },
+                { _, _, _ -> null },
             )
 
         fun run(
@@ -113,6 +114,7 @@ class ApplyOperatingProfileTest {
                 { _, _, _ -> true },
                 { _, _, _ -> null },
                 { ProfileApplyResult.Failed("x") },
+                { _, _, _ -> null },
             )
         val request = ApplyOperatingProfileRequest(ProfileMode.PREVIEW, ProfileScope.TENANT, "PRF-3", 1)
         boom.execute("t", "u", "e", request) shouldBe

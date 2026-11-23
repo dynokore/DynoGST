@@ -5,6 +5,7 @@ data class ApplyOperatingProfileRequest(
     val scope: ProfileScope,
     val profileRef: String,
     val profileVersion: Int,
+    val relaxationIds: List<String> = emptyList(),
 )
 
 data class ProfileValueChange(
@@ -25,6 +26,7 @@ sealed interface ApplyOperatingProfileOutcome {
         val profileRef: String,
         val profileVersion: Int,
         val changes: List<ProfileValueChange>,
+        val pendingAcknowledgements: List<String> = emptyList(),
     ) : ApplyOperatingProfileOutcome
 
     data class NotAvailable(
@@ -58,6 +60,7 @@ class ApplyOperatingProfile(
     private val facts: ConditionFacts,
     private val currentValues: CurrentValues,
     private val applier: ProfileApplier,
+    private val relaxations: RelaxationReader,
 ) {
     fun execute(
         tenantId: String,
@@ -136,12 +139,21 @@ class ApplyOperatingProfile(
     ): ApplyOperatingProfileOutcome =
         if (profile.status != ProfileStatus.AVAILABLE) {
             ApplyOperatingProfileOutcome.NotAvailable(profile.status)
+        } else if (request.relaxationIds.any { it.isBlank() }) {
+            ApplyOperatingProfileOutcome.Invalid("relaxationIds holds a blank id")
         } else {
+            val complete = completeRelaxations(tenantId, entityRef, request.relaxationIds)
             when (
-                val result = applier.apply(ProfileApplyCommand(tenantId, userId, entityRef, request.scope, profile))
+                val result =
+                    applier.apply(ProfileApplyCommand(tenantId, userId, entityRef, request.scope, profile, complete))
             ) {
                 is ProfileApplyResult.Applied -> {
-                    ApplyOperatingProfileOutcome.Applied(profile.profileRef, profile.version, result.changes)
+                    ApplyOperatingProfileOutcome.Applied(
+                        profile.profileRef,
+                        profile.version,
+                        result.changes,
+                        pendingAcknowledgements = result.pending,
+                    )
                 }
 
                 is ProfileApplyResult.AcknowledgementRequired -> {
@@ -157,6 +169,18 @@ class ApplyOperatingProfile(
                 }
             }
         }
+
+    private fun completeRelaxations(
+        tenantId: String,
+        entityRef: String,
+        ids: List<String>,
+    ): Set<String> =
+        ids
+            .distinct()
+            .mapNotNull { relaxations.find(tenantId, entityRef, it) }
+            .filter { it.complete }
+            .map { it.variationPoint }
+            .toSet()
 
     private fun previewed(
         profile: ProfileDefinition,

@@ -63,11 +63,14 @@ data class ProfileApplyCommand(
     val entityRef: String,
     val scope: ProfileScope,
     val profile: ProfileDefinition,
+    /** Variation points whose relaxation the reader confirmed complete for this tenant and entity. */
+    val completeRelaxations: Set<String> = emptySet(),
 )
 
 sealed interface ProfileApplyResult {
     data class Applied(
         val changes: List<ProfileValueChange>,
+        val pending: List<String> = emptyList(),
     ) : ProfileApplyResult
 
     data class Failed(
@@ -82,6 +85,21 @@ sealed interface ProfileApplyResult {
     data class ConditionUndecided(
         val variationPoint: String,
     ) : ProfileApplyResult
+}
+
+data class RelaxationFact(
+    val relaxationId: String,
+    val variationPoint: String,
+    val complete: Boolean,
+)
+
+/** Null means no such relaxation for that tenant and entity. */
+fun interface RelaxationReader {
+    fun find(
+        tenantId: String,
+        entityRef: String,
+        relaxationId: String,
+    ): RelaxationFact?
 }
 
 /** Implemented by the applier slice; this task defines the port only. */
