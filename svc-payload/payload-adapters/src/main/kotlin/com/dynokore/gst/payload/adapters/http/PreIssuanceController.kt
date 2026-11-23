@@ -13,12 +13,13 @@ import org.springframework.web.bind.annotation.RestController
 
 /**
  * The pre-issuance operations of the payload contract (TPL-08). `checkPreIssuance` (INV-REQ-475) is stateless and
- * side-effect free (INV-REQ-325): no transaction, no store, no audit write. A draft that cannot be checked (a left-out
- * field, an amount that is not a decimal) is the API-20 envelope SRT-001 (the closed code CONTRACT_VIOLATION), decided
- * before any register lookup; a blank `supplierGstn`, `entityRef` or `currency` is refused here too, so the use case's
- * precondition is never reached (OWASP ASVS V5, NIST SP 800-53 SI-10). This change adds no permission check and no 403
- * case: no code of this repository decides a permission for this operation yet (a later slice, INV-T-27316, adds it).
- * Every other operation answers 501 until the task named for it in `operations.tsv` overrides its method.
+ * side-effect free (INV-REQ-325): no transaction, no store, no audit write. The contract requires `submissionType`,
+ * `supplierGstn`, `invoiceDate` and `gstAmount`, so the generated type carries them non-null and a draft without one
+ * is refused when it is read, before this controller runs. A draft the use case refuses (an amount that is not a
+ * two-place decimal) or a blank `supplierGstn`, `entityRef` or `currency` is the API-20 envelope SRT-001 (the closed
+ * code CONTRACT_VIOLATION), decided before any register lookup, so the use case's precondition is never reached
+ * (OWASP ASVS V5, NIST SP 800-53 SI-10). This class decides no permission: the permission of the operation is not
+ * decided here. Every other operation answers 501 until the task named for it in `operations.tsv` overrides its method.
  */
 @RestController
 open class PreIssuanceController(
@@ -28,39 +29,22 @@ open class PreIssuanceController(
         xFlowContext: String,
         draftDocument: DraftDocument,
     ): ResponseEntity<PreIssuanceVerdict> {
-        // The four fields the check reads are required by the contract; a draft without one is refused at the edge.
-        val type = draftDocument.submissionType
         val gstn = draftDocument.supplierGstn
-        val date = draftDocument.invoiceDate
-        val amount = draftDocument.gstAmount
+        if (gstn.isBlank() || draftDocument.entityRef.isBlank() || draftDocument.currency.isBlank()) {
+            return OverrideHttp.problem(ClosedErrorCode.CONTRACT_VIOLATION)
+        }
         val result =
-            when {
-                type == null || gstn == null -> {
-                    null
-                }
-
-                gstn.isBlank() || draftDocument.entityRef.isBlank() || draftDocument.currency.isBlank() -> {
-                    null
-                }
-
-                date == null || amount == null -> {
-                    null
-                }
-
-                else -> {
-                    check.execute(
-                        gstn,
-                        draftDocument.entityRef,
-                        draftDocument.currency,
-                        date,
-                        type.value,
-                        amount.toPlainString(),
-                    )
-                }
-            }
+            check.execute(
+                gstn,
+                draftDocument.entityRef,
+                draftDocument.currency,
+                draftDocument.invoiceDate,
+                draftDocument.submissionType.value,
+                draftDocument.gstAmount.toPlainString(),
+            )
         return when (result) {
             is PreIssuanceCheck.Verdict -> ResponseEntity.ok(verdictOf(result))
-            else -> OverrideHttp.problem(ClosedErrorCode.CONTRACT_VIOLATION)
+            is PreIssuanceCheck.Refused -> OverrideHttp.problem(ClosedErrorCode.CONTRACT_VIOLATION)
         }
     }
 

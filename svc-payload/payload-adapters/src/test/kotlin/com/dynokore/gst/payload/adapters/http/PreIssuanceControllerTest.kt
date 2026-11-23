@@ -30,10 +30,10 @@ class PreIssuanceControllerTest {
         )
 
     private fun draft(
-        type: DraftDocument.SubmissionType? = DraftDocument.SubmissionType.TYPE_1A,
-        gstn: String? = "M90054321K",
-        invoiceDate: LocalDate? = date,
-        amount: String? = "9.00",
+        type: DraftDocument.SubmissionType = DraftDocument.SubmissionType.TYPE_1A,
+        gstn: String = "M90054321K",
+        invoiceDate: LocalDate = date,
+        amount: String = "9.00",
     ) = DraftDocument(
         "E-1",
         "SGD",
@@ -41,7 +41,7 @@ class PreIssuanceControllerTest {
         type,
         gstn,
         invoiceDate,
-        amount?.let(::BigDecimal),
+        BigDecimal(amount),
     )
 
     private fun call(
@@ -99,14 +99,12 @@ class PreIssuanceControllerTest {
     }
 
     @Test
-    fun `INV-AC-26308 each left-out field is 400 SRT-001 and the register is never asked`() {
+    fun `INV-AC-26308 each draft the check refuses is 400 SRT-001 and the register is never asked`() {
         listOf(
-            draft(type = null),
-            draft(gstn = null),
-            draft(invoiceDate = null),
-            draft(amount = null),
-        ).forEach { incomplete ->
-            val response = call(notRegistered, incomplete)
+            draft(gstn = " "),
+            draft(amount = "9.001"),
+        ).forEach { refused ->
+            val response = call(notRegistered, refused)
             response.statusCode.value() shouldBe 400
             response.headers.contentType
                 ?.toString()
@@ -150,7 +148,7 @@ class PreIssuanceControllerTest {
 
     @Test
     fun `INV-AC-26695 a Refused outcome is 400 SRT-001 with no verdict member`() {
-        val response = call(notRegistered, draft(gstn = null))
+        val response = call(notRegistered, draft(gstn = " "))
         response.statusCode.value() shouldBe 400
         val tree = json.readTree(textOf(response))
         tree["code"].asString() shouldBe "SRT-001"
@@ -160,7 +158,7 @@ class PreIssuanceControllerTest {
 
     @Test
     fun `INV-AC-26695 a Refused from the use case for gstAmount 9_001 is 400 SRT-001 with no verdict member`() {
-        // 9.001 passes the controller's null and blank checks, so the real use case refuses it (more than 2 decimals).
+        // 9.001 passes the controller's blank checks, so the real use case refuses it (more than 2 decimals).
         val response = call(notRegistered, draft(amount = "9.001"))
         response.statusCode.value() shouldBe 400
         val tree = json.readTree(textOf(response))
