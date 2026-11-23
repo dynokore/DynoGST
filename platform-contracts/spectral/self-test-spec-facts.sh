@@ -75,5 +75,63 @@ mv "$R/svc/spec-fact.tsv" "$R/svc/spec-facts.tsv"
 expect_base empty-sha 1 "needs a commit sha" ""
 expect_base dash-sha 1 "needs a commit sha" "--x"
 expect_base not-a-commit 1 "is not a commit" "0000000000000000000000000000000000000000"
+
+# the list rule (INV-T-28239): an equals list row is kept by an equals list row of the same file and pointer that
+# holds every member; every other row is kept only by its exact key. Own repository, own doc.yaml and table.
+LR="$T/lrepo"; mkdir -p "$LR/svc"
+git -C "$LR" init -q && git -C "$LR" config user.email t@t && git -C "$LR" config user.name t
+printf 'a:\n  list: [A, B]\n  typed: [1, "60"]\n  n: 60\n' > "$LR/svc/doc.yaml"
+TAB=$(printf '\t')
+HDR=$(printf 'file\tpointer\trelation\tvalue\trequirement')
+L1='doc.yaml\t/a/list\tequals\t["A","B"]\tINV-REQ-1'
+T1='doc.yaml\t/a/typed\tequals\t[1,"60"]\tINV-REQ-1'
+S1='doc.yaml\t/a/n\tequals\t60\tINV-REQ-1'
+C1='doc.yaml\t/a/list\tcontains\t"A"\tINV-REQ-1'
+table() { { echo "$HDR"; for r in "$@"; do printf "$r\n"; done; } > "$LR/svc/spec-facts.tsv"; }
+table "$L1" "$T1" "$S1" "$C1"
+git -C "$LR" add -A && git -C "$LR" commit -q -m base
+LBASE=$(git -C "$LR" rev-parse HEAD)
+ROWMSG='row removed since'
+# lcase name rc text doc-list typed-list n rows...   (rewrites doc.yaml so that the table check of the head passes)
+lcase() {
+  name=$1; rc=$2; text=$3; list=$4; typed=$5; n=$6; shift 6
+  printf 'a:\n  list: %s\n  typed: %s\n  n: %s\n  other: %s\n' "$list" "$typed" "$n" "$list" > "$LR/svc/doc.yaml"
+  printf 'a:\n  list: %s\n' "$list" > "$LR/svc/doc2.yaml"
+  table "$@"
+  out=$(python3 check-spec-facts.py --base "$LBASE" "$LR" 2>&1); got=$?
+  if [ "$got" != "$rc" ]; then echo "gst-ci: FAIL — list case '$name' exited $got, expected $rc:"; echo "$out"; failed=1
+  elif [ -n "$text" ]; then
+    case "$out" in *"$text"*"an equals list row is kept only by"*) echo "gst-ci: self-test list '$name' failed as expected ($text)";; *) echo "gst-ci: FAIL — list case '$name' lacks '$text':"; echo "$out"; failed=1;; esac
+  else case "$out" in *"$ROWMSG"*) echo "gst-ci: FAIL — list case '$name' reported a removed row:"; echo "$out"; failed=1;; *) echo "gst-ci: self-test list '$name' passed as expected";; esac; fi
+  git -C "$LR" checkout -q -- . ; rm -f "$LR/svc/doc2.yaml"
+}
+LTXT="$ROWMSG $LBASE: file doc.yaml, pointer /a/list, relation equals, value [\"A\",\"B\"]"
+TTXT="$ROWMSG $LBASE: file doc.yaml, pointer /a/typed, relation equals, value [1,\"60\"]"
+STXT="$ROWMSG $LBASE: file doc.yaml, pointer /a/n, relation equals, value 60"
+CTXT="$ROWMSG $LBASE: file doc.yaml, pointer /a/list, relation contains, value \"A\""
+L() { printf 'doc.yaml\t/a/list\tequals\t%s\tINV-REQ-1' "$1"; }
+lcase list-appended 0 "" '[A, B, C]' '[1, "60"]' 60 "$(L '["A","B","C"]')" "$T1" "$S1" "$C1"
+lcase list-reordered 0 "" '[B, A]' '[1, "60"]' 60 "$(L '["B","A"]')" "$T1" "$S1" "$C1"
+lcase list-appended-reordered 0 "" '[C, B, A]' '[1, "60"]' 60 "$(L '["C","B","A"]')" "$T1" "$S1" "$C1"
+lcase list-requirement-changed-member-added 0 "" '[A, B, C]' '[1, "60"]' 60 'doc.yaml\t/a/list\tequals\t["A","B","C"]\tINV-REQ-9' "$T1" "$S1" "$C1"
+lcase list-member-removed 1 "$LTXT" '[A]' '[1, "60"]' 60 "$(L '["A"]')" "$T1" "$S1" "$C1"
+lcase list-member-replaced 1 "$LTXT" '[A, C]' '[1, "60"]' 60 "$(L '["A","C"]')" "$T1" "$S1" "$C1"
+lcase typed-one-to-true 1 "$TTXT" '[A, B]' '[true, "60"]' 60 "$L1" 'doc.yaml\t/a/typed\tequals\t[true,"60"]\tINV-REQ-1' "$S1" "$C1"
+lcase typed-string-to-number 1 "$TTXT" '[A, B]' '[1, 60]' 60 "$L1" 'doc.yaml\t/a/typed\tequals\t[1,60]\tINV-REQ-1' "$S1" "$C1"
+lcase list-to-contains 1 "$LTXT" '[A, B]' '[1, "60"]' 60 'doc.yaml\t/a/list\tcontains\t"A"\tINV-REQ-1' "$T1" "$S1"
+lcase list-other-pointer 1 "$LTXT" '[A, B]' '[1, "60"]' 60 'doc.yaml\t/a/other\tequals\t["A","B"]\tINV-REQ-1' "$T1" "$S1" "$C1"
+lcase list-other-file 1 "$LTXT" '[A, B]' '[1, "60"]' 60 'doc2.yaml\t/a/list\tequals\t["A","B"]\tINV-REQ-1' "$T1" "$S1" "$C1"
+lcase list-to-scalar 1 "$LTXT" 'A' '[1, "60"]' 60 'doc.yaml\t/a/list\tequals\t"A"\tINV-REQ-1' "$T1" "$S1" "$C1"
+lcase scalar-changed 1 "$STXT" '[A, B]' '[1, "60"]' 61 "$L1" "$T1" 'doc.yaml\t/a/n\tequals\t61\tINV-REQ-1' "$C1"
+lcase scalar-to-list 1 "$STXT" '[A, B]' '[1, "60"]' '[60]' "$L1" "$T1" 'doc.yaml\t/a/n\tequals\t[60]\tINV-REQ-1' "$C1"
+lcase contains-removed 1 "$CTXT" '[A, B]' '[1, "60"]' 60 "$L1" "$T1" "$S1"
+# an empty base list is kept by any list (vacuous truth)
+printf 'a:\n  list: []\n' > "$LR/svc/doc.yaml"; table "$(L '[]')"
+git -C "$LR" add -A && git -C "$LR" commit -q -m empty-list
+LBASE=$(git -C "$LR" rev-parse HEAD)
+printf 'a:\n  list: [A]\n' > "$LR/svc/doc.yaml"; table "$(L '["A"]')"
+expect_list_empty() { out=$(python3 check-spec-facts.py --base "$LBASE" "$LR" 2>&1) && echo "gst-ci: self-test list 'empty-base-list' passed as expected" || { echo "gst-ci: FAIL — empty base list not kept:"; echo "$out"; failed=1; }; }
+expect_list_empty
+git -C "$LR" checkout -q -- .
 [ $failed -eq 0 ] && echo "gst-ci: spec-facts self-test OK"
 exit $failed

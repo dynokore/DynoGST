@@ -11,7 +11,12 @@ Reads every <root>/*/spec-facts.tsv. A table has the header file, pointer, relat
             contains the node is a list with a member equal to the JSON text in value
             absent   no node at the pointer; value is the single character '-'
 With --base <sha>, a data row (keyed by the trimmed file, pointer, relation and value) of a table that exists at
-<sha> must still be a data row of the same table at the head; there is no exemption for a retired row.
+<sha> must still be a data row of the same table at the head; there is no exemption for a retired row, with one
+exception, additive evolution of a list: a base row of relation equals whose value is a JSON list B is kept by a
+head row of relation equals with the same file and pointer whose value is a JSON list H holding, for every member
+b of B, a member h with same(b, h) (order and extra members of H are free; a member of another type does not
+count; an empty B is kept by any list H). Every other base row (contains, absent, a non-list equals value, an
+unparsable value, a changed relation, pointer or file) is kept only by its exact four-cell key.
 """
 import json
 import re
@@ -171,6 +176,34 @@ def row_keys(text: str) -> set[tuple[str, str, str, str]]:
     return {tuple(c.strip() for c in cells[:4]) for _, cells in data_rows(text) if len(cells) == 5 and all(c.strip() for c in cells)}
 
 
+def equals_lists(keys: set[tuple[str, str, str, str]]) -> dict[tuple[str, str], list[list]]:
+    """(file, pointer) -> the JSON list values of the equals rows of that file and pointer."""
+    lists: dict[tuple[str, str], list[list]] = {}
+    for file, pointer, relation, value in keys:
+        if relation != "equals":
+            continue
+        try:
+            parsed = strict_json(value)
+        except ValueError:
+            continue
+        if isinstance(parsed, list):
+            lists.setdefault((file, pointer), []).append(parsed)
+    return lists
+
+
+def kept_by_list(file: str, pointer: str, relation: str, value: str, head_lists: dict) -> bool:
+    """True when the base row is an equals list row and a head equals list row of the same file and pointer holds every member."""
+    if relation != "equals":
+        return False
+    try:
+        before = strict_json(value)
+    except ValueError:
+        return False
+    if not isinstance(before, list):
+        return False
+    return any(all(any(same(b, h) for h in now) for b in before) for now in head_lists.get((file, pointer), []))
+
+
 def git_ok(root: Path, sha: str) -> bool:
     if not sha.strip() or sha.startswith("-"):
         return False
@@ -200,8 +233,12 @@ def check_base(root: Path, sha: str) -> list[str]:
             findings.append(f"{name}: cannot read it at {sha}: {before.stderr.strip()}")
             continue
         now = row_keys(head.read_text())
+        head_lists = equals_lists(now)
         for file, pointer, relation, value in sorted(row_keys(before.stdout) - now):
-            findings.append(f"{name}: row removed since {sha}: file {file}, pointer {pointer}, relation {relation}, value {value}")
+            if kept_by_list(file, pointer, relation, value, head_lists):
+                continue
+            findings.append(f"{name}: row removed since {sha}: file {file}, pointer {pointer}, relation {relation}, value {value}"
+                            "; an equals list row is kept only by an equals list row of the same file and pointer that holds every member")
     return findings
 
 

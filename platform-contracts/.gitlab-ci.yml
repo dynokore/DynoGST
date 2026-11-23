@@ -196,7 +196,8 @@ contract-rules:
       }
     - gst_check required-identifiers-ratchet gst_ratchet
     # spec-facts gate (INV-T-9614, INV-Q-9610 A): the response keys, header schemas and enum lists a task states, per
-    # */spec-facts.tsv; on merge requests a row of the diff base must still be a row at the head.
+    # */spec-facts.tsv; on merge requests a row of the diff base must still be a row at the head, except that an equals
+    # list row is kept by an equals list row of the same file and pointer that holds every member (INV-T-28239).
     - gst_check spec-facts-check python3 spectral/check-spec-facts.py .
     - |
       gst_spec_facts_ratchet() {
