@@ -13,6 +13,7 @@ import com.dynokore.platform.evidencestore.ContentHash
 import com.dynokore.platform.evidencestore.EntityRef
 import com.dynokore.platform.evidencestore.EvidenceRecord
 import com.dynokore.platform.evidencestore.JdbcEvidenceLedger
+import com.dynokore.platform.evidencestore.ObjectStore
 import com.dynokore.platform.evidencestore.PeriodRef
 import com.dynokore.platform.outboxandqueue.CausationId
 import com.dynokore.platform.outboxandqueue.ConsumerSubscription
@@ -54,6 +55,12 @@ import com.dynokore.platform.outboxandqueue.EntityRef as EventEntityRef
  */
 @Suppress("LargeClass")
 class RecordConsumersTest {
+    private val unusedObjects: ObjectStore =
+        java.lang.reflect.Proxy.newProxyInstance(
+            javaClass.classLoader,
+            arrayOf(ObjectStore::class.java),
+        ) { _, _, _ -> error("no object is read by these handlers") } as ObjectStore
+
     private val actor = "svc:evidence-svc"
     private val doc = UUID.fromString("0b1f2c3d-0000-4000-8000-000000000003")
     private val entity = "ENT-3F2A9C"
@@ -462,6 +469,7 @@ class RecordConsumersTest {
                 RebuildRequiredSink { },
                 Clock.systemUTC(),
                 dsl,
+                unusedObjects,
                 { topic, offset ->
                     written += topic to offset
                     offset
@@ -517,7 +525,7 @@ class RecordConsumersTest {
                 .using(org.jooq.SQLDialect.POSTGRES)
         val clock = Clock.systemUTC()
 
-        fun handlerOf(topic: String) = registry.single { it.topic == topic }.handler(dsl, clock)
+        fun handlerOf(topic: String) = registry.single { it.topic == topic }.handler(dsl, clock, unusedObjects)
 
         registry.count { it.topic == topic } shouldBe 1
         registry.count { it.topic == "gst.platform.evidence-artefact-recorded.v2" } shouldBe 0

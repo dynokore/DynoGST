@@ -1,6 +1,7 @@
 package com.dynokore.gst.evidence.bootstrap
 
 import com.dynokore.gst.evidence.adapters.persistence.ChainWiring
+import com.dynokore.platform.evidencestore.ObjectStore
 import com.dynokore.platform.outboxandqueue.ConsumerSubscription
 import com.dynokore.platform.outboxandqueue.EventCatalogue
 import com.dynokore.platform.outboxandqueue.EventHandler
@@ -35,6 +36,7 @@ class RecordConsumerConfiguration {
         rebuildRequired: RebuildRequiredSink,
         clock: Clock,
         dsl: DSLContext,
+        objects: ObjectStore,
         positions: EventLogPositions,
         meters: MeterRegistry,
     ): InboxConsumer {
@@ -51,7 +53,7 @@ class RecordConsumerConfiguration {
                 reader,
                 scope,
                 dsl,
-                entry.handler(dsl, clock),
+                entry.handler(dsl, clock, objects),
                 rebuildRequired,
                 clock,
             ),
@@ -67,6 +69,7 @@ class RecordConsumerConfiguration {
         rebuildRequired: RebuildRequiredSink,
         clock: Clock,
         dsl: DSLContext,
+        objects: ObjectStore,
         positions: EventLogPositions,
         meters: MeterRegistry,
     ): InboxConsumer {
@@ -83,7 +86,7 @@ class RecordConsumerConfiguration {
                 reader,
                 scope,
                 dsl,
-                entry.handler(dsl, clock),
+                entry.handler(dsl, clock, objects),
                 rebuildRequired,
                 clock,
             ),
@@ -99,6 +102,7 @@ class RecordConsumerConfiguration {
         rebuildRequired: RebuildRequiredSink,
         clock: Clock,
         dsl: DSLContext,
+        objects: ObjectStore,
         positions: EventLogPositions,
         meters: MeterRegistry,
     ): InboxConsumer {
@@ -115,7 +119,7 @@ class RecordConsumerConfiguration {
                 reader,
                 scope,
                 dsl,
-                entry.handler(dsl, clock),
+                entry.handler(dsl, clock, objects),
                 rebuildRequired,
                 clock,
             ),
@@ -135,6 +139,7 @@ class RecordConsumerConfiguration {
         rebuildRequired: RebuildRequiredSink,
         clock: Clock,
         dsl: DSLContext,
+        objects: ObjectStore,
     ): InboxConsumer {
         val entry = entry(EVIDENCE_ARTEFACT_BEAN)
         return JdbcInboxConsumer(
@@ -143,7 +148,7 @@ class RecordConsumerConfiguration {
             reader,
             scope,
             dsl,
-            entry.handler(dsl, clock),
+            entry.handler(dsl, clock, objects),
             rebuildRequired,
             clock,
         )
@@ -178,7 +183,7 @@ class RecordConsumerConfiguration {
         internal class Entry(
             val bean: String,
             val topic: String,
-            val handler: (DSLContext, Clock) -> EventHandler,
+            val handler: (DSLContext, Clock, ObjectStore) -> EventHandler,
         )
 
         /** The one registry the four consumer beans are built from: each bean takes its topic and handler here. */
@@ -187,13 +192,15 @@ class RecordConsumerConfiguration {
                 Entry(
                     DECISION_TRACE_BEAN,
                     DECISION_TRACE_TOPIC,
-                ) { dsl, clock -> ChainWiring.decisionTraceHandler(dsl, clock) },
-                Entry(AUDIT_ENTRY_BEAN, AUDIT_ENTRY_TOPIC) { dsl, clock -> ChainWiring.auditEntryHandler(dsl, clock) },
-                Entry(PAYLOAD_REJECTED_BEAN, PAYLOAD_REJECTED_TOPIC) { dsl, clock ->
+                ) { dsl, clock, _ -> ChainWiring.decisionTraceHandler(dsl, clock) },
+                Entry(AUDIT_ENTRY_BEAN, AUDIT_ENTRY_TOPIC) { dsl, clock, _ ->
+                    ChainWiring.auditEntryHandler(dsl, clock)
+                },
+                Entry(PAYLOAD_REJECTED_BEAN, PAYLOAD_REJECTED_TOPIC) { dsl, clock, _ ->
                     ChainWiring.payloadRejectedHandler(dsl, clock)
                 },
-                Entry(EVIDENCE_ARTEFACT_BEAN, EVIDENCE_ARTEFACT_TOPIC) { dsl, clock ->
-                    ChainWiring.evidenceArtefactHandler(dsl, clock)
+                Entry(EVIDENCE_ARTEFACT_BEAN, EVIDENCE_ARTEFACT_TOPIC) { dsl, clock, objects ->
+                    ChainWiring.evidenceArtefactHandler(dsl, objects, clock)
                 },
             )
 

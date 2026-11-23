@@ -26,6 +26,7 @@ import com.dynokore.platform.evidencestore.EvidenceLedger
 import com.dynokore.platform.evidencestore.EvidenceRecord
 import com.dynokore.platform.evidencestore.EvidenceType
 import com.dynokore.platform.evidencestore.JdbcEvidenceLedger
+import com.dynokore.platform.evidencestore.ObjectStore
 import com.dynokore.platform.evidencestore.PeriodRef
 import com.dynokore.platform.outboxandqueue.EventHandler
 import com.dynokore.platform.outboxandqueue.OutboxWriter
@@ -159,8 +160,9 @@ object ChainWiring {
     /** The handler of `EvidenceArtefactRecorded`, to run inside the inbox consumer's transaction. */
     fun evidenceArtefactHandler(
         dsl: DSLContext,
+        objects: ObjectStore,
         clock: Clock = Clock.systemUTC(),
-    ): EventHandler = EvidenceArtefactRecordedHandler(ArtefactRecorder(JooqArtefactStore(dsl)), clock)
+    ): EventHandler = EvidenceArtefactRecordedHandler(ArtefactRecorder(JooqArtefactStore(dsl, objects)), clock)
 
     /** The handler of `GstReturnRecorded`, to run inside the inbox consumer's transaction. */
     fun gstReturnRecordedHandler(
