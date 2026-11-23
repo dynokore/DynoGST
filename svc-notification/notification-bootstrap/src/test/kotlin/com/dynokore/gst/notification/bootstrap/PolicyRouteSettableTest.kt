@@ -3,6 +3,15 @@ package com.dynokore.gst.notification.bootstrap
 import com.dynokore.gst.catalogue.Catalogue
 import com.dynokore.gst.catalogue.VariationPoint
 import com.dynokore.gst.notification.syncedge.TestWorkloadVerifier
+import com.dynokore.platform.serviceruntime.replica.AuthorityChanged
+import com.dynokore.platform.serviceruntime.replica.AuthorityRecord
+import com.dynokore.platform.serviceruntime.replica.AuthorityReplica
+import com.dynokore.platform.serviceruntime.replica.CellAllowance
+import com.dynokore.platform.serviceruntime.replica.GrantScope
+import com.dynokore.platform.serviceruntime.replica.OperationRoleMap
+import com.dynokore.platform.serviceruntime.replica.RoleGrant
+import com.dynokore.platform.serviceruntime.replica.RoleGrantState
+import com.dynokore.platform.tenancykernel.TenantId
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -13,6 +22,7 @@ import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.nio.file.Path
+import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
 
@@ -56,6 +66,7 @@ class PolicyRouteSettableTest {
                 javaClass.classLoader,
             ).use { context ->
                 val port = context.getBean(Environment::class.java).getProperty("local.server.port")
+                grantSetter(context)
                 val request =
                     HttpRequest
                         .newBuilder(URI.create("http://localhost:$port/internal/v1/policies/$VP"))
@@ -70,6 +81,36 @@ class PolicyRouteSettableTest {
                 response.statusCode() shouldBe 422
                 mapper.readTree(response.body()).get("code")?.asString() shouldBe "POL-006"
             }
+    }
+
+    /**
+     * The shared setPolicy is decided by the permission key `vp-67.set` through the authority replica (service-runtime
+     * 12.0.0, INV-Q-10027): the stand-in end user holds a tenant-scoped grant of a role the generated operation-role
+     * map lists for that key, so the request passes the access check and reaches the settable check (INV-T-27032 owns
+     * this adaptation of the BOM bump, INV-Q-16901).
+     */
+    private fun grantSetter(context: org.springframework.context.ApplicationContext) {
+        val role =
+            context
+                .getBean(OperationRoleMap::class.java)
+                .rolesFor(VP.lowercase() + ".set")
+                .entries
+                .first { it.value == CellAllowance.PERMITTED }
+                .key
+        val replica = context.getBean(AuthorityReplica::class.java)
+        replica.onSnapshotComplete(0)
+        replica.accept(
+            AuthorityChanged(
+                TenantId.of(TENANT),
+                "end-user-1",
+                1L,
+                AuthorityRecord.RoleGrantRecord(
+                    "g-end-user-1-$role",
+                    RoleGrantState.ACTIVE,
+                    RoleGrant(role, GrantScope.TENANT, TENANT, Instant.now().minusSeconds(60)),
+                ),
+            ),
+        )
     }
 
     private companion object {
