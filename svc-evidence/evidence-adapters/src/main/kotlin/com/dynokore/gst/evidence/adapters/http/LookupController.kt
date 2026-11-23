@@ -272,6 +272,7 @@ open class LookupController(
             ruleId = entry.ruleId,
             packVersions = entry.packVersions.map { PackVersion(it.packIdentifier, it.version) },
             inputs = entry.inputs.map { DecisionTraceInput(it.name, it.value, it.businessTermId) },
+            assertionText = entry.assertionText,
         )
 
     private fun reverseContext(tenant: TenantId) =
