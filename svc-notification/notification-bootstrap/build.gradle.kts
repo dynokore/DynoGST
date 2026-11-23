@@ -29,7 +29,17 @@ dependencies {
     testImplementation(libs.springBoot.test)
     testImplementation(libs.assertj.core)
     testImplementation(libs.snakeyaml)
+    testImplementation(libs.platform.serviceRuntime.api)
+    testImplementation(platform(libs.jackson.bom))
+    testImplementation(libs.jackson.databind)
     testImplementation(project(":notification-application"))
     testImplementation(project(":notification-domain"))
     testImplementation(testFixtures(project(":notification-adapters")))
+}
+
+// The identity binding has no default in code or application.yaml (INV-T-26178); the tests that start the service with
+// a stand-in end-user token give the installation values here. ProductionIdentityTest overrides them.
+tasks.withType<Test>().configureEach {
+    systemProperty("notification.identity-provider.issuer-uri", "https://issuer.invalid/realms/test")
+    systemProperty("service-runtime.end-user-identity.audience", "notification-svc")
 }
