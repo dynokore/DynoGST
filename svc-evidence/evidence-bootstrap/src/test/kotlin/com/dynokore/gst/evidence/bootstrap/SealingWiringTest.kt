@@ -117,6 +117,7 @@ class SealingWiringTest {
             .containsExactly(
                 "gst.canonical.decision-trace-recorded.v1",
                 "gst.platform.audit-entry-recorded.v1",
+                "gst.payload.payload-rejected.v1",
                 "gst.platform.evidence-artefact-recorded.v1",
             )
         assertThat(LocatorConsumerConfiguration.TOPIC).isEqualTo("gst.canonical.canonical-version-created.v1")

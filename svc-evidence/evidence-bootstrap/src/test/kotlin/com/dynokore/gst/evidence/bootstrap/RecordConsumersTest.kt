@@ -398,6 +398,7 @@ class RecordConsumersTest {
 
     @ParameterizedTest(name = "{displayName} [{0}]")
     @EnumSource(EvidenceDb.Version::class)
+    @Suppress("MaxLineLength", "ktlint:standard:max-line-length") // the case name is fixed by the task
     fun `INV-AC-27154 a PayloadRejected event with decisions arriving after the locator is chained as a DECISION_TRACE record carrying the version of the locator`(
         version: EvidenceDb.Version,
         @TempDir dir: Path,
@@ -413,7 +414,10 @@ class RecordConsumersTest {
         payloadConsumer.pollOnce() shouldBe result(2, 0, 0)
         val appended = traces(tenant)
         appended.map { String(it.content) } shouldBe
-            listOf("""{"decisions":[{"code":"PAY-002","outcome":"rejected"}]}""", """{"decisions":[{"code":"PAY-009"}]}""")
+            listOf(
+                """{"decisions":[{"code":"PAY-002","outcome":"rejected"}]}""",
+                """{"decisions":[{"code":"PAY-009"}]}""",
+            )
         appended.forEach {
             it.index.docUuid shouldBe doc
             it.index.version shouldBe 1
@@ -423,6 +427,7 @@ class RecordConsumersTest {
 
     @ParameterizedTest(name = "{displayName} [{0}]")
     @EnumSource(EvidenceDb.Version::class)
+    @Suppress("MaxLineLength", "ktlint:standard:max-line-length") // the case name is fixed by the task
     fun `INV-AC-27154 a PayloadRejected event arriving before the locator waits as pending and is chained when the locator arrives`(
         version: EvidenceDb.Version,
         @TempDir dir: Path,
@@ -472,7 +477,8 @@ class RecordConsumersTest {
         @TempDir dir: Path,
     ) {
         EvidenceContext.offline(dir).run { context ->
-            val entry = context.getBean(EventCatalogue::class.java).topic(RecordConsumerConfiguration.PAYLOAD_REJECTED_TOPIC)
+            val catalogue = context.getBean(EventCatalogue::class.java)
+            val entry = catalogue.topic(RecordConsumerConfiguration.PAYLOAD_REJECTED_TOPIC)
             entry?.eventType shouldBe "com.dynokore.gst.payload.PayloadRejected.v1"
             entry?.producers shouldBe setOf("payload-svc")
             entry?.contentTopic shouldBe true
