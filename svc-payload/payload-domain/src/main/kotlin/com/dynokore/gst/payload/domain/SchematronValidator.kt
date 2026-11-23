@@ -24,9 +24,15 @@ interface SchematronValidator {
     ): ValidationOutcome
 }
 
-/** Port: the staged stylesheet bytes of a pack version, or null when the version is not staged (INV-REQ-1210). */
+/** One file of a staged Schematron pack: its name and its source bytes (INV-REQ-776). */
+class SchematronFile(
+    val name: String,
+    val content: ByteArray,
+)
+
+/** Port: the staged Schematron files of a pack version, or null when the version is not staged (INV-REQ-1210). */
 interface StagedPackSource {
-    fun fetch(packVersion: String): ByteArray?
+    fun fetch(packVersion: String): List<SchematronFile>?
 }
 
 /** The staged-pack source holds no stylesheet for [packVersion]. */
