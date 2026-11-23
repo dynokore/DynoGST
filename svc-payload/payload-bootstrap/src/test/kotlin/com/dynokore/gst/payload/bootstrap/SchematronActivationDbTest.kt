@@ -1,6 +1,5 @@
 package com.dynokore.gst.payload.bootstrap
 
-import com.dynokore.gst.payload.adapters.PayloadDb
 import com.dynokore.gst.payload.adapters.packs.JooqMdePackReplica
 import com.dynokore.gst.payload.adapters.packs.JooqRulePackReplica
 import com.dynokore.gst.payload.adapters.packs.RulePackEventsHandler
@@ -49,12 +48,6 @@ class SchematronActivationDbTest {
     private val json = EnvelopeJson()
     private val document = "<doc/>".toByteArray()
 
-    private companion object {
-        val NEXT_OFFSET =
-            java.util.concurrent.atomic
-                .AtomicLong(1_000L)
-    }
-
     private class Log : EventLogReader {
         private val records = mutableMapOf<String, MutableList<LogRecord>>()
 
@@ -63,8 +56,7 @@ class SchematronActivationDbTest {
             envelopeJson: String,
         ) {
             val list = records.getOrPut(topic) { mutableListOf() }
-            // offsets rise over the whole JVM: the consumer of the configuration keeps one fixed name in the database
-            list += LogRecord(NEXT_OFFSET.incrementAndGet(), envelopeJson)
+            list += LogRecord(list.size + 1L, envelopeJson)
         }
 
         override fun read(
@@ -91,40 +83,20 @@ class SchematronActivationDbTest {
         val log = Log()
         private val consumerName = PackReplicaConfiguration.CONSUMER + "-" + UUID.randomUUID()
 
-        private val configuration = context.getBean(PackReplicaConfiguration::class.java)
-
-        /** The consumer of `RulePackActivated` exactly as the configuration builds it, over the in-memory log. */
-        private fun activatedConsumer(clock: Clock) =
-            configuration.rulePackActivatedConsumer(
-                catalogue,
-                log,
-                scope,
-                RebuildRequiredSink { },
-                clock,
-                dsl,
-                replica,
-                rules,
-                activation,
-            )
-
         private fun consumer(
             type: String,
             topic: String,
             clock: Clock = Clock.systemUTC(),
-        ) = if (type == RulePackEventsHandler.ACTIVATED_TYPE) {
-            activatedConsumer(clock)
-        } else {
-            JdbcInboxConsumer(
-                ConsumerSubscription(consumerName, topic, PackReplicaConfiguration.SCHEMA),
-                catalogue,
-                log,
-                scope,
-                dsl,
-                RulePackEventsHandler(type, replica, rules),
-                RebuildRequiredSink { },
-                clock,
-            )
-        }
+        ) = JdbcInboxConsumer(
+            ConsumerSubscription(consumerName, topic, PackReplicaConfiguration.SCHEMA),
+            catalogue,
+            log,
+            scope,
+            dsl,
+            RulePackEventsHandler(type, replica, rules, activation),
+            RebuildRequiredSink { },
+            clock,
+        )
 
         fun deliver(
             tenant: TenantId,
@@ -137,7 +109,7 @@ class SchematronActivationDbTest {
             return consumer(type, topic).pollOnce()
         }
 
-        /** Polls again one day later (past the backoff): the retry of the item that did not commit. */
+        /** Polls the activated topic again, one day later (past the backoff): the retry of the item that did not commit. */
         fun repoll() =
             consumer(
                 RulePackEventsHandler.ACTIVATED_TYPE,
@@ -151,7 +123,8 @@ class SchematronActivationDbTest {
         ): T = scope.bind(tenant, actor) { runner.inTransaction { body() } }
 
         /** A cache with no held version, reading the replica on a miss exactly as the configuration does. */
-        fun newCache() = CompiledPackCache(schematronRunner, source, compiler)
+        fun newCache() =
+            CompiledPackCache(schematronRunner, source, compiler)
 
         fun ids(
             tenant: TenantId,
@@ -186,9 +159,7 @@ class SchematronActivationDbTest {
         attribute: String,
     ) = """<?xml version="1.0" encoding="UTF-8"?>
 <sch:schema xmlns:sch="http://purl.oclc.org/dsdl/schematron" queryBinding="xslt2">
-  <sch:pattern>
-    <sch:rule context="/doc"><sch:assert id="$id" test="@$attribute">$attribute is required.</sch:assert></sch:rule>
-  </sch:pattern>
+  <sch:pattern><sch:rule context="/doc"><sch:assert id="$id" test="@$attribute">$attribute is required.</sch:assert></sch:rule></sch:pattern>
 </sch:schema>"""
 
     private fun file(
@@ -220,17 +191,7 @@ class SchematronActivationDbTest {
         dir: Path,
         block: Boundary.(TenantId) -> Unit,
     ) {
-        try {
-            PayloadContext.online(dir).run { context -> Boundary(context).block(TenantId(UUID.randomUUID())) }
-        } finally {
-            // the consumer of the configuration keeps the fixed name payload-svc: leave no offset row for other tests
-            PayloadDb.superuser().use { c ->
-                c.prepareStatement("delete from payload.consumer_offset where consumer = ?").use {
-                    it.setString(1, PackReplicaConfiguration.CONSUMER)
-                    it.executeUpdate()
-                }
-            }
-        }
+        PayloadContext.online(dir).run { context -> Boundary(context).block(TenantId(UUID.randomUUID())) }
     }
 
     private fun activeVersion(
@@ -300,8 +261,7 @@ class SchematronActivationDbTest {
         val t2 = TenantId(UUID.randomUUID())
         deliver(t1, true, staged("1.0.0", twoFiles))
         deliver(t1, false, activated("1.0.0"))
-        tx(t1) { rules.contentsOfVersion("schematron", "1.0.0") } shouldBe
-            tx(t1) { rules.active("schematron") }?.contentsJson
+        tx(t1) { rules.contentsOfVersion("schematron", "1.0.0") } shouldBe tx(t1) { rules.active("schematron") }?.contentsJson
         tx(t2) { rules.contentsOfVersion("schematron", "1.0.0") } shouldBe null
         shouldThrow<StagedPackMissingException> { ids(t2, newCache(), "1.0.0") }
         // the tenant predicate of the statement holds on its own: a session bound to t1 reads nothing for t2
