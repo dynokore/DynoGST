@@ -12,9 +12,12 @@ import tools.jackson.databind.node.ObjectNode
 import java.math.BigDecimal
 
 /**
- * [AggregateDocumentJson] over Jackson: the `canonicalDocument` of an aggregate (INV-REQ-437). Every amount comes from
- * the arguments; nothing is computed here. The supplier is the object with the single member `gstn`, the buyer is
- * empty, and the identity triple is the one of the [SupplierIdentity] (no service is called).
+ * [AggregateDocumentJson] over Jackson: the `canonicalDocument` of an aggregate (INV-REQ-437). Every amount comes
+ * from the arguments; nothing is computed here. INV-REQ-412: for POS and STI the supplier has the single member
+ * `gstn` and the buyer carries the literal in name, identifierValue, address.line1 and address.postalCode; for PCP
+ * the supplier carries the literal in its five members and the buyer is empty. The aggregate type is looked up in
+ * a three-entry table and anything else throws IllegalArgumentException. The identity triple is always the real
+ * one of the [SupplierIdentity] (no service is called).
  */
 class JacksonAggregateDocumentJson : AggregateDocumentJson {
     private val mapper = JsonMapper.builder().build()
@@ -26,14 +29,15 @@ class JacksonAggregateDocumentJson : AggregateDocumentJson {
         aggregateType: String,
         supplier: SupplierIdentity,
     ): String {
+        val literal =
+            requireNotNull(LITERALS[aggregateType]) { "aggregateType is not POS, STI or PCP: '$aggregateType'" }
         val root = mapper.createObjectNode()
         wrap(root, "documentTypeCode", NONE).put(VALUE, if (isCreditNote) CREDIT_NOTE else INVOICE)
         wrap(root, "currency", NONE).put(VALUE, CURRENCY)
         wrap(root, "taxCurrencyCode", NONE).put(VALUE, CURRENCY)
         wrap(root, "aggregateType", NONE).put(VALUE, aggregateType)
         val parties = wrap(root, "parties", IDENTIFYING).putObject(VALUE)
-        parties.putObject("supplier").put("gstn", supplier.supplierGstn)
-        parties.putObject("buyer")
+        parties(parties, literal, supplier)
         wrap(root, "identityTriple", IDENTIFYING).putObject(VALUE).apply {
             put("senderId", supplier.senderId)
             put("supplierId", supplier.supplierId)
@@ -54,6 +58,36 @@ class JacksonAggregateDocumentJson : AggregateDocumentJson {
             put("totalIncludingTax", text(amounts.totalIncludingTax))
         }
         return mapper.writeValueAsString(root)
+    }
+
+    private fun parties(
+        parties: ObjectNode,
+        literal: String,
+        supplier: SupplierIdentity,
+    ) {
+        val supplierNode = parties.putObject("supplier")
+        val buyerNode = parties.putObject("buyer")
+        if (literal == PCP) {
+            supplierNode.put("name", literal)
+            supplierNode.put("identifierValue", literal)
+            supplierNode.put("gstn", literal)
+            address(supplierNode, literal)
+        } else {
+            supplierNode.put("gstn", supplier.supplierGstn)
+            buyerNode.put("name", literal)
+            buyerNode.put("identifierValue", literal)
+            address(buyerNode, literal)
+        }
+    }
+
+    private fun address(
+        party: ObjectNode,
+        literal: String,
+    ) {
+        party.putObject("address").apply {
+            put("line1", literal)
+            put("postalCode", literal)
+        }
     }
 
     private fun lines(
@@ -87,6 +121,10 @@ class JacksonAggregateDocumentJson : AggregateDocumentJson {
     private fun text(amount: BigDecimal) = amount.toPlainString()
 
     private companion object {
+        const val PCP = "PCP"
+
+        /** INV-REQ-412: the literal of each aggregate type; an absent key never defaults. */
+        val LITERALS = mapOf("POS" to "POS", "STI" to "STI", "PCP" to "PCP")
         const val VALUE = "value"
         const val CLASSIFICATION = "classification"
         const val NONE = "NONE"
