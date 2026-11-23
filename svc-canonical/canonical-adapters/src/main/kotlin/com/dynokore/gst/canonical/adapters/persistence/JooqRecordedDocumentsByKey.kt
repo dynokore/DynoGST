@@ -37,7 +37,7 @@ class JooqRecordedDocumentsByKey(
                 .and(SOURCE_EVENT.SOURCE_SYSTEM.eq(sourceSystem))
                 .and(SOURCE_EVENT.SOURCE_KEY.`in`(keys))
                 .fetch()
-                .groupBy({ it[SOURCE_EVENT.SOURCE_KEY]!! }, { it[SOURCE_EVENT.DOC_UUID]!! })
+                .groupBy({ checkNotNull(it[SOURCE_EVENT.SOURCE_KEY]) }, { checkNotNull(it[SOURCE_EVENT.DOC_UUID]) })
                 .filterValues { it.size == 1 }
                 .mapValues { it.value.single() }
         val docUuids = named.values.toSet()
@@ -48,7 +48,7 @@ class JooqRecordedDocumentsByKey(
                 .where(DOCUMENT.TENANT_ID.eq(tenantId))
                 .and(DOCUMENT.DOC_UUID.`in`(docUuids))
                 .fetch()
-                .associate { it[DOCUMENT.DOC_UUID]!! to it[DOCUMENT.ENTITY_ID]!! }
+                .associate { checkNotNull(it[DOCUMENT.DOC_UUID]) to checkNotNull(it[DOCUMENT.ENTITY_ID]) }
         val functions = latestFunctions(tenantId, docUuids)
         return named.entries
             .mapNotNull { (key, docUuid) ->
@@ -71,10 +71,8 @@ class JooqRecordedDocumentsByKey(
             .orderBy(INBOUND_EVENT.VERSION.desc())
             .fetch()
             .forEach { row ->
-                latest.putIfAbsent(
-                    row[INBOUND_EVENT.DOC_UUID]!!,
-                    DocumentFunction.valueOf(row[INBOUND_EVENT.DOCUMENT_FUNCTION]!!),
-                )
+                val doc = checkNotNull(row[INBOUND_EVENT.DOC_UUID])
+                latest.putIfAbsent(doc, DocumentFunction.valueOf(checkNotNull(row[INBOUND_EVENT.DOCUMENT_FUNCTION])))
             }
         return latest
     }
