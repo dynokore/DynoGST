@@ -304,4 +304,63 @@ class IssueSignedLinkTest {
             logger.removeHandler(handler)
         }
     }
+
+    @Test
+    fun `INV-AC-26235 the SMS passcode message names the link e-mail address as fallbackRecipient`() {
+        kit.setting = LinkPasscodeSetting(5, smsOnly = false)
+        kit.issued()
+        assertEquals(MessageChannel.SMS, kit.messages[1].channel)
+        assertEquals("+6591234567", kit.messages[1].recipient)
+        assertEquals(kit.messages[0].recipient, kit.messages[1].fallbackRecipient)
+        assertEquals("sig@example.com", kit.messages[1].fallbackRecipient)
+        assertNull(kit.messages[0].fallbackRecipient)
+    }
+
+    @Test
+    fun `INV-AC-26235 under SMS only the SMS passcode message has no fallbackRecipient`() {
+        kit.setting = LinkPasscodeSetting(5, smsOnly = true)
+        kit.smsBound = true
+        assertTrue(kit.issue.handle(kit.command()) is IssueLinkOutcome.Issued)
+        assertEquals(MessageChannel.SMS, kit.messages[1].channel)
+        assertNull(kit.messages[1].fallbackRecipient)
+        assertNull(kit.messages[0].fallbackRecipient)
+    }
+
+    @Test
+    fun `INV-AC-26235 without a mobile number neither message has a fallbackRecipient`() {
+        kit.setting = LinkPasscodeSetting(5, smsOnly = false)
+        kit.issued(kit.command(mobile = null))
+        assertEquals(MessageChannel.EMAIL, kit.messages[1].channel)
+        assertNull(kit.messages[0].fallbackRecipient)
+        assertNull(kit.messages[1].fallbackRecipient)
+    }
+
+    @Test
+    fun `INV-AC-26235 the seal label stays the one recipient address of the passcode message`() {
+        kit.setting = LinkPasscodeSetting(5, smsOnly = false)
+        kit.issued()
+        val sealed = kit.messages[1].sealedPasscode!!
+        assertTrue(kit.open(sealed, "+6591234567").isNotEmpty())
+        assertThrows(BadPaddingException::class.java) { kit.open(sealed, "sig@example.com") }
+    }
+
+    @Test
+    fun `INV-AC-26235 a fallbackRecipient is refused on any message but the SMS passcode message`() {
+        assertThrows(IllegalArgumentException::class.java) {
+            MessageRequest(TEMPLATE_SIGNED_LINK, "a@example.com", MessageChannel.EMAIL, "LNK-1", null, "a@example.com")
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            MessageRequest(
+                TEMPLATE_SIGNED_LINK_PASSCODE,
+                "a@example.com",
+                MessageChannel.EMAIL,
+                null,
+                "s",
+                "a@example.com",
+            )
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            MessageRequest(TEMPLATE_SIGNED_LINK, "+65", MessageChannel.SMS, "LNK-1", null, "a@example.com")
+        }
+    }
 }

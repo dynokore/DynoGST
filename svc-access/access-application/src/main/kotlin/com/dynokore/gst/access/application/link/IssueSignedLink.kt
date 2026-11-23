@@ -21,17 +21,25 @@ const val TEMPLATE_SIGNED_LINK = "signed-link"
 /** Template of the separate message that carries the sealed passcode (INV-REQ-2762). */
 const val TEMPLATE_SIGNED_LINK_PASSCODE = "signed-link-passcode"
 
-/** One `MessageRequested` to append to the outbox; exactly one of [linkReference] and [sealedPasscode] is set. */
+/**
+ * One `MessageRequested` to append to the outbox; exactly one of [linkReference] and [sealedPasscode] is set.
+ * [fallbackRecipient] is the e-mail address `notification-svc` sends the passcode to when the SMS is reported
+ * undeliverable (INV-REQ-2762 behavior 3); only the SMS passcode message carries it, and never under SMS only.
+ */
 data class MessageRequest(
     val template: String,
     val recipient: String,
     val channel: MessageChannel,
     val linkReference: String?,
     val sealedPasscode: String?,
+    val fallbackRecipient: String? = null,
 ) {
     init {
         require((linkReference == null) != (sealedPasscode == null)) {
             "a message carries a link reference or a sealed passcode, never both and never neither"
+        }
+        require(fallbackRecipient == null || (channel == MessageChannel.SMS && sealedPasscode != null)) {
+            "only the SMS passcode message names a fallback recipient"
         }
     }
 }
@@ -195,7 +203,7 @@ class IssueSignedLinkUseCase(
             links.insert(link)
             messages.issued(link)
             if (ClientSignatoryGrants.applies(link)) clientSignatory.issued(link, now)
-            requestMessages(command, ref, passcode)
+            requestMessages(command, ref, passcode, setting)
             audit.record(
                 GrantAuditEntry(
                     actor = actor,
@@ -237,6 +245,7 @@ class IssueSignedLinkUseCase(
         command: IssueLinkCommand,
         ref: LinkRef,
         passcode: String,
+        setting: LinkPasscodeSetting,
     ) {
         val mobile = command.mobile?.takeIf { it.isNotBlank() }
         val passcodeTo = mobile ?: command.email
@@ -248,6 +257,8 @@ class IssueSignedLinkUseCase(
                 if (mobile != null) MessageChannel.SMS else MessageChannel.EMAIL,
                 null,
                 sealer.seal(passcode, passcodeTo),
+                // behavior 3: an undeliverable SMS falls back to e-mail, which SMS only (behavior 4) excludes
+                fallbackRecipient = if (mobile != null && !setting.smsOnly) command.email else null,
             ),
         )
     }

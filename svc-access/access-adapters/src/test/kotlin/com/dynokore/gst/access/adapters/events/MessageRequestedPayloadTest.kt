@@ -2,6 +2,8 @@ package com.dynokore.gst.access.adapters.events
 
 import com.dynokore.gst.access.application.link.MessageChannel
 import com.dynokore.gst.access.application.link.MessageRequest
+import com.dynokore.gst.access.application.link.OaepPasscodeSealer
+import com.dynokore.gst.access.application.link.SealingKey
 import com.dynokore.platform.outboxandqueue.EntityRef
 import com.dynokore.platform.outboxandqueue.Envelope
 import com.dynokore.platform.outboxandqueue.EventContext
@@ -13,10 +15,16 @@ import com.networknt.schema.InputFormat
 import com.networknt.schema.SchemaRegistry
 import com.networknt.schema.SpecificationVersion
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tools.jackson.databind.json.JsonMapper
+import java.security.KeyPairGenerator
+import java.security.interfaces.RSAPrivateKey
+import java.security.interfaces.RSAPublicKey
 import java.util.UUID
+import javax.crypto.BadPaddingException
 
 /**
  * A test per published channel (INV-T-17453): both messages of one issue, as the real mapper appends them, validate
@@ -56,6 +64,35 @@ class MessageRequestedPayloadTest {
         ).use { it.readBytes().toString(Charsets.UTF_8) }
             .let { SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12).getSchema(it) }
 
+    private val keyPair = KeyPairGenerator.getInstance("RSA").apply { initialize(3072) }.generateKeyPair()
+    private val publicKey = keyPair.public as RSAPublicKey
+    private val sealer = OaepPasscodeSealer { SealingKey(SealingKey.keyIdOf(publicKey), publicKey) }
+
+    private fun open(
+        sealed: String,
+        label: String,
+    ): String {
+        val cipher = javax.crypto.Cipher.getInstance("RSA/ECB/OAEPPadding")
+        cipher.init(
+            javax.crypto.Cipher.DECRYPT_MODE,
+            keyPair.private as RSAPrivateKey,
+            javax.crypto.spec.OAEPParameterSpec(
+                "SHA-256",
+                "MGF1",
+                java.security.spec.MGF1ParameterSpec.SHA256,
+                javax.crypto.spec.PSource
+                    .PSpecified(label.toByteArray()),
+            ),
+        )
+        return String(
+            cipher.doFinal(
+                java.util.Base64
+                    .getUrlDecoder()
+                    .decode(sealed.split(".")[2]),
+            ),
+        )
+    }
+
     private fun issue() =
         messages.filedUnder(EntityRef("ENT-1")) {
             messages.request(MessageRequest("signed-link", "a@example.sg", MessageChannel.EMAIL, "LNK-1", null))
@@ -82,7 +119,41 @@ class MessageRequestedPayloadTest {
         assertTrue(schema.validate(node.toString(), InputFormat.JSON).isNotEmpty())
     }
 
+    @Test
+    fun `INV-AC-26235 the SMS passcode payload carries fallbackRecipient and an SMS only issue has none`() {
+        val sealed = sealer.seal("123456", MOBILE)
+        messages.filedUnder(EntityRef("ENT-1")) {
+            messages.request(MessageRequest("signed-link", EMAIL, MessageChannel.EMAIL, "LNK-1", null))
+            messages.request(
+                MessageRequest(
+                    "signed-link-passcode",
+                    MOBILE,
+                    MessageChannel.SMS,
+                    null,
+                    sealed,
+                    fallbackRecipient = EMAIL,
+                ),
+            )
+            messages.request(MessageRequest("signed-link-passcode", MOBILE, MessageChannel.SMS, null, sealed))
+        }
+        appended.forEach { assertTrue(schema.validate(it.dataJson, InputFormat.JSON).isEmpty(), it.dataJson) }
+        val mapper = JsonMapper.builder().build()
+        val link = mapper.readTree(appended[0].dataJson)
+        val sms = mapper.readTree(appended[1].dataJson)
+        val smsOnly = mapper.readTree(appended[2].dataJson)
+        assertFalse(link.has("fallbackRecipient"))
+        assertEquals(EMAIL, sms.get("fallbackRecipient").asString())
+        assertEquals(MOBILE, sms.get("recipients").get(0).asString())
+        assertFalse(smsOnly.has("fallbackRecipient"))
+        // the OAEP label that opens the sealed passcode is the mobile number, the seal form is unchanged
+        assertEquals("123456", open(sms.get("sealedPasscode").asString(), MOBILE))
+        assertThrows(BadPaddingException::class.java) { open(sms.get("sealedPasscode").asString(), EMAIL) }
+    }
+
     private companion object {
+        const val EMAIL = "a@example.sg"
+        const val MOBILE = "+6591234567"
+
         /** The form of the contract since INV-T-17210: `v1.<16 hex>.<512 base64url characters>`. */
         val SEALED = "v1." + "0123456789abcdef" + "." + "A".repeat(512)
     }
