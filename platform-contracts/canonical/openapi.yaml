@@ -211,6 +211,8 @@ paths:
                     transactionDate: "2026-03-20"
                     prescribedPeriodRef: "2026-Q1"
                     reasons: [{ code: "ING-016", field: "/", message: "Derivation incomplete; masterdata-svc unavailable" }]
+        '409':
+          $ref: '#/components/responses/Error'
         default:
           $ref: '#/components/responses/Error'
   /internal/v1/canonical/documents/{docUuid}:
