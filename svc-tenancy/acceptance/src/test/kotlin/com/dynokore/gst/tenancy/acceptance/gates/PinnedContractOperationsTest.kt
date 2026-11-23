@@ -1,6 +1,7 @@
 package com.dynokore.gst.tenancy.acceptance.gates
 
 import io.kotest.matchers.shouldBe
+import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import java.io.File
 
@@ -30,5 +31,20 @@ class PinnedContractOperationsTest {
         listOf("loadCredential", "recordSampleApproval", "requestSampleCopy").forEach { name ->
             rows.single { it[0] == name && it[1] == "operation" }[2] shouldBe "INV-T-4932"
         }
+    }
+
+    @Test
+    @DisplayName(
+        "INV-AC-27600 the pinned contract holds listRenditionAttestations " +
+            "and the table lists it for the controller slice task",
+    )
+    fun `INV-AC-27600 pinned contract holds listRenditionAttestations listed for the controller slice`() {
+        val name = "listRenditionAttestations"
+        val operations = OperationsGate.contractOperations(File(contractDir, "openapi.yaml").readText())
+        (name in operations) shouldBe true
+        val matching = tableRows().filter { it[0] == name }
+        matching.size shouldBe 1
+        matching.single()[1] shouldBe "operation"
+        matching.single()[2] shouldBe "INV-T-27611"
     }
 }
