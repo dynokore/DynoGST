@@ -47,8 +47,11 @@ interface RunReadModelWriter {
         newPeriodRef: String,
     ): Boolean
 
+    @Suppress("LongParameterList") // the key of an acknowledgement is tenant, entity, direction, document, version
     fun recordAcknowledgement(
         tenant: String,
+        entityRef: String,
+        direction: Direction,
         docUuid: String,
         version: Int,
         acknowledgementId: String,

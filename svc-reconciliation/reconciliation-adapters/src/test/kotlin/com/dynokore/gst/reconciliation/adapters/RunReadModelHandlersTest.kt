@@ -62,15 +62,18 @@ class RunReadModelHandlersTest {
             return seen.add(listOf("p", tenant, docUuid, docsequence))
         }
 
+        @Suppress("LongParameterList") // the port fixes the parameters
         override fun recordAcknowledgement(
             tenant: String,
+            entityRef: String,
+            direction: Direction,
             docUuid: String,
             version: Int,
             acknowledgementId: String,
             acknowledgedAt: Instant,
         ): Boolean {
-            acknowledged += listOf(tenant, docUuid, version, acknowledgementId, acknowledgedAt)
-            return seen.add(listOf("a", tenant, docUuid, version, acknowledgementId))
+            acknowledged += listOf(tenant, entityRef, direction, docUuid, version, acknowledgementId, acknowledgedAt)
+            return seen.add(listOf("a", tenant, entityRef, direction, docUuid, version, acknowledgementId))
         }
     }
 
@@ -272,7 +275,7 @@ class RunReadModelHandlersTest {
     }
 
     private fun ack(id: String = "ACK-1") =
-        """{"docUuid":"$doc","version":1,"acknowledgementId":"$id","timestamp":"2026-02-11T03:04:05Z"}"""
+        """{"docUuid":"$doc","entityRef":"E1","direction":"SALE","version":1,"acknowledgementId":"$id","timestamp":"2026-02-11T03:04:05Z"}"""
 
     @Test
     fun `INV-AC-24342 an acknowledgement is recorded once, a repeat is ignored and a blank id is a violation`() {
@@ -280,7 +283,7 @@ class RunReadModelHandlersTest {
         val handler = SubmissionAcknowledgedHandler(writer)
         handler.handle(envelope("SubmissionAcknowledged", ack())) shouldBe HandleOutcome.APPLIED
         writer.acknowledged.single() shouldBe
-            listOf(tenant.toString(), doc, 1, "ACK-1", Instant.parse("2026-02-11T03:04:05Z"))
+            listOf(tenant.toString(), "E1", Direction.SALE, doc, 1, "ACK-1", Instant.parse("2026-02-11T03:04:05Z"))
         handler.handle(envelope("SubmissionAcknowledged", ack())) shouldBe HandleOutcome.IGNORED
         val before = writer.calls
         listOf(
@@ -299,5 +302,19 @@ class RunReadModelHandlersTest {
         val without = text.replace(Regex(""","entityref":"[^"]*""""), "")
         (without == text) shouldBe false
         shouldThrow<ContractViolation> { json.read(without) }
+    }
+
+    @Test
+    fun `INV-AC-26646 an acknowledgement without a valid entityRef or direction is a violation, no writer call`() {
+        val writer = FakeWriter()
+        val handler = SubmissionAcknowledgedHandler(writer)
+        listOf(
+            ack().replace("\"entityRef\":\"E1\",", ""),
+            ack().replace("\"entityRef\":\"E1\"", "\"entityRef\":\" \""),
+            ack().replace("\"direction\":\"SALE\",", ""),
+            ack().replace("\"SALE\"", "\"sale\""),
+            ack().replace("\"SALE\"", "\"BUY\""),
+        ).forEach { shouldThrow<ContractViolation> { handler.handle(envelope("SubmissionAcknowledged", it)) } }
+        writer.calls shouldBe 0
     }
 }

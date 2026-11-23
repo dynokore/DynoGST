@@ -33,6 +33,7 @@ private fun line(
  * INV-AC-24341 at the database (INV-T-24344): the run read model over a real PostgreSQL schema with the runtime login
  * and the tenant bound; no fakes.
  */
+@Suppress("LargeClass") // one file by the task's scope: every case of the run read model at the database
 @Timeout(value = 120, unit = TimeUnit.SECONDS)
 class RunReadModelDbTest {
     private val d1 = UUID.randomUUID().toString()
@@ -227,8 +228,8 @@ class RunReadModelDbTest {
     fun `INV-AC-24341 an acknowledgement recorded before version 2 marks version 1 acknowledged only`() {
         val t1 = UUID.randomUUID()
         val at = Instant.parse("2026-03-01T00:00:00Z")
-        model(t1) { it.recordAcknowledgement(t1.toString(), d1, 1, "ACK-1", at) } shouldBe true
-        model(t1) { it.recordAcknowledgement(t1.toString(), d1, 1, "ACK-1", at) } shouldBe false
+        model(t1) { it.recordAcknowledgement(t1.toString(), "E1", Direction.SALE, d1, 1, "ACK-1", at) } shouldBe true
+        model(t1) { it.recordAcknowledgement(t1.toString(), "E1", Direction.SALE, d1, 1, "ACK-1", at) } shouldBe false
         model(t1) {
             it.recordVersion(t1.toString(), "E1", facts(d1, version = 1, sequence = 10))
             it.recordVersion(t1.toString(), "E1", facts(d1, version = 2, sequence = 11))
@@ -273,7 +274,7 @@ class RunReadModelDbTest {
         val t1 = UUID.randomUUID()
         model(t1) {
             it.recordVersion(t1.toString(), "E1", facts(d1))
-            it.recordAcknowledgement(t1.toString(), d1, 1, "ACK-1", Instant.parse("2026-03-01T00:00:00Z"))
+            it.recordAcknowledgement(t1.toString(), "E1", Direction.SALE, d1, 1, "ACK-1", at)
         }
         val assignments =
             mapOf(
@@ -413,7 +414,7 @@ class RunReadModelDbTest {
         pk("document_version") shouldBe "tenant_id,doc_uuid,entity_ref,direction,version"
         pk("document_line") shouldBe "tenant_id,doc_uuid,entity_ref,direction,version,line_number"
         pk("document_period") shouldBe "tenant_id,doc_uuid,entity_ref"
-        pk("document_acknowledgement") shouldBe "tenant_id,doc_uuid,version"
+        pk("document_acknowledgement") shouldBe "tenant_id,doc_uuid,entity_ref,direction,version"
         scalar(
             "select count(*) from pg_description d " +
                 "join pg_attribute a on a.attrelid = d.objoid and a.attnum = d.objsubid " +
@@ -422,9 +423,16 @@ class RunReadModelDbTest {
                 "and d.description = 'class: operational'",
         ) shouldBe 2L
         scalar(
-            "select count(*) from pg_policy where polrelid in " +
-                "('reconciliation.document_line'::regclass, 'reconciliation.document_version'::regclass)",
+            "select count(*) from pg_description d " +
+                "join pg_attribute a on a.attrelid = d.objoid and a.attnum = d.objsubid " +
+                "where d.objoid = 'reconciliation.document_acknowledgement'::regclass " +
+                "and a.attname in ('entity_ref','direction') and d.description = 'class: operational'",
         ) shouldBe 2L
+        scalar(
+            "select count(*) from pg_policy where polrelid in " +
+                "('reconciliation.document_line'::regclass, 'reconciliation.document_version'::regclass, " +
+                "'reconciliation.document_acknowledgement'::regclass)",
+        ) shouldBe 3L
         scalar(
             "select count(*) from pg_trigger where tgrelid = 'reconciliation.document_line'::regclass " +
                 "and tgname = 'document_line_append_only' and not tgisinternal",
@@ -439,5 +447,71 @@ class RunReadModelDbTest {
                 "and table_name = 'document_line' and grantee = 'reconciliation_runtime' " +
                 "and privilege_type in ('SELECT','INSERT')",
         ) shouldBe 2L
+    }
+
+    private val at = Instant.parse("2026-03-01T00:00:00Z")
+
+    private fun ackOf(
+        t: UUID,
+        entity: String,
+        direction: Direction,
+    ) = model(t) { it.recordAcknowledgement(t.toString(), entity, direction, d1, 1, "ACK-1", at) }
+
+    private fun ackedOf(
+        t: UUID,
+        entity: String,
+    ) = model(t) { it.load(t.toString(), entity, "2026-Q1") }.single().versions.map { it.acknowledged }
+
+    private fun ackRows(t: UUID) =
+        scalar("select count(*) from reconciliation.document_acknowledgement where tenant_id = '$t'")
+
+    @Test
+    fun `INV-AC-26646 an acknowledgement of the PURCHASE row marks the PURCHASE row and not its paired SALE row`() {
+        val t = UUID.randomUUID()
+        recordPair(t)
+        ackOf(t, "E-002", Direction.PURCHASE) shouldBe true
+        ackedOf(t, "E-002") shouldBe listOf(true)
+        ackedOf(t, "E-001") shouldBe listOf(false)
+    }
+
+    @Test
+    fun `INV-AC-26646 an acknowledgement of the SALE row marks only the SALE row`() {
+        val t = UUID.randomUUID()
+        recordPair(t)
+        ackOf(t, "E-001", Direction.SALE) shouldBe true
+        ackedOf(t, "E-001") shouldBe listOf(true)
+        ackedOf(t, "E-002") shouldBe listOf(false)
+    }
+
+    @Test
+    fun `INV-AC-26646 an acknowledgement that names no stored row marks no row`() {
+        val t = UUID.randomUUID()
+        recordPair(t)
+        ackOf(t, "E-001", Direction.PURCHASE) shouldBe true
+        ackOf(t, "E-002", Direction.SALE) shouldBe true
+        ackRows(t) shouldBe 2L
+        ackedOf(t, "E-001") shouldBe listOf(false)
+        ackedOf(t, "E-002") shouldBe listOf(false)
+    }
+
+    @Test
+    fun `INV-AC-26646 a repeat of an acknowledgement returns false and stores no second row`() {
+        val t = UUID.randomUUID()
+        recordPair(t)
+        ackOf(t, "E-002", Direction.PURCHASE) shouldBe true
+        ackOf(t, "E-002", Direction.PURCHASE) shouldBe false
+        ackRows(t) shouldBe 1L
+    }
+
+    @Test
+    fun `INV-AC-26646 the acknowledgement of one Doc UUID of two PURCHASE entities marks only the named entity`() {
+        val t = UUID.randomUUID()
+        model(t) {
+            it.recordVersion(t.toString(), "E-002", purchase(d1)) shouldBe true
+            it.recordVersion(t.toString(), "E-003", purchase(d1)) shouldBe true
+        }
+        ackOf(t, "E-002", Direction.PURCHASE) shouldBe true
+        ackedOf(t, "E-002") shouldBe listOf(true)
+        ackedOf(t, "E-003") shouldBe listOf(false)
     }
 }

@@ -107,8 +107,11 @@ class JooqRunReadModel(
             .where(DOCUMENT_PERIOD.DOCSEQUENCE.lt(docsequence))
             .execute() > 0
 
+    @Suppress("LongParameterList") // the port fixes the parameters
     override fun recordAcknowledgement(
         tenant: String,
+        entityRef: String,
+        direction: Direction,
         docUuid: String,
         version: Int,
         acknowledgementId: String,
@@ -117,6 +120,8 @@ class JooqRunReadModel(
         dsl
             .insertInto(DOCUMENT_ACKNOWLEDGEMENT)
             .set(DOCUMENT_ACKNOWLEDGEMENT.TENANT_ID, UUID.fromString(tenant))
+            .set(DOCUMENT_ACKNOWLEDGEMENT.ENTITY_REF, entityRef)
+            .set(DOCUMENT_ACKNOWLEDGEMENT.DIRECTION, direction.name)
             .set(DOCUMENT_ACKNOWLEDGEMENT.DOC_UUID, UUID.fromString(docUuid))
             .set(DOCUMENT_ACKNOWLEDGEMENT.VERSION, version)
             .set(DOCUMENT_ACKNOWLEDGEMENT.ACKNOWLEDGEMENT_ID, acknowledgementId)
@@ -170,6 +175,8 @@ class JooqRunReadModel(
             .leftJoin(ack)
             .on(ack.TENANT_ID.eq(DOCUMENT_VERSION.TENANT_ID))
             .and(ack.DOC_UUID.eq(DOCUMENT_VERSION.DOC_UUID))
+            .and(ack.ENTITY_REF.eq(DOCUMENT_VERSION.ENTITY_REF))
+            .and(ack.DIRECTION.eq(DOCUMENT_VERSION.DIRECTION))
             .and(ack.VERSION.eq(DOCUMENT_VERSION.VERSION))
             .where(DOCUMENT_PERIOD.TENANT_ID.eq(tenantId))
             .and(DOCUMENT_PERIOD.ENTITY_REF.eq(entityRef))
