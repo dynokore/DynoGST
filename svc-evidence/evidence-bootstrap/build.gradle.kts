@@ -17,6 +17,8 @@ dependencies {
     implementation(libs.platform.configResolver.api)
     implementation(libs.platform.tenancyKernel.api)
     implementation(libs.platform.serviceRuntime.impl)
+    implementation(libs.platform.crypto.api)
+    implementation(libs.platform.crypto.impl)
     implementation(libs.platform.productRuntime.api)
     implementation(libs.platform.productRuntime.impl)
     implementation(libs.platform.outboxAndQueue.impl)
@@ -59,5 +61,7 @@ tasks.withType<Test>().configureEach {
     // service with a stand-in end-user token give the installation values here. ProductionIdentityTest overrides them.
     systemProperty("evidence.identity-provider.issuer-uri", "https://issuer.invalid/realms/test")
     systemProperty("service-runtime.end-user-identity.audience", "evidence-svc")
+    // The audit pack signing key reference has no default either (INV-T-27742); the tests that start the service give it.
+    systemProperty("evidence.audit-pack.signing-key-ref", "audit-pack/signing-key")
     dependsOn(":evidence-contract:generateContractServer")
 }
