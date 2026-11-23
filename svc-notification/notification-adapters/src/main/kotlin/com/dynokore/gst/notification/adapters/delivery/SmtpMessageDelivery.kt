@@ -5,11 +5,13 @@ import com.dynokore.platform.serviceruntime.binding.DeliveryState
 import com.dynokore.platform.serviceruntime.binding.DeliveryStatus
 import com.dynokore.platform.serviceruntime.binding.LinkContent
 import com.dynokore.platform.serviceruntime.binding.MessageChannel
+import com.dynokore.platform.serviceruntime.binding.MessageContent
 import com.dynokore.platform.serviceruntime.binding.MessageDelivery
 import com.dynokore.platform.serviceruntime.binding.OutboundMessage
 import com.dynokore.platform.serviceruntime.binding.PasscodeContent
 import com.dynokore.platform.serviceruntime.binding.SecretRef
 import com.dynokore.platform.serviceruntime.binding.SecretStore
+import com.dynokore.platform.serviceruntime.binding.TemplateValuesContent
 import jakarta.mail.AuthenticationFailedException
 import jakarta.mail.Message
 import jakarta.mail.MessagingException
@@ -99,11 +101,7 @@ class SmtpMessageDelivery(
         mime.setFrom(InternetAddress(properties.fromAddress))
         mime.setRecipient(Message.RecipientType.TO, InternetAddress(message.to))
         mime.setSubject(message.templateId, "UTF-8")
-        val value =
-            when (val content = message.content) {
-                is LinkContent -> content.linkReference
-                is PasscodeContent -> content.sealedPasscode
-            }
+        val value = contentText(message.content)
         mime.setText("${message.templateId}\n${message.templateVersion}\n$value\n", "UTF-8")
         mime.saveChanges()
         session.getTransport("smtp").use { transport ->
@@ -111,6 +109,16 @@ class SmtpMessageDelivery(
             transport.sendMessage(mime, mime.allRecipients)
         }
     }
+
+    private fun contentText(content: MessageContent): String =
+        when (content) {
+            is LinkContent -> content.linkReference
+            is PasscodeContent -> content.sealedPasscode
+            is TemplateValuesContent -> valuesText(content.values)
+        }
+
+    private fun valuesText(values: Map<String, String>): String =
+        values.toSortedMap().map { (key, value) -> "$key=$value" }.joinToString("\n")
 
     private fun sessionProperties(): Properties =
         Properties().apply {
