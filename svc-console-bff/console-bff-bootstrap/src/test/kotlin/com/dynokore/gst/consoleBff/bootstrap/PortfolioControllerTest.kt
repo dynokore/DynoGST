@@ -24,7 +24,12 @@ import com.dynokore.platform.tenancykernel.TenantId
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
+import org.jooq.DSLContext
+import org.jooq.SQLDialect
+import org.jooq.impl.DSL
 import org.junit.jupiter.api.Test
+import org.springframework.beans.factory.config.BeanDefinitionCustomizer
+import org.springframework.context.annotation.AnnotationConfigApplicationContext
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.MvcResult
@@ -38,6 +43,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZoneOffset
+import java.util.function.Supplier
 
 /**
  * INV-AC-26282: GET /v1/portfolio over the real read filter, scope, use case and controller, with a seeded in-memory
@@ -86,6 +92,10 @@ class PortfolioControllerTest {
             reads++
             return facts.filter { it.period.entityRef in entityRefs }
         }
+    }
+
+    private companion object {
+        const val TENANCY_BEAN = "tenancyEdge"
     }
 
     private val json = JsonMapper.builder().build()
@@ -161,15 +171,48 @@ class PortfolioControllerTest {
         grant("P3", "g-t3", GrantScope.TENANT, tenant.toString(), 5)
     }
 
-    private fun mvc(): MockMvc {
+    /**
+     * The portfolio beans of [PortfolioConfiguration] composed in a Spring context next to the tenancy fake, with the
+     * seeded store as the primary [PortfolioStore]; the controller served is the one the context built.
+     */
+    private fun context(): AnnotationConfigApplicationContext {
         seedGrants()
-        val scope = PortfolioEntityScope(replica, CatalogueReadPermissions(), clock, Duration.ofSeconds(1))
-        return MockMvcBuilders
-            .standaloneSetup(
-                PortfolioController(GetPortfolio(scope, seeded, PortfolioConfiguration.PORTFOLIO_MAX_LIMIT)),
-            ).addFilters<org.springframework.test.web.servlet.setup.StandaloneMockMvcBuilder>(
+        val context = AnnotationConfigApplicationContext()
+        context.registerBean("clock", Clock::class.java, Supplier { clock })
+        context.registerBean("authorityReplica", AuthorityReplica::class.java, Supplier { replica })
+        context.registerBean("dsl", DSLContext::class.java, Supplier { DSL.using(SQLDialect.POSTGRES) })
+        context.registerBean(TENANCY_BEAN, TenancyEdge::class.java, Supplier { tenancy })
+        context.registerBean(
+            "seededPortfolioStore",
+            PortfolioStore::class.java,
+            Supplier { seeded },
+            BeanDefinitionCustomizer {
+                it.isPrimary =
+                    true
+            },
+        )
+        context.register(PortfolioConfiguration::class.java)
+        context.refresh()
+        return context
+    }
+
+    private fun mvc(context: AnnotationConfigApplicationContext = context()): MockMvc =
+        MockMvcBuilders
+            .standaloneSetup(context.getBean(PortfolioController::class.java))
+            .addFilters<org.springframework.test.web.servlet.setup.StandaloneMockMvcBuilder>(
                 ConsoleReadAuthorisationFilter(CatalogueReadPermissions(), replica, clock),
             ).build()
+
+    /** Every bean [name] depends on, directly or through other beans. */
+    private fun dependenciesOf(
+        context: AnnotationConfigApplicationContext,
+        name: String,
+        seen: MutableSet<String> = mutableSetOf(),
+    ): Set<String> {
+        for (dependency in context.beanFactory.getDependenciesForBean(name)) {
+            if (seen.add(dependency)) dependenciesOf(context, dependency, seen)
+        }
+        return seen
     }
 
     private fun call(
@@ -228,12 +271,18 @@ class PortfolioControllerTest {
     }
 
     @Test
-    fun `INV-AC-26282 the tenancy fake records zero calls`() {
-        val mvc = mvc()
-        call(mvc, "P1").response.status shouldBe 200
-        call(mvc, "P2").response.status shouldBe ClosedErrorCode.ACCESS_DENIED.httpStatus
-        call(mvc, "P3").response.status shouldBe 200
-        tenancy.calls shouldBe 0
+    fun `INV-AC-26282 the tenancy fake in the context records zero calls and no portfolio bean depends on it`() {
+        context().use { context ->
+            context.containsBean(TENANCY_BEAN) shouldBe true
+            for (name in listOf("portfolioController", "getPortfolio", "portfolioStore")) {
+                (TENANCY_BEAN in dependenciesOf(context, name)) shouldBe false
+            }
+            val mvc = mvc(context)
+            call(mvc, "P1").response.status shouldBe 200
+            call(mvc, "P2").response.status shouldBe ClosedErrorCode.ACCESS_DENIED.httpStatus
+            call(mvc, "P3").response.status shouldBe 200
+            tenancy.calls shouldBe 0
+        }
     }
 
     @Test
