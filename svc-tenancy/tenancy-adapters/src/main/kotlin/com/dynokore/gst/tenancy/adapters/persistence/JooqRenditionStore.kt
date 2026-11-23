@@ -9,11 +9,15 @@ import com.dynokore.gst.tenancy.application.rendition.RenditionAttestationHistor
 import com.dynokore.gst.tenancy.application.rendition.RenditionAttestationRecord
 import com.dynokore.gst.tenancy.application.rendition.RenditionAttestationStore
 import com.dynokore.gst.tenancy.application.rendition.RenditionEntities
+import com.dynokore.gst.tenancy.application.rendition.RenditionHistoryEntry
+import com.dynokore.gst.tenancy.application.rendition.RenditionHistoryPage
+import com.dynokore.gst.tenancy.application.rendition.RenditionHistoryPosition
 import com.dynokore.gst.tenancy.application.rendition.RenditionRecordKind
 import com.dynokore.gst.tenancy.domain.AttestationState
 import com.dynokore.gst.tenancy.domain.Renderer
 import com.dynokore.platform.tenancykernel.TenantContext
 import org.jooq.DSLContext
+import org.jooq.impl.DSL
 import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
@@ -164,6 +168,44 @@ class JooqRenditionStore(
                     AttestationState.valueOf(it[RENDITION_ATTESTATION_HISTORY.STATE].column("state")),
                 )
             }
+
+    override fun page(
+        entityRef: String,
+        limit: Int,
+        after: RenditionHistoryPosition?,
+    ): RenditionHistoryPage {
+        val h = RENDITION_ATTESTATION_HISTORY
+        val position =
+            after?.let {
+                DSL
+                    .row(h.ATTESTED_AT, h.SEQ)
+                    .gt(DSL.row(OffsetDateTime.ofInstant(it.attestedAt, ZoneOffset.UTC), it.seq))
+            } ?: DSL.noCondition()
+        val rows =
+            dsl
+                .select(h.DOCUMENT_CLASS, h.SEQ, h.RENDERER, h.ATTESTED_BY, h.ATTESTED_AT, h.STATE)
+                .from(h)
+                .join(ENTITY)
+                .on(ENTITY.TENANT_ID.eq(h.TENANT_ID).and(ENTITY.ID.eq(h.ENTITY_ID)))
+                .where(ENTITY.REF.eq(entityRef).and(position))
+                .orderBy(h.ATTESTED_AT, h.SEQ)
+                .limit(limit + 1)
+                .fetch()
+                .map {
+                    RenditionHistoryEntry(
+                        it[h.DOCUMENT_CLASS].column("document_class"),
+                        it[h.SEQ].column("seq"),
+                        Renderer.valueOf(it[h.RENDERER].column("renderer")),
+                        it[h.ATTESTED_BY].column("attested_by"),
+                        it[h.ATTESTED_AT].column("attested_at").toInstant(),
+                        AttestationState.valueOf(it[h.STATE].column("state")),
+                    )
+                }
+        val entries = rows.take(limit)
+        val last =
+            if (rows.size > limit) entries.last().let { RenditionHistoryPosition(it.attestedAt, it.seq) } else null
+        return RenditionHistoryPage(entries, last)
+    }
 
     override fun lastSequence(entityRef: String): Long? {
         val entity = entityId(entityRef) ?: return null

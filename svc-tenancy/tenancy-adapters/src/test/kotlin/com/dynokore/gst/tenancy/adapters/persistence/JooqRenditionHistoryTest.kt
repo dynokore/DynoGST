@@ -6,6 +6,7 @@ import com.dynokore.gst.tenancy.adapters.persistence.jooq.tables.references.TENA
 import com.dynokore.gst.tenancy.adapters.persistence.jooq.tables.references.TENANT_GROUP
 import com.dynokore.gst.tenancy.application.rendition.RenditionAttestation
 import com.dynokore.gst.tenancy.application.rendition.RenditionAttestationRecord
+import com.dynokore.gst.tenancy.application.rendition.RenditionHistoryPosition
 import com.dynokore.gst.tenancy.application.rendition.RenditionRecordKind
 import com.dynokore.gst.tenancy.domain.AttestationState
 import com.dynokore.gst.tenancy.domain.Renderer
@@ -241,6 +242,54 @@ class JooqRenditionHistoryTest {
         history(other).map { it.attestedBy } shouldBe listOf("U9")
         // the same entity reference read under another tenant's binding sees nothing
         inTenant(Seed(other.tenant, s.ref), d3) { it.list(s.ref, docClass) }.shouldBeEmpty()
+    }
+
+    private fun page(
+        seed: Seed,
+        limit: Int,
+        after: RenditionHistoryPosition? = null,
+    ) = inTenant(seed, d3) { it.page(seed.ref, limit, after) }
+
+    @Test
+    fun `INV-AC-27599 the page of E1 holds its three rows over two classes by attestedAt and seq and none of E2`() {
+        val e1 = seed()
+        val e2 = seed()
+        attest(e1, "U1", d2)
+        attest(e1, "U2", d1, documentClass = "CREDIT_NOTE")
+        attest(e1, "U3", d3, documentClass = "DEBIT_NOTE")
+        attest(e2, "U9", d1)
+        val rows = page(e1, 100)
+        rows.entries.map { it.attestedBy } shouldBe listOf("U2", "U1", "U3")
+        rows.entries.map { it.documentClass } shouldBe listOf("CREDIT_NOTE", docClass, "DEBIT_NOTE")
+        rows.last shouldBe null
+        page(e2, 100).entries.map { it.attestedBy } shouldBe listOf("U9")
+        inTenant(Seed(e2.tenant, e1.ref), d3) { it.page(e1.ref, 100, null) }.entries.shouldBeEmpty()
+    }
+
+    @Test
+    fun `INV-AC-27599 two rows with the same attestedAt are ordered by seq`() {
+        val s = seed()
+        attest(s, "U1", d1, documentClass = "CREDIT_NOTE")
+        attest(s, "U2", d1)
+        attest(s, "U3", d1, documentClass = "DEBIT_NOTE")
+        val rows = page(s, 100).entries
+        rows.map { it.attestedBy } shouldBe listOf("U1", "U2", "U3")
+        (rows[0].seq < rows[1].seq && rows[1].seq < rows[2].seq) shouldBe true
+    }
+
+    @Test
+    fun `INV-AC-27599 limit 2 then the cursor position gives 2 and 1 rows and the last page has no position`() {
+        val s = seed()
+        attest(s, "U1", d1)
+        attest(s, "U2", d1, documentClass = "CREDIT_NOTE")
+        attest(s, "U3", d2)
+        val first = page(s, 2)
+        first.entries.map { it.attestedBy } shouldBe listOf("U1", "U2")
+        first.last shouldBe RenditionHistoryPosition(d1, first.entries[1].seq)
+        val second = page(s, 2, first.last)
+        second.entries.map { it.attestedBy } shouldBe listOf("U3")
+        second.last shouldBe null
+        page(s, 3).last shouldBe null
     }
 
     private object Db {
