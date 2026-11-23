@@ -2,12 +2,28 @@
 --
 -- One Doc UUID holds both sides of a pair: the supply (SALE) of one entity and the purchase (PURCHASE) of another. The
 -- natural key of a received document row becomes the Doc UUID with the entity and the direction (event-carried state;
--- no heuristic matching). document_acknowledgement keeps its key (tenant_id, doc_uuid, version): the
--- SubmissionAcknowledged payload names no entity.
+-- no heuristic matching). document_acknowledgement takes the same key (tenant_id, doc_uuid, entity_ref, direction,
+-- version): the SubmissionAcknowledged payload now names the entity and the direction (INV-T-27281, INV-T-27282).
 --
--- document_line and document_acknowledgement are append-only (trigger plus revokes, NIST SP 800-53 AU-9), so its new columns are filled by a rebuild
--- of the table, never by an UPDATE: the rows are copied once from their version row, then the old table is dropped.
--- The trigger, policy, force flag, revokes and grants of the rebuilt table equal V202611190900's.
+-- document_line and document_acknowledgement are append-only (trigger plus revokes, NIST SP 800-53 AU-9), so their new
+-- columns are filled by a rebuild of each table, never by an UPDATE: every stored row is copied once, taking entity_ref
+-- and direction from the one document_version row of its (tenant_id, doc_uuid, version), which is unique before this
+-- migration; then the old table is dropped. The migration fails closed when a stored acknowledgement has no such
+-- version row: no value is invented, no default is written and no audit row is deleted (INV-T-26647, open point B).
+-- The trigger, policy, force flag, revokes and grants of each rebuilt table equal V202611190900's.
+do $$
+begin
+    if exists (
+        select 1 from reconciliation.document_acknowledgement a
+        where not exists (
+            select 1 from reconciliation.document_version v
+            where v.tenant_id = a.tenant_id and v.doc_uuid = a.doc_uuid and v.version = a.version)
+    ) then
+        raise exception 'a stored acknowledgement has no document_version row: entity_ref and direction cannot be set'
+            using errcode = '23503';
+    end if;
+end
+$$;
 alter table reconciliation.document_line no force row level security;
 alter table reconciliation.document_line rename to document_line_old;
 alter table reconciliation.document_line_old rename constraint document_line_pkey to document_line_old_pkey;
