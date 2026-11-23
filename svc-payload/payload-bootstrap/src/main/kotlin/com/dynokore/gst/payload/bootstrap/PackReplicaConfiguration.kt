@@ -3,6 +3,7 @@ package com.dynokore.gst.payload.bootstrap
 import com.dynokore.gst.payload.adapters.packs.JooqMdePackReplica
 import com.dynokore.gst.payload.adapters.packs.JooqRulePackReplica
 import com.dynokore.gst.payload.adapters.packs.RulePackEventsHandler
+import com.dynokore.gst.payload.adapters.packs.SchematronActivation
 import com.dynokore.platform.outboxandqueue.ConsumerSubscription
 import com.dynokore.platform.outboxandqueue.EventCatalogue
 import com.dynokore.platform.outboxandqueue.EventLogReader
@@ -72,6 +73,7 @@ class PackReplicaConfiguration {
         dsl: DSLContext,
         replica: JooqMdePackReplica,
         rules: JooqRulePackReplica,
+        schematronActivation: SchematronActivation,
     ): JdbcInboxConsumer =
         consumer(
             RulePackEventsHandler.ACTIVATED_TYPE,
@@ -84,6 +86,7 @@ class PackReplicaConfiguration {
             dsl,
             replica,
             rules,
+            schematronActivation,
         )
 
     @Suppress("LongParameterList")
@@ -98,6 +101,7 @@ class PackReplicaConfiguration {
         dsl: DSLContext,
         replica: JooqMdePackReplica,
         rules: JooqRulePackReplica,
+        onSchematronActivated: SchematronActivation = SchematronActivation { _, _ -> },
     ): JdbcInboxConsumer {
         val entry = catalogue.find(type)
         check(entry != null && entry.topic == topic) { "the event catalogue does not list $type on $topic" }
@@ -107,7 +111,7 @@ class PackReplicaConfiguration {
             reader,
             scope,
             dsl,
-            RulePackEventsHandler(type, replica, rules),
+            RulePackEventsHandler(type, replica, rules, onSchematronActivated),
             rebuildRequired,
             clock,
         )

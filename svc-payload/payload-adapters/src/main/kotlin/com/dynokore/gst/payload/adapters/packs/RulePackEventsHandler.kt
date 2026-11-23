@@ -9,6 +9,14 @@ import tools.jackson.core.JacksonException
 import tools.jackson.databind.JsonNode
 import tools.jackson.databind.json.JsonMapper
 
+/** Called once a `schematron` pack version is activated in the replica, with its contents JSON (INV-REQ-776). */
+fun interface SchematronActivation {
+    fun activated(
+        packVersion: String,
+        contentsJson: String,
+    )
+}
+
 /**
  * The consumer of `RulePackStaged` and `RulePackActivated` for payload-svc (event-carried state transfer,
  * INV-AC-23578).
@@ -21,6 +29,7 @@ class RulePackEventsHandler(
     private val expectedType: String,
     private val replica: JooqMdePackReplica,
     private val rules: JooqRulePackReplica,
+    private val onSchematronActivated: SchematronActivation = SchematronActivation { _, _ -> },
 ) : EventHandler {
     private val json = JsonMapper.builder().build()
 
@@ -119,7 +128,15 @@ class RulePackEventsHandler(
         val packType = checkNotNull(replica.typeOf(identifier)) { "the pack identifier is not staged yet" }
         return when {
             packType in RULE_PACK_TYPES -> {
-                if (rules.activate(packType, identifier, version)) HandleOutcome.APPLIED else HandleOutcome.IGNORED
+                val changed = rules.activate(packType, identifier, version)
+                if (changed && packType == SCHEMATRON_PACK_TYPE) {
+                    // a throw rolls the activation back with the inbox transaction; the inbox retries
+                    onSchematronActivated.activated(
+                        version,
+                        checkNotNull(rules.contentsOf(packType, identifier, version)) { "the activated pack has no contents" },
+                    )
+                }
+                if (changed) HandleOutcome.APPLIED else HandleOutcome.IGNORED
             }
 
             packType == MDE_PACK_TYPE -> {

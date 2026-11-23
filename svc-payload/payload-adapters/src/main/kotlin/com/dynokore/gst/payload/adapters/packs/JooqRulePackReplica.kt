@@ -106,6 +106,28 @@ class JooqRulePackReplica(
             ?.contents
             ?.data()
 
+    /**
+     * The contents of the one row of the bound tenant with [packType] and [version], or null when there is none.
+     * Rows of two pack identifiers holding that version are [IllegalStateException] (fail closed, INV-REQ-776).
+     */
+    fun contentsOfVersion(
+        packType: String,
+        version: String,
+    ): String? {
+        val rows =
+            dsl
+                .selectFrom(table)
+                .where(
+                    table.TENANT_ID
+                        .eq(boundTenant())
+                        .and(table.PACK_TYPE.eq(packType))
+                        .and(table.PACK_VERSION.eq(version)),
+                ).limit(2)
+                .fetch()
+        check(rows.size <= 1) { "two pack identifiers hold the $packType version $version" }
+        return rows.firstOrNull()?.contents?.data()
+    }
+
     private fun key(
         packType: String,
         packIdentifier: String,
