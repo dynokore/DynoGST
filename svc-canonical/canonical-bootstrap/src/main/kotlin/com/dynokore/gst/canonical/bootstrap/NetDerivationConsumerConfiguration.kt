@@ -123,51 +123,6 @@ class NetDerivationConsumerConfiguration {
             clock,
         )
 
-    /**
-     * The facts of the CanonicalVersionCreated event of the derived version, as far as they are stored: the entity,
-     * period, scope verdict, direction and network path of the base version, the derived canonical text, and a trace
-     * reference of the same shape as the record path. `appliedPackVersions` are the base version's stored SCOPE,
-     * MAPPING and (when present) MDE pack versions.
-     */
-    private fun factsOf(
-        documents: JooqNetDerivationDocuments,
-        versions: CapturingNetDerivedVersions,
-        docUuid: UUID,
-        net: NetDerivationFact,
-    ): CanonicalVersionCreatedFacts {
-        val basis =
-            checkNotNull(documents.eventBasisOf(docUuid, net.baseVersion)) {
-                "the base version ${net.baseVersion} of $docUuid has no stored event facts"
-            }
-        val transactionDate = checkNotNull(documents.transactionDateOf(docUuid)) { "$docUuid is not stored" }
-        return CanonicalVersionCreatedFacts(
-            docUuid = docUuid,
-            entityRef = basis.entityRef,
-            version = net.baseVersion + 1,
-            transactionDate = transactionDate,
-            prescribedPeriodRef = basis.prescribedPeriodRef,
-            scopeVerdict = basis.scopeVerdict,
-            appliedPackVersions =
-                checkNotNull(documents.appliedPacksOf(docUuid, net.baseVersion)) {
-                    "$docUuid v${net.baseVersion} is not stored"
-                },
-            traceReference = "trace/$docUuid/v${net.baseVersion + 1}",
-            canonicalDocument = versions.takeCanonical(),
-            aggregateId = null,
-            routingFacts =
-                RoutingFactsData(
-                    direction = RoutingDirection.valueOf(basis.direction),
-                    networkPath =
-                        if (basis.receivedViaNetwork) {
-                            RoutingNetworkPath.RECEIVED_VIA_NETWORK
-                        } else {
-                            RoutingNetworkPath.NOT_ON_NETWORK
-                        },
-                ),
-            netDerivation = net,
-        )
-    }
-
     private fun actingIdentity(tenants: TenantContext): String =
         checkNotNull(tenants.currentActor()) { "no service identity is bound to the consumer" }
 
@@ -220,4 +175,49 @@ class NetDerivationRequestedEventHandler(
         }
         return HandleOutcome.APPLIED
     }
+}
+
+/**
+ * The facts of the CanonicalVersionCreated event of the derived version, as far as they are stored: the entity,
+ * period, scope verdict, direction and network path of the base version, the derived canonical text, and a trace
+ * reference of the same shape as the record path. `appliedPackVersions` are the base version's stored SCOPE,
+ * MAPPING and (when present) MDE pack versions.
+ */
+internal fun factsOf(
+    documents: JooqNetDerivationDocuments,
+    versions: CapturingNetDerivedVersions,
+    docUuid: UUID,
+    net: NetDerivationFact,
+): CanonicalVersionCreatedFacts {
+    val basis =
+        checkNotNull(documents.eventBasisOf(docUuid, net.baseVersion)) {
+            "the base version ${net.baseVersion} of $docUuid has no stored event facts"
+        }
+    val transactionDate = checkNotNull(documents.transactionDateOf(docUuid)) { "$docUuid is not stored" }
+    return CanonicalVersionCreatedFacts(
+        docUuid = docUuid,
+        entityRef = basis.entityRef,
+        version = net.baseVersion + 1,
+        transactionDate = transactionDate,
+        prescribedPeriodRef = basis.prescribedPeriodRef,
+        scopeVerdict = basis.scopeVerdict,
+        appliedPackVersions =
+            checkNotNull(documents.appliedPacksOf(docUuid, net.baseVersion)) {
+                "$docUuid v${net.baseVersion} is not stored"
+            },
+        traceReference = "trace/$docUuid/v${net.baseVersion + 1}",
+        canonicalDocument = versions.takeCanonical(),
+        aggregateId = null,
+        routingFacts =
+            RoutingFactsData(
+                direction = RoutingDirection.valueOf(basis.direction),
+                networkPath =
+                    if (basis.receivedViaNetwork) {
+                        RoutingNetworkPath.RECEIVED_VIA_NETWORK
+                    } else {
+                        RoutingNetworkPath.NOT_ON_NETWORK
+                    },
+            ),
+        netDerivation = net,
+    )
 }
