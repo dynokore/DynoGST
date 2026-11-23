@@ -2,3 +2,5 @@
 ../schemas/gst-return-recorded-payload.schema.json gst-return-recorded-payload-*.json
 ../openapi.yaml#/components/schemas/Attestation attestation-*.json
 ../openapi.yaml#/components/schemas/IntraTenantPairPage intra-tenant-pair-page-*.json
+../openapi.yaml#/components/schemas/ProjectBackfillEffectRequest project-backfill-effect-request-*.json
+../openapi.yaml#/components/schemas/ProjectedBackfillEffect projected-backfill-effect-*.json

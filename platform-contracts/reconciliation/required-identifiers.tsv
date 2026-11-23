@@ -56,3 +56,9 @@ taxCode	property	openapi.yaml	INV-REQ-740
 netAmount	property	openapi.yaml	INV-REQ-740
 taxAmount	property	openapi.yaml	INV-REQ-740
 documentVersion	property	openapi.yaml	INV-REQ-740
+projectBackfillEffect	operation	openapi.yaml	INV-REQ-1090
+documents	property	openapi.yaml	INV-REQ-1090
+projectedChange	property	openapi.yaml	INV-REQ-1090
+excludedDocuments	property	openapi.yaml	INV-REQ-1090
+projectBackfillEffect.200	operation_response	openapi.yaml	INV-REQ-1090
+projectBackfillEffect.default	operation_response	openapi.yaml	INV-REQ-1090
