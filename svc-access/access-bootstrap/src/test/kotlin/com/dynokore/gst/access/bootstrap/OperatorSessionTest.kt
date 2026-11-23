@@ -58,7 +58,7 @@ class OperatorSessionTest {
 
     private fun user(name: String) = "user:$name-$run"
 
-    private class Collector : AutoCloseable {
+    internal class Collector : AutoCloseable {
         class Received(
             val path: String,
             val body: String,
@@ -93,7 +93,7 @@ class OperatorSessionTest {
         }
     }
 
-    private inner class Env(
+    internal inner class Env(
         val context: AssertableWebApplicationContext,
         val operatorKey: ECKey,
         val mount: Path,
@@ -245,7 +245,7 @@ class OperatorSessionTest {
             .take(8)
             .joinToString("") { "%02x".format(java.util.Locale.ROOT, it) }
 
-    private fun run(
+    internal fun run(
         form: String = "SAAS",
         operatorKey: ECKey? = TestSecrets.newSigningKey(),
         next: ECKey? = null,
@@ -404,7 +404,7 @@ class OperatorSessionTest {
             assertThat(env.open(env.support).contentMode).isEqualTo(OperatorSessionResponse.ContentMode.MASKED)
         }
 
-    private class OutboxRow(
+    internal class OutboxRow(
         val tenant: String,
         val entity: String,
         val subject: String,
@@ -413,7 +413,7 @@ class OperatorSessionTest {
         val data: tools.jackson.databind.JsonNode,
     )
 
-    private fun outboxRows(
+    internal fun outboxRows(
         where: String,
         vararg args: String,
     ): List<OutboxRow> =
@@ -443,7 +443,7 @@ class OperatorSessionTest {
                 }
         }
 
-    private fun accessRecords(
+    internal fun accessRecords(
         env: Env,
         operator: String,
     ) = outboxRows(
@@ -559,107 +559,6 @@ class OperatorSessionTest {
             assertThat(outboxRows(type)).hasSize(before + 1)
         }
     }
-
-    /** Requests an elevation of [actor] for [tenant] and returns its reference, undecided. */
-    private fun requestFor(
-        env: Env,
-        actor: String,
-        tenant: TenantId = env.a,
-    ): String =
-        env.tenants.bind(tenant, actor) {
-            env.api
-                .requestElevation(UUID.randomUUID(), ElevationRequest("CASE-1", tenant.toString(), "x"))
-                .body!!
-                .requestRef
-        }
-
-    private fun decide(
-        env: Env,
-        ref: String,
-        decision: DecideElevationRequest.Decision,
-        tenant: TenantId = env.a,
-    ) = env.tenants.bind(tenant, env.officer) {
-        env.api.decideElevation(ref, UUID.randomUUID(), DecideElevationRequest(decision, 30))
-    }
-
-    /** Opens a session of [operator] and checks the three facts of INV-AC-27476 against [present]. */
-    private fun assertRecord(
-        env: Env,
-        operator: String,
-        present: Boolean,
-        tenantRef: String = env.a.toString(),
-    ) {
-        val opened = env.open(operator, tenantRef)
-        val record =
-            accessRecords(env, operator)
-                .last()
-                .data["operatorAccessRecord"]
-        assertThat(record.has("elevation")).isEqualTo(present)
-        assertThat(record["permissions"].toList().map { it.asString() }).doesNotContain("doc.view.content")
-        assertThat(opened.contentMode).isEqualTo(
-            if (present) OperatorSessionResponse.ContentMode.ELEVATED else OperatorSessionResponse.ContentMode.MASKED,
-        )
-    }
-
-    @Test
-    fun `INV-AC-27476 the elevation record is present for an approved unexpired elevation`() =
-        run { env, _ ->
-            env.elevate(env.support)
-            assertRecord(env, env.support, present = true)
-        }
-
-    @Test
-    fun `INV-AC-27476 the elevation record is absent with no elevation`() =
-        run { env, _ -> assertRecord(env, env.support, present = false) }
-
-    @Test
-    fun `INV-AC-27476 the elevation record is absent before approval`() =
-        run { env, _ ->
-            requestFor(env, env.support)
-            assertRecord(env, env.support, present = false)
-        }
-
-    @Test
-    fun `INV-AC-27476 the elevation record is absent after refusal`() =
-        run { env, _ ->
-            decide(env, requestFor(env, env.support), DecideElevationRequest.Decision.REFUSE)
-            assertRecord(env, env.support, present = false)
-        }
-
-    @Test
-    fun `INV-AC-27476 the elevation record is absent after withdrawal`() =
-        run { env, _ ->
-            val ref = requestFor(env, env.support)
-            env.tenants.bind(env.a, env.support) { env.api.withdrawElevationRequest(ref, UUID.randomUUID()) }
-            assertRecord(env, env.support, present = false)
-        }
-
-    @Test
-    fun `INV-AC-27476 the elevation record is absent after expiry`() =
-        run { env, _ ->
-            env.elevate(env.support)
-            assertRecord(env, env.support, present = true)
-            env.clock.advance(Duration.ofMinutes(31))
-            assertRecord(env, env.support, present = false)
-        }
-
-    @Test
-    fun `INV-AC-27476 the elevation record is absent for an elevation of another tenant`() =
-        run { env, _ ->
-            val other = TenantId(UUID.randomUUID())
-            env.structure(other, StructureNodeKind.TENANT, retired = false)
-            Seeds.grant(env.context, other, SeedSpec(env.officer, Role.SECURITY_OFFICER))
-            decide(env, requestFor(env, env.support, other), DecideElevationRequest.Decision.GRANT, other)
-            assertRecord(env, env.support, present = false)
-        }
-
-    @Test
-    fun `INV-AC-27476 the elevation record is absent for an elevation of another operator`() =
-        run { env, _ ->
-            env.elevate(env.support2)
-            assertRecord(env, env.support, present = false)
-            assertRecord(env, env.support2, present = true)
-        }
 
     @Test
     fun `an elevation for another tenant keeps the content masked`() =
