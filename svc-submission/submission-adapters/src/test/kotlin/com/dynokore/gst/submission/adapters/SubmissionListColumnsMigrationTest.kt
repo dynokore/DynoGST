@@ -31,8 +31,9 @@ class SubmissionListColumnsMigrationTest {
         doc: String,
         ackTimer: Boolean,
     ) = c.exec(
-        "insert into submission.submission (tenant_id, doc_uuid, version, state, entity_ref, ack_timer_started_at) " +
-            "values ('$tenant', '$doc', 1, 'SENT', 'E-001', ${if (ackTimer) "'2026-11-01T08:00:00Z'" else "null"})",
+        "insert into submission.submission (tenant_id, doc_uuid, version, state, entity_ref, submission_type, " +
+            "ack_timer_started_at) values ('$tenant', '$doc', 1, 'SENT', 'E-001', 'TYPE_1B', " +
+            "${if (ackTimer) "'2026-11-01T08:00:00Z'" else "null"})",
     )
 
     private fun insertAttempt(
@@ -102,7 +103,7 @@ class SubmissionListColumnsMigrationTest {
     }
 
     @Test
-    fun `INV-AC-19464 the three columns exist, are nullable and have the stated types`() {
+    fun `INV-AC-19464 the three columns exist, the type is not nullable and they have the stated types`() {
         SubmissionDb.superuser().use { c ->
             val rows =
                 c.strings(
@@ -114,14 +115,14 @@ class SubmissionListColumnsMigrationTest {
             rows shouldBe
                 listOf(
                     "acknowledged_at:timestamp with time zone:YES:none",
-                    "submission_type:text:YES:none",
+                    "submission_type:text:NO:none",
                     "submitted_at:timestamp with time zone:YES:none",
                 )
         }
     }
 
     @Test
-    fun `INV-AC-19464 submission_type accepts null and the four names and refuses anything else`() {
+    fun `INV-AC-19464 submission_type refuses null, accepts the four names and refuses anything else`() {
         val doc = UUID.randomUUID().toString()
         val tenant = UUID.randomUUID()
         SubmissionDb.superuser().use { c ->
@@ -134,7 +135,8 @@ class SubmissionListColumnsMigrationTest {
                             "${type?.let { "'$it'" }})",
                     )
                 }
-                listOf(null, "TYPE_1A", "TYPE_1B", "TYPE_2", "TYPE_3").forEach { sqlState { put(it) } shouldBe null }
+                sqlState { put(null) } shouldBe "23502"
+                listOf("TYPE_1A", "TYPE_1B", "TYPE_2", "TYPE_3").forEach { sqlState { put(it) } shouldBe null }
                 listOf("TYPE_4", "1A", "type_1a", "").forEach { sqlState { put(it) } shouldBe "23514" }
             } finally {
                 c.exec("delete from submission.submission where doc_uuid = '$doc'")
@@ -158,7 +160,7 @@ class SubmissionListColumnsMigrationTest {
             val list = s.docs.joinToString(",") { "'$it'" }
             c.strings(
                 "select count(*)::text from submission.submission where doc_uuid in ($list) " +
-                    "and (acknowledged_at is not null or submission_type is not null)",
+                    "and (acknowledged_at is not null or submission_type <> 'TYPE_1B')",
             ) shouldBe listOf("0")
         }
     }

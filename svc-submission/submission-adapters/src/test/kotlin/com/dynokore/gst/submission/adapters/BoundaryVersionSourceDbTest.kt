@@ -75,6 +75,7 @@ class BoundaryVersionSourceDbTest {
             .set(sub.VERSION, version)
             .set(sub.STATE, state)
             .set(sub.ENTITY_REF, entity)
+            .set(sub.SUBMISSION_TYPE, "TYPE_1B")
             .execute()
     }
 

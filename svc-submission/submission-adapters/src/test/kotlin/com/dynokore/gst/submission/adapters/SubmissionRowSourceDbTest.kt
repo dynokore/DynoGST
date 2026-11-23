@@ -225,18 +225,17 @@ class SubmissionRowSourceDbTest {
     }
 
     @Test
-    fun `INV-AC-16324 a version row without a type or with an unpaired acknowledgement is counted and not returned`() {
+    fun `INV-AC-16324 a version row with an unpaired acknowledgement is counted and not returned`() {
         val a = UUID.randomUUID()
         val s = ids()
         val e = "e-$s"
         val p = "p-$s"
-        listOf("nt", "unpaired", "bare").forEach { seedEntry(a, "$it-$s", e, p) }
-        seedVersion(a, "nt-$s", 1, LifecycleState.READY, Extras(e, type = null))
+        listOf("unpaired", "bare").forEach { seedEntry(a, "$it-$s", e, p) }
         seedVersion(a, "unpaired-$s", 1, LifecycleState.ACKNOWLEDGED, Extras(e, ackId = "ACK-9"))
         seedVersion(a, "bare-$s", 1, LifecycleState.SENT, Extras(e))
         val read = read(a, e, p)
-        read.withoutFacts shouldBe 2
-        (read.rows.size + read.withoutFacts) shouldBe 3
+        read.withoutFacts shouldBe 1
+        (read.rows.size + read.withoutFacts) shouldBe 2
         read.rows.map { it.docUuid } shouldBe listOf("bare-$s")
         read.rows[0].acknowledgedAt shouldBe null
         read.rows[0].acknowledgementId shouldBe null
