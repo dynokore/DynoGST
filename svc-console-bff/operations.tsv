@@ -6,7 +6,7 @@ operation	correctPersonalData	UNASSIGNED
 operation	copyAnonymisedSample	UNASSIGNED
 operation	exportSupportBundle	UNASSIGNED
 channel	gst.console-bff.example-happened.v1	UNASSIGNED
-operation	getPortfolio	UNASSIGNED
+operation	getPortfolio	INV-T-26286
 operation	getExceptionDecisionTrace	UNASSIGNED
 operation	getOverridePreview	UNASSIGNED
 operation	promoteConfiguration	UNASSIGNED
