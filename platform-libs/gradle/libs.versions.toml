@@ -126,6 +126,11 @@ springWeb = { module = "org.springframework:spring-web" }
 # container via its own `spring-boot-starter-web`. Version managed by the
 # Spring Boot BOM.
 jakarta-servletApi = { module = "jakarta.servlet:jakarta.servlet-api" }
+# INV-T-27821: `RequestTooLargeAdvice` reads `jakarta.validation.ConstraintViolation` and `Size` (optional, compileOnly in
+# the impl half, auto-configuration guarded by @ConditionalOnClass); the implTest runs Hibernate Validator. Both versions
+# managed by the Spring Boot BOM.
+jakarta-validationApi = { module = "jakarta.validation:jakarta.validation-api" }
+hibernateValidator = { module = "org.hibernate.validator:hibernate-validator" }
 # STK-26: verifies a workload token the same Nimbus-based way STK-27's future
 # end-user resource-server configuration verifies one, pointed at the cluster's
 # own service-account issuer instead. Version managed by the Spring Boot BOM

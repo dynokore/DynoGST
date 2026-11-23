@@ -187,6 +187,11 @@ dependencies {
         add(config, libs.jakarta.servletApi)
         add(config, libs.springSecurity.oauth2Jose)
     }
+    // INV-T-27821: RequestTooLargeAdvice reads the bean-validation violation; optional (the auto-configuration is guarded
+    // by @ConditionalOnClass), the test runs a validator. Versions from the Spring Boot BOM.
+    add("implCompileOnly", libs.jakarta.validationApi)
+    add("implTestImplementation", libs.jakarta.validationApi)
+    add("implTestImplementation", libs.hibernateValidator)
     // INV-T-17627 (INV-Q-17607 A): the Micrometer tracing OpenTelemetry bridge and the OTLP trace exporter, runtime only
     // in the impl half and its tests; versions from the Spring Boot BOM. No code uses them yet.
     listOf("implRuntimeOnly", "implTestRuntimeOnly").forEach { config ->

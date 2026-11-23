@@ -6,6 +6,10 @@ train is its own (README.md: "own version and changelog").
 
 ## [Unreleased]
 
+## [13.28.0] - 2026-11-23
+### Added
+- `RequestTooLargeAdvice` (registered by `BindingFailureAutoConfiguration` when `jakarta.validation` is on the classpath): a bean-validation failure is 400 SRT-001, except that an operation listed in `META-INF/gst/request-too-large-operations.tsv` whose violations are all `Size` violations on a `Collection` above `max` is 413 SRT-014; no list resource means never 413. `jakarta.validation-api` is compileOnly and `hibernate-validator` test-only, both managed by the Spring Boot BOM (coordinator ruling, INV-T-27821, INV-AC-27818; consumer INV-T-26433).
+
 ## [13.27.0] - 2026-11-22
 ### Added
 - `OperatorAccess.ELEVATION_KEYS` (`doc.view.content`, `evidence.view.content`): the authority replica opens `evidence.view.content` for an operator session only inside the approved, unexpired elevation window, exactly as `doc.view.content`; `CONTENT_KEY` is unchanged and the record's `permissions` never open either key. Owner ruling of 2026-11-18 option (A) (INV-T-24921, INV-AC-24920).
