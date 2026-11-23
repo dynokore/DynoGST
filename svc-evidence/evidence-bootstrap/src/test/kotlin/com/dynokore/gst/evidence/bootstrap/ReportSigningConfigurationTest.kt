@@ -16,8 +16,6 @@ import io.kotest.matchers.string.shouldNotContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 import org.junit.jupiter.api.Test
 import org.springframework.boot.test.context.runner.ApplicationContextRunner
-import org.springframework.context.annotation.Bean
-import org.springframework.context.annotation.Configuration
 import java.io.ByteArrayInputStream
 import java.security.cert.CertificateFactory
 
@@ -40,16 +38,12 @@ class ReportSigningConfigurationTest {
         }
     }
 
-    @Configuration(proxyBeanMethods = false)
-    class StoreConfiguration {
-        @Bean
-        fun secretStore(): SecretStore = FakeStore(P256_KEY + "\n" + P256_CERT)
-    }
-
+    // not a nested @Configuration: the bootstrap package is component-scanned and would pick up a fake store
     private fun runner(): ApplicationContextRunner =
         ApplicationContextRunner()
             .withInitializer { it.environment.propertySources.remove("systemProperties") }
-            .withUserConfiguration(StoreConfiguration::class.java, ReportSigningConfiguration::class.java)
+            .withBean(SecretStore::class.java, { FakeStore(P256_KEY + "\n" + P256_CERT) })
+            .withUserConfiguration(ReportSigningConfiguration::class.java)
 
     private fun startFailure(vararg values: String): String {
         var failure: Throwable? = null
