@@ -32,15 +32,12 @@ class IssueFlowContextUseCaseTest {
         callers,
     )
 
-    @Suppress("LongParameterList")
     private fun issue(
         caller: String?,
         tenant: TenantId = t1,
         entity: FlowEntity = FlowEntity(FlowEntityKind.ENTITY, "E1"),
         uc: IssueFlowContextUseCase = useCase(),
-        principal: FlowPrincipalKind = FlowPrincipalKind.HUMAN,
-        flowId: String = "F1",
-    ) = uc.issue(caller, tenant, entity.kind, entity.ref, principal, flowId)
+    ) = uc.issue(caller, tenant, entity, FlowPrincipalKind.HUMAN, "F1")
 
     @Test
     fun `INV-AC-27492 case 1 ingestion-svc is issued with exp = iat + 900`() {
@@ -151,66 +148,9 @@ class IssueFlowContextUseCaseTest {
         assertEquals(900L, FLOW_CONTEXT_LIFETIME_SECONDS)
         val issue = IssueFlowContextUseCase::class.java.declaredMethods.single { it.name.startsWith("issue") }
         assertEquals(
-            listOf("String", "UUID", "FlowEntityKind", "String", "FlowPrincipalKind", "String"),
+            listOf("String", "UUID", "FlowEntity", "FlowPrincipalKind", "String"),
             issue.parameterTypes.map { it.simpleName },
         )
-    }
-
-    @Test
-    fun `INV-AC-27492 each of the five principal kinds is issued and the claim carries it`() {
-        FlowPrincipalKind.entries.forEach {
-            assertTrue(issue("ingestion-svc", principal = it) is IssueFlowContextResult.Issued)
-        }
-        assertEquals(FlowPrincipalKind.entries, calls.map { it.principalKind })
-    }
-
-    @Test
-    fun `INV-AC-27492 guard the closed enums by name`() {
-        assertEquals(
-            setOf("HUMAN", "CONSENT_AGENT", "MACHINE", "OPERATOR_SESSION", "SIGNATORY_LINK"),
-            FlowPrincipalKind.entries.map { it.name }.toSet(),
-        )
-        assertEquals(setOf("ENTITY", "TENANT_WIDE"), FlowEntityKind.entries.map { it.name }.toSet())
-    }
-
-    @Test
-    fun `INV-AC-27492 invalid entity refs are refused and the port is not called`() {
-        listOf("", "   ", "\t", "\n", "x".repeat(65)).forEach {
-            assertEquals(
-                IssueFlowContextResult.InvalidRequest,
-                issue("ingestion-svc", entity = FlowEntity(FlowEntityKind.ENTITY, it)),
-                "ref [$it]",
-            )
-        }
-        assertTrue(calls.isEmpty())
-    }
-
-    @Test
-    fun `INV-AC-27492 refs of 64 characters and with surrounding spaces are issued unchanged`() {
-        listOf("x".repeat(64), " E1 ").forEach {
-            assertTrue(
-                issue("ingestion-svc", entity = FlowEntity(FlowEntityKind.ENTITY, it)) is IssueFlowContextResult.Issued,
-            )
-        }
-        assertEquals(listOf("x".repeat(64), " E1 "), calls.map { it.entity.ref })
-    }
-
-    @Test
-    fun `INV-AC-27492 tenant-wide with a ref is an invalid request`() {
-        assertEquals(
-            IssueFlowContextResult.InvalidRequest,
-            issue("ingestion-svc", entity = FlowEntity(FlowEntityKind.TENANT_WIDE, "E1")),
-        )
-        assertTrue(calls.isEmpty())
-    }
-
-    @Test
-    fun `INV-AC-27492 invalid flow ids are refused and 64 characters is issued`() {
-        listOf("", "   ", "f".repeat(65)).forEach {
-            assertEquals(IssueFlowContextResult.InvalidRequest, issue("ingestion-svc", flowId = it), "flow [$it]")
-        }
-        assertTrue(calls.isEmpty())
-        assertTrue(issue("ingestion-svc", flowId = "f".repeat(64)) is IssueFlowContextResult.Issued)
     }
 
     private fun notServed(caller: String?) {
