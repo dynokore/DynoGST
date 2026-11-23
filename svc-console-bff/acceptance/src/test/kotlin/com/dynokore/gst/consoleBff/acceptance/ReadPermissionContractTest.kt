@@ -65,17 +65,6 @@ class ReadPermissionContractTest {
                 out += "table key of ${e.operationId} is not listed by the generated map: ${e.permissionKey}"
             }
         }
-        out += domainFindings(contract, domainTable, keys)
-        return out
-    }
-
-    /** The offences of the domain-keyed entries: route, and every key of every domain against the generated map. */
-    private fun domainFindings(
-        contract: List<Op>,
-        domainTable: List<CatalogueReadPermissions.DomainEntry>,
-        keys: Set<String>,
-    ): List<String> {
-        val out = mutableListOf<String>()
         domainTable.forEach { e ->
             val op = contract.firstOrNull { it.operationId == e.operationId }
             if (op != null && (e.method != "GET" || e.pathTemplate != op.path)) {
