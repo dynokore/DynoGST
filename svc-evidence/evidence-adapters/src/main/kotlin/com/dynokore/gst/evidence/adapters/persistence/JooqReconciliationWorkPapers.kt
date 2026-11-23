@@ -1,6 +1,7 @@
 package com.dynokore.gst.evidence.adapters.persistence
 
 import com.dynokore.gst.evidence.adapters.persistence.jooq.tables.EvidenceArtefact.Companion.EVIDENCE_ARTEFACT
+import com.dynokore.gst.evidence.application.export.AuditPackClassSource
 import com.dynokore.gst.evidence.application.export.ExportClassSource
 import com.dynokore.platform.evidencestore.EntityRef
 import com.dynokore.platform.evidencestore.ObjectKey
@@ -38,7 +39,8 @@ class JooqReconciliationWorkPapers(
     private val dsl: DSLContext,
     private val store: ObjectStore,
     private val maxBytes: Long,
-) : ExportClassSource {
+) : ExportClassSource,
+    AuditPackClassSource {
     init {
         require(maxBytes > 0) { "maxBytes must be positive" }
     }
@@ -62,6 +64,44 @@ class JooqReconciliationWorkPapers(
             total += candidate.item.bytes().size
             if (total > maxBytes) throw PackageSizeRefusal(CLASS, maxBytes)
             candidates += candidate
+        }
+        return candidates
+    }
+
+    /**
+     * The work-papers of one entity and period of the bound tenant (INV-AC-28218). The tenant, entity, period and type
+     * are SQL predicates, so no object of another entity or period is read. The byte limit is summed over the objects
+     * of the matching rows as each is read; the tenant-wide byte pre-check is not used. The candidate carries the
+     * entity and period of the row.
+     */
+    override fun candidates(
+        tenant: TenantId,
+        entityRef: String,
+        periodRef: String,
+    ): List<PackageCandidate> {
+        val a = EVIDENCE_ARTEFACT
+        val rows =
+            dsl
+                .select(a.REFERENCE, a.HASH)
+                .from(a)
+                .where(
+                    a.TENANT_ID.eq(tenant.value),
+                    a.ENTITY_REF.eq(entityRef),
+                    a.PERIOD_REF.eq(periodRef),
+                    a.ARTEFACT_TYPE.eq(TYPE),
+                ).orderBy(a.REFERENCE)
+                .fetch()
+        val candidates = mutableListOf<PackageCandidate>()
+        var total = 0L
+        for (row in rows) {
+            val reference = checkNotNull(row.get(a.REFERENCE))
+            val name = itemName(tenant, reference)
+            val bytes = store.get(ObjectKey(reference))
+            if (sha256(bytes) != row.get(a.HASH)) throw WorkPaperIntegrityRefusal(reference)
+            total += bytes.size
+            if (total > maxBytes) throw PackageSizeRefusal(CLASS, maxBytes)
+            val item = PackageItem(CLASS, name, bytes)
+            candidates += PackageCandidate(tenant, EntityRef(entityRef), PeriodRef(periodRef), item)
         }
         return candidates
     }
