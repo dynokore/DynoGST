@@ -35,6 +35,9 @@ internal class NonBusinessDayUnfiledOnlyTest : Vp62TestSupport() {
             assertThat(s.ruleEvents("2026-06-01")).isEmpty()
             assertThat(s.deliver(changed.dataJson, changed.id.value)).isEqualTo("IGNORED")
             assertThat(changedDates()(s)).hasSize(1)
+            // the same payload under a new event identifier publishes no further PeriodDueDateChanged
+            s.deliver(changed.dataJson)
+            assertThat(changedDates()(s)).hasSize(1)
             s.assertConverged()
         }
     }
