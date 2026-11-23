@@ -45,11 +45,13 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.config.BeanDefinitionCustomizer
+import org.springframework.boot.test.context.runner.ApplicationContextRunner
 import org.springframework.context.ApplicationContext
 import java.io.PrintWriter
 import java.io.StringWriter
 import java.nio.file.Files
 import java.nio.file.Path
+import java.security.KeyPair
 import java.security.KeyPairGenerator
 import java.security.MessageDigest
 import java.security.spec.MGF1ParameterSpec
@@ -57,6 +59,7 @@ import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
 import java.util.Base64
+import java.util.Locale
 import java.util.UUID
 import javax.crypto.Cipher
 import javax.crypto.spec.OAEPParameterSpec
@@ -68,6 +71,7 @@ import javax.crypto.spec.PSource
  * secret is bound, the `SecretStore` (a primary `withBean` override). The envelopes are sealed here as access-svc
  * seals them: `v1.<keyId>.<ciphertext>`, RSAES-OAEP SHA-256, MGF1-SHA-256, label = the recipient address.
  */
+@Suppress("MaxLineLength", "ktlint:standard:max-line-length")
 class PasscodeOpeningBoundaryTest {
     private val json = EnvelopeJson()
     private var sequence = 0L
@@ -166,38 +170,31 @@ class PasscodeOpeningBoundaryTest {
         root.level = Level.TRACE
         root.addAppender(appender)
         try {
-            var runner =
-                NotificationContext
-                    .online(dir)
-                    .withBean(EventLogReader::class.java, { log }, BeanDefinitionCustomizer { it.isPrimary = true })
-                    .withBean("emailChannel", MessageDelivery::class.java, { email })
-                    .withBean("smsChannel", MessageDelivery::class.java, { sms })
-            if (secretBound) {
-                runner =
-                    runner.withBean(
-                        SecretStore::class.java,
-                        { BoundKey(PEM, dir) },
-                        BeanDefinitionCustomizer {
-                            it.isPrimary =
-                                true
-                        },
-                    )
-            }
-            runner.run { context ->
-                check(context.startupFailure == null) {
-                    "the context did not start: " +
-                        generateSequence(context.startupFailure) { it.cause }.joinToString(" <- ") {
-                            it.javaClass.simpleName +
-                                ":" +
-                                it.message?.take(300)
-                        }
-                }
+            contextOf(dir, log, email, sms, secretBound).run { context ->
+                check(context.startupFailure == null) { "the context did not start" }
                 Boundary(context, log, email, sms).block(TenantId(UUID.randomUUID()), appender)
             }
         } finally {
             root.detachAppender(appender)
             root.level = before
         }
+    }
+
+    private fun contextOf(
+        dir: Path,
+        log: Log,
+        email: Fake,
+        sms: Fake,
+        secretBound: Boolean,
+    ): ApplicationContextRunner {
+        val primary = BeanDefinitionCustomizer { it.isPrimary = true }
+        val base =
+            NotificationContext
+                .online(dir)
+                .withBean(EventLogReader::class.java, { log }, primary)
+                .withBean("emailChannel", MessageDelivery::class.java, { email })
+                .withBean("smsChannel", MessageDelivery::class.java, { sms })
+        return if (secretBound) base.withBean(SecretStore::class.java, { BoundKey(PEM, dir) }, primary) else base
     }
 
     private fun envelope(
@@ -238,7 +235,7 @@ class PasscodeOpeningBoundaryTest {
         )
         val ciphertext = Base64.getUrlEncoder().withoutPadding().encodeToString(cipher.doFinal(value.toByteArray()))
         val keyId = MessageDigest.getInstance("SHA-256").digest(KEYS.public.encoded).take(8)
-        return "v1." + keyId.joinToString("") { "%02x".format(it) } + "." + ciphertext
+        return "v1." + keyId.joinToString("") { String.format(Locale.ROOT, "%02x", it) } + "." + ciphertext
     }
 
     /** Every row of every named table, each as one text (`t::text`), read as the database owner so no tenant filter hides a row. */
@@ -270,7 +267,8 @@ class PasscodeOpeningBoundaryTest {
 
     private fun logText(appender: ListAppender<ILoggingEvent>): String =
         appender.list.joinToString("\n") { event ->
-            event.formattedMessage + " " + (event.throwableProxy?.let { stack((it as ThrowableProxy).throwable) } ?: "")
+            event.formattedMessage + " " +
+                (event.throwableProxy?.let { stack((it as ThrowableProxy).throwable) }.orEmpty())
         }
 
     @Test
@@ -392,7 +390,7 @@ class PasscodeOpeningBoundaryTest {
                 "notification.event_dead_letter",
                 "notification.outbox",
             )
-        val KEYS by lazy {
+        val KEYS: KeyPair by lazy {
             KeyPairGenerator.getInstance("RSA").also { it.initialize(RsaOaepPasscodeOpener.MIN_BITS) }.generateKeyPair()
         }
         val PEM by lazy {

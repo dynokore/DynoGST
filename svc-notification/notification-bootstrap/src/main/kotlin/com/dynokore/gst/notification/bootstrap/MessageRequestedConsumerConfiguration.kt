@@ -48,6 +48,7 @@ class MessageRequestedConsumerConfiguration {
     fun templateVersions(): TemplateVersions = ClosedTemplateVersions()
 
     @Bean
+    @Suppress("LongParameterList")
     fun messageRequestedHandler(
         records: MessageDeliveryRecords,
         channels: MessageChannels,
