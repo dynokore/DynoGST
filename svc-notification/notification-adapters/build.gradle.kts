@@ -33,6 +33,7 @@ dependencies {
     implementation(libs.platform.outboxAndQueue.impl)
     implementation(libs.platform.productRuntime.api)
     implementation(libs.snakeyaml)
+    implementation(libs.angus.mail)
     implementation(libs.platform.auditLog.impl)
     implementation(libs.platform.configResolver.impl)
     implementation(libs.platform.serviceRuntime.impl)

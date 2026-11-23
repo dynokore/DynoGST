@@ -55,6 +55,7 @@ springBoot-starterValidation = { module = "org.springframework.boot:spring-boot-
 swagger-annotations = { module = "io.swagger.core.v3:swagger-annotations-jakarta", version.ref = "swaggerAnnotations" }
 assertj-core = { module = "org.assertj:assertj-core" }
 snakeyaml = { module = "org.yaml:snakeyaml" }
+angus-mail = { module = "org.eclipse.angus:angus-mail" }
 springBoot-test = { module = "org.springframework.boot:spring-boot-test" }
 springBoot-autoconfigure = { module = "org.springframework.boot:spring-boot-autoconfigure" }
 spring-context = { module = "org.springframework:spring-context" }
