@@ -129,4 +129,30 @@ class CheckPreIssuanceTest {
         val (r, _) = run(answered("NOT_REGISTERED"), type = "TYPE_2", amount = "9.00")
         assertEquals(PreIssuanceCheck.Verdict(PreIssuanceVerdict.WARN, listOf(reason), emptySet()), r)
     }
+
+    @Test
+    fun `blank supplierGstn entityRef or currency throws IllegalArgumentException before any lookup`() {
+        for (blank in listOf("", "   ")) {
+            val draft =
+                listOf(
+                    Triple(blank, "E-1", "SGD"),
+                    Triple("M90054321K", blank, "SGD"),
+                    Triple("M90054321K", "E-1", blank),
+                )
+            for ((gstn, ref, cur) in draft) {
+                val source = Recording(answered("REGISTERED"))
+                val thrown =
+                    runCatching { CheckPreIssuance(source).execute(gstn, ref, cur, date, "TYPE_1A", "9.00") }
+                        .exceptionOrNull()
+                assertEquals(IllegalArgumentException::class.java, thrown?.javaClass, "[$gstn|$ref|$cur]")
+                assertEquals(0, source.queries.size)
+            }
+        }
+    }
+
+    @Test
+    fun `supplierGstn with spaces but not blank reaches the register unchanged`() {
+        val (_, s) = run(answered("REGISTERED"), gstn = " 27AAA ")
+        assertOnce(s, " 27AAA ")
+    }
 }

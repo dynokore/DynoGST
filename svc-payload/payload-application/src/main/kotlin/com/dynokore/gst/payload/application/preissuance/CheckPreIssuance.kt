@@ -40,6 +40,10 @@ class CheckPreIssuance(
         submissionType: String?,
         gstAmount: String?,
     ): PreIssuanceCheck {
+        // Precondition of the caller (design by contract): the edge refuses blank keys; no trim, no default, no catch.
+        require(supplierGstn.isNotBlank()) { "supplierGstn must not be blank" }
+        require(entityRef.isNotBlank()) { "entityRef must not be blank" }
+        require(currency.isNotBlank()) { "currency must not be blank" }
         // Refuse an incomplete or malformed draft before the register is asked.
         val early = decide(submissionType, PreIssuanceRegisterStatus.REGISTERED.name, gstAmount)
         if (early is PreIssuanceOutcome.Refused) return PreIssuanceCheck.Refused(early.error)
