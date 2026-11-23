@@ -92,7 +92,7 @@ class SampleCheckCursorTest {
     }
 
     @Test
-    fun `INV-AC-27602 an expired cursor with its issue time rewritten to now, or moved by one millisecond, is refused`() {
+    fun `INV-AC-27602 an expired cursor with issue time rewritten to now or moved by 1 ms is refused`() {
         val now = at.plus(Duration.ofHours(24)).plusSeconds(1)
         val token = issued()
         val parts = token.split('.')
@@ -100,7 +100,8 @@ class SampleCheckCursorTest {
 
         fun withIssue(issue: Instant): String {
             val body = listOf(fields[0], issue.toEpochMilli().toString(), fields[2], fields[3]).joinToString("\n")
-            return "${parts[0]}.${Base64.getUrlEncoder().withoutPadding().encodeToString(body.toByteArray())}.${parts[2]}"
+            val payload = Base64.getUrlEncoder().withoutPadding().encodeToString(body.toByteArray())
+            return "${parts[0]}.$payload.${parts[2]}"
         }
         cursor().open(token, "E1", "USR-1", now) shouldBe null
         cursor().open(withIssue(now), "E1", "USR-1", now) shouldBe null
