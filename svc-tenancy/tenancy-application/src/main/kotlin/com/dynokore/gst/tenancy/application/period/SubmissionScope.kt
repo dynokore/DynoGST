@@ -2,7 +2,10 @@ package com.dynokore.gst.tenancy.application.period
 
 import java.time.LocalDate
 
-/** The permission key of getSubmissionScope: the catalogue row "Ingest transactions via API"; decided per request, never by role. */
+/**
+ * The permission key of getSubmissionScope: the catalogue row "Ingest transactions via API"; decided per request,
+ * never by a role name.
+ */
 object SubmissionScopePermissions {
     const val READ = "transaction.ingest"
 }
@@ -35,9 +38,9 @@ sealed interface SubmissionScopeOutcome {
 }
 
 /**
- * getSubmissionScope (INV-REQ-1086): the stored go-live date and the one period record in force whose start is not after
- * [today] and whose end is not before it. [today] is the Singapore calendar day ([SINGAPORE]), the same day the period
- * list uses; the caller passes it so the clock is a single source.
+ * getSubmissionScope (INV-REQ-1086): the stored go-live date and the one period record in force whose start is not
+ * after [today] and whose end is not before it. [today] is the Singapore calendar day ([SINGAPORE]), the same day the
+ * period list uses; the caller passes it so the clock is a single source.
  */
 class GetSubmissionScope(
     private val store: SubmissionScopeStore,
