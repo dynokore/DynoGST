@@ -143,9 +143,20 @@ class DecisionTraceAssertionTextBootstrapDbTest {
                 ReplicaFallback<AuthorizationRequest, AuthorityVerdict> { _, _ -> FallbackResult.Unavailable }
             val replica = AuthorityReplica(clock, roles, fallback = unavailable)
             val grant =
-                RoleGrant("auditor", GrantScope.TENANT, tenant.value.toString(), Instant.parse("2026-01-01T00:00:00Z"), null)
+                RoleGrant(
+                    "auditor",
+                    GrantScope.TENANT,
+                    tenant.value.toString(),
+                    Instant.parse("2026-01-01T00:00:00Z"),
+                    null,
+                )
             replica.accept(
-                AuthorityChanged(tenant, "user-42", 1, AuthorityRecord.RoleGrantRecord("g1", RoleGrantState.ACTIVE, grant)),
+                AuthorityChanged(
+                    tenant,
+                    "user-42",
+                    1,
+                    AuthorityRecord.RoleGrantRecord("g1", RoleGrantState.ACTIVE, grant),
+                ),
             )
             replica.onSnapshotComplete(1)
             replica.observeHead(1)
@@ -199,14 +210,16 @@ class DecisionTraceAssertionTextBootstrapDbTest {
     }
 
     private fun decision(assertion: String?) =
-        """{"code":"PAY-002","ruleId":"BR-CO-15","packVersions":[{"packIdentifier":"schematron","version":"2026.1"}],""" +
+        """{"code":"PAY-002","ruleId":"BR-CO-15",""" +
+            """"packVersions":[{"packIdentifier":"schematron","version":"2026.1"}],""" +
             """"inputs":[{"name":"IBT-110","value":"7.00"}]""" +
-            (assertion?.let { ""","assertionText":"$it"""" } ?: "") + "}"
+            assertion?.let { ""","assertionText":"$it"""" }.orEmpty() + "}"
 
     private fun Boundary.trace(version: Int = 1): DecisionTraceView? =
         tx { controller.getDecisionTrace(doc, version) }.also { it.statusCode.value() shouldBe 200 }.body
 
     @Test
+    @Suppress("MaxLineLength", "ktlint:standard:max-line-length") // the name is fixed by the task text
     fun `INV-AC-27156 a PAY-002 entry delivered by PayloadRejected is returned by getDecisionTrace with pack version, assertion text, input name and input value`(
         @TempDir dir: Path,
     ) = run(dir) {
@@ -225,6 +238,7 @@ class DecisionTraceAssertionTextBootstrapDbTest {
     }
 
     @Test
+    @Suppress("MaxLineLength", "ktlint:standard:max-line-length") // the name is fixed by the task text
     fun `INV-AC-27156 an entry without assertionText is returned without the member`(
         @TempDir dir: Path,
     ) = run(dir) {
@@ -236,6 +250,7 @@ class DecisionTraceAssertionTextBootstrapDbTest {
     }
 
     @Test
+    @Suppress("MaxLineLength", "ktlint:standard:max-line-length") // the name is fixed by the task text
     fun `INV-AC-27156 a stored assertionText that breaks the contract makes getDecisionTrace answer the Malformed outcome of INV-T-20778 and no decisions member`(
         @TempDir dir: Path,
     ) = run(dir) {
@@ -246,6 +261,7 @@ class DecisionTraceAssertionTextBootstrapDbTest {
     }
 
     @Test
+    @Suppress("MaxLineLength", "ktlint:standard:max-line-length") // the name is fixed by the task text
     fun `INV-AC-27156 getDecisionTrace for version 2 of the same document is not found while version 1 holds the entry`(
         @TempDir dir: Path,
     ) = run(dir) {
