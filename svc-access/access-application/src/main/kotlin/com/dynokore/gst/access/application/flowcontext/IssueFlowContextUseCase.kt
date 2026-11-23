@@ -7,8 +7,11 @@ import java.time.Clock
 /** Lifetime of a flow context in seconds. access-svc owns it; the caller never sends it (owner 2026-11-18, A). */
 const val FLOW_CONTEXT_LIFETIME_SECONDS: Long = 900L
 
-/** Kind of the originating principal. Mirrors the kinds of the authority replica. */
-enum class FlowPrincipalKind { HUMAN, CONSENT_AGENT, MACHINE }
+/**
+ * Kind of the originating principal: the closed vocabulary of `flow-context.schema.json` (RFC 8725); the member name is
+ * the wire value. INV-T-24991 maps the generated enum to this one and tests the name sets for equality.
+ */
+enum class FlowPrincipalKind { HUMAN, CONSENT_AGENT, MACHINE, OPERATOR_SESSION, SIGNATORY_LINK }
 
 enum class FlowEntityKind { ENTITY, TENANT_WIDE }
 
@@ -59,10 +62,12 @@ class IssueFlowContextUseCase(
         require(this.allowedCallers.isNotEmpty()) { "the allowed caller set must not be empty" }
     }
 
+    @Suppress("LongParameterList")
     fun issue(
         callerService: String?,
         tenant: TenantId,
-        entity: FlowEntity,
+        entityKind: FlowEntityKind,
+        entityRef: String?,
         principalKind: FlowPrincipalKind,
         flowId: String,
     ): IssueFlowContextResult {
@@ -70,10 +75,22 @@ class IssueFlowContextUseCase(
         return when {
             caller == null -> IssueFlowContextResult.CallerNotServed
             tenant.isPlatform -> IssueFlowContextResult.InvalidRequest
-            entity.kind == FlowEntityKind.ENTITY && entity.ref.isNullOrBlank() -> IssueFlowContextResult.InvalidRequest
-            else -> sign(tenant, entity, principalKind, caller, flowId)
+            !validEntity(entityKind, entityRef) || !validText(flowId) -> IssueFlowContextResult.InvalidRequest
+            else -> sign(tenant, FlowEntity(entityKind, entityRef), principalKind, caller, flowId)
         }
     }
+
+    private fun validText(value: String): Boolean = value.isNotBlank() && value.length <= MAX_TEXT_LENGTH
+
+    /** ENTITY needs a ref of 1 to 64 characters (not blank); TENANT_WIDE carries none. */
+    private fun validEntity(
+        kind: FlowEntityKind,
+        ref: String?,
+    ): Boolean =
+        when (kind) {
+            FlowEntityKind.ENTITY -> ref != null && validText(ref)
+            FlowEntityKind.TENANT_WIDE -> ref == null
+        }
 
     private fun sign(
         tenant: TenantId,
@@ -90,5 +107,9 @@ class IssueFlowContextUseCase(
         } catch (_: SigningKeyUnavailable) {
             IssueFlowContextResult.SigningUnavailable
         }
+    }
+
+    private companion object {
+        const val MAX_TEXT_LENGTH = 64
     }
 }
