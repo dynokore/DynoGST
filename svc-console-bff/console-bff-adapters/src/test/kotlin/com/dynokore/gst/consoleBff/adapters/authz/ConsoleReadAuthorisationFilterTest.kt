@@ -399,7 +399,10 @@ class ConsoleReadAuthorisationFilterTest {
 
     private fun promoGrants() {
         promoReplica.onSnapshotComplete(1)
-        listOf("p-author" to AUTHOR_ROLE, "p-manager" to MANAGER_ROLE, "p-viewer" to FIXTURE_ROLE).forEachIndexed { i, (p, r) ->
+        listOf("p-author" to AUTHOR_ROLE, "p-manager" to MANAGER_ROLE, "p-viewer" to FIXTURE_ROLE).forEachIndexed {
+            i,
+            (p, r),
+            ->
             promoReplica.accept(
                 AuthorityChanged(
                     tenant,

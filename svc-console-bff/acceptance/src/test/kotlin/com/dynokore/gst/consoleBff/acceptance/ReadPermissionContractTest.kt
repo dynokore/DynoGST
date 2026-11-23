@@ -65,6 +65,17 @@ class ReadPermissionContractTest {
                 out += "table key of ${e.operationId} is not listed by the generated map: ${e.permissionKey}"
             }
         }
+        out += domainFindings(contract, domainTable, keys)
+        return out
+    }
+
+    /** The offences of the domain-keyed entries: route, and every key of every domain against the generated map. */
+    private fun domainFindings(
+        contract: List<Op>,
+        domainTable: List<CatalogueReadPermissions.DomainEntry>,
+        keys: Set<String>,
+    ): List<String> {
+        val out = mutableListOf<String>()
         domainTable.forEach { e ->
             val op = contract.firstOrNull { it.operationId == e.operationId }
             if (op != null && (e.method != "GET" || e.pathTemplate != op.path)) {
@@ -97,7 +108,8 @@ class ReadPermissionContractTest {
                 "paths:\n  /v1/probe:\n    get:\n      operationId: probeOperation\n" +
                     "      responses:\n        '200':\n          description: ok",
             )
-        val offences = findings(getOperations(extra), CatalogueReadPermissions.ENTRIES, DOMAINS, EXPECTED_UNMAPPED, allKeys())
+        val offences =
+            findings(getOperations(extra), CatalogueReadPermissions.ENTRIES, DOMAINS, EXPECTED_UNMAPPED, allKeys())
         check(offences == listOf("GET operation not in the table or the unmapped list: probeOperation")) { "$offences" }
     }
 
@@ -105,7 +117,13 @@ class ReadPermissionContractTest {
     fun `INV-AC-20321 a table entry that is not a GET operation of the contract fails`() {
         val post = CatalogueReadPermissions.Entry("GET", "/v1/exceptions", "overrideException", "exception.view")
         val offences =
-            findings(getOperations(openapi), CatalogueReadPermissions.ENTRIES + post, DOMAINS, EXPECTED_UNMAPPED, allKeys())
+            findings(
+                getOperations(openapi),
+                CatalogueReadPermissions.ENTRIES + post,
+                DOMAINS,
+                EXPECTED_UNMAPPED,
+                allKeys(),
+            )
         check(offences.any { it.contains("not a GET operation of the contract: overrideException") }) { "$offences" }
     }
 
@@ -147,9 +165,15 @@ class ReadPermissionContractTest {
         check(e.pathTemplate == "/bff/configuration-bundles/{bundleId}/promotion-diff") { "path: ${e.pathTemplate}" }
         check(e.domainParameter == "domain") { "parameter: ${e.domainParameter}" }
         check(
-            e.keysByDomain == mapOf("mapping-pack" to "mapping-pack.author", "identity-triple" to "entity-config.manage"),
+            e.keysByDomain ==
+                mapOf("mapping-pack" to "mapping-pack.author", "identity-triple" to "entity-config.manage"),
         ) { "keys: ${e.keysByDomain}" }
-        check(CatalogueReadPermissions.ENTRIES.none { it.operationId == e.operationId || it.pathTemplate == e.pathTemplate }) {
+        check(
+            CatalogueReadPermissions.ENTRIES.none {
+                it.operationId == e.operationId ||
+                    it.pathTemplate == e.pathTemplate
+            },
+        ) {
             "the route is also in ENTRIES"
         }
         val offences = real()
