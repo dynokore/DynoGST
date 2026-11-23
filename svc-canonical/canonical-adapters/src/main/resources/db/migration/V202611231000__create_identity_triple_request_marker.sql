@@ -1,4 +1,4 @@
--- V202611211300__create_identity_triple_request_marker.sql (INV-T-26780; INV-REQ-1006, INV-Q-26498 option A).
+-- V202611231000__create_identity_triple_request_marker.sql (INV-T-26780; INV-REQ-1006, INV-Q-26498 option A).
 -- One row per (tenant, CloudEvents id) whose IdentityTripleReprocessingRequested was answered: a redelivery adds
 -- no row and no version.
 CREATE TABLE canonical.identity_triple_request_marker (
