@@ -159,6 +159,17 @@ class PreIssuanceControllerTest {
     }
 
     @Test
+    fun `INV-AC-26695 a Refused from the use case for gstAmount 9_001 is 400 SRT-001 with no verdict member`() {
+        // 9.001 passes the controller's null and blank checks, so the real use case refuses it (more than 2 decimals).
+        val response = call(notRegistered, draft(amount = "9.001"))
+        response.statusCode.value() shouldBe 400
+        val tree = json.readTree(textOf(response))
+        tree["code"].asString() shouldBe "SRT-001"
+        tree.has("verdict") shouldBe false
+        queries shouldBe emptyList()
+    }
+
+    @Test
     fun `INV-AC-26695 a blank supplierGstn, entityRef or currency is 400 SRT-001 and the use case is never called`() {
         listOf("", "   ").forEach { blank ->
             listOf(

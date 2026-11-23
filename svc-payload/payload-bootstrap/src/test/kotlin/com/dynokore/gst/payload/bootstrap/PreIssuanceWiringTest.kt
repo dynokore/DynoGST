@@ -207,6 +207,21 @@ class PreIssuanceWiringTest : OverrideWiringBase() {
         }
     }
 
+    @Test
+    fun `INV-AC-26308 a gstAmount of 9_001 is refused by the use case as 400 SRT-001 with no verdict and no lookup`() {
+        served { service, md ->
+            val rows = service.state()
+            listOf("9.001", "-", "abc").forEach { amount ->
+                val answer = service.check(draft(amount = amount))
+                answer.status shouldBe 400
+                answer.body shouldContain "SRT-001"
+                answer.body.contains("verdict") shouldBe false
+            }
+            md.requests.size shouldBe 0
+            service.state() shouldBe rows
+        }
+    }
+
     private val property = "payload.masterdata-svc-url"
 
     @Test
