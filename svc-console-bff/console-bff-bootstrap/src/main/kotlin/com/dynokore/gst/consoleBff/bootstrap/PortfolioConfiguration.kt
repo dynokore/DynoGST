@@ -19,7 +19,8 @@ import java.time.Clock
 import java.time.Duration
 
 /**
- * The getPortfolio read (INV-REQ-904): the use case over the jOOQ read model and the replica scope, and its controller.
+ * The getPortfolio read (INV-REQ-904): the use case over the jOOQ read model and the replica scope, and its
+ * controller.
  * The route is refused without `period-readiness.view` by the read filter; the entity scope is decided again here per
  * request (INV-Q-10027). No downstream call is wired: the model is filled by events, not by this read.
  */
@@ -43,7 +44,7 @@ class PortfolioConfiguration {
     fun portfolioController(getPortfolio: GetPortfolio) = PortfolioController(getPortfolio)
 
     companion object {
-        /** The `maximum` of the getPortfolio limit parameter in the pinned contract; the generated validation enforces it too. */
+        /** The `maximum` of the getPortfolio limit parameter in the pinned contract (the generated validation too). */
         const val PORTFOLIO_MAX_LIMIT: Int = 500
     }
 }
@@ -52,7 +53,8 @@ class PortfolioConfiguration {
  * The entities a principal may read the portfolio of: the entities the replica holds a grant on now, kept when
  * [AuthorityReplica.decide] allows the key of the `getPortfolio` route on that entity. The key is read from
  * [CatalogueReadPermissions.ENTRIES], never written again here, and no role name is read (INV-Q-10027). Fail closed
- * (OWASP ASVS V4.1.1): an unmapped route, a malformed tenant id, a denied decision and a thrown exception give no entity.
+ * (OWASP ASVS V4.1.1): an unmapped route, a malformed tenant id, a denied decision and a thrown exception give no
+ * entity.
  */
 class PortfolioEntityScope(
     private val replica: AuthorityReplica,

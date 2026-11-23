@@ -21,6 +21,7 @@ import org.springframework.web.context.request.RequestContextHolder
 import org.springframework.web.context.request.ServletRequestAttributes
 import org.springframework.web.method.annotation.HandlerMethodValidationException
 import java.util.UUID
+import com.dynokore.gst.consoleBff.domain.portfolio.PortfolioRow as DomainRow
 
 /** A refusal carrying its closed problem answer; [PortfolioController] writes it. */
 class PortfolioRefusal(
@@ -63,12 +64,12 @@ open class PortfolioController(
     @ExceptionHandler(PortfolioRefusal::class)
     fun refusal(refusal: PortfolioRefusal): ResponseEntity<String> = write(refusal.answer)
 
-    /** A parameter the contract bounds (limit above its maximum) fails the generated validation: a contract violation. */
+    /** A parameter the contract bounds (limit above its maximum) fails the generated validation. */
     @ExceptionHandler(HandlerMethodValidationException::class)
     fun invalidParameter(): ResponseEntity<String> =
         write(Problems.contractViolation("a request parameter is out of bounds", correlation()))
 
-    /** jakarta's ConstraintViolationException is matched by class name (no compile dependency on jakarta.validation). */
+    /** jakarta's ConstraintViolationException is matched by class name (no compile dependency on it). */
     @ExceptionHandler(RuntimeException::class)
     fun constraintViolation(failure: RuntimeException): ResponseEntity<String> {
         if (failure.javaClass.name != CONSTRAINT_VIOLATION) throw failure
@@ -81,7 +82,7 @@ open class PortfolioController(
             .header("Content-Type", Problems.CONTENT_TYPE)
             .body(answer.body)
 
-    private fun toRow(row: com.dynokore.gst.consoleBff.domain.portfolio.PortfolioRow) =
+    private fun toRow(row: DomainRow) =
         PortfolioRow(row.entityRef, row.cells.map { (periodRef, cell) -> toCell(periodRef, cell) })
 
     private fun toCell(
@@ -100,6 +101,11 @@ open class PortfolioController(
                 )
             },
     )
+
+    private fun readiness(
+        kind: String,
+        blockedCount: Int?,
+    ) = PortfolioReadiness(PortfolioReadiness.Kind.forValue(kind), blockedCount)
 
     private fun PeriodState.wire(): String =
         when (this) {

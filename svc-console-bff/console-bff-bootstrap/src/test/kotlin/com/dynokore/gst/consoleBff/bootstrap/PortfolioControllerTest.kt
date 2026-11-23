@@ -102,13 +102,12 @@ class PortfolioControllerTest {
     private val tenancy = TenancyEdge()
 
     private fun period(
-        entity: String,
-        ref: String,
+        key: Pair<String, String>,
         state: PeriodState,
         due: String,
         filed: String? = null,
         extension: Boolean = false,
-    ) = StoredPeriod(entity, ref, state, LocalDate.parse(due), filed?.let(LocalDate::parse), extension)
+    ) = StoredPeriod(key.first, key.second, state, LocalDate.parse(due), filed?.let(LocalDate::parse), extension)
 
     private fun fact(
         period: StoredPeriod,
@@ -119,18 +118,18 @@ class PortfolioControllerTest {
     private val seeded =
         SeededStore(
             listOf(
-                fact(period("E1", "2026-Q3", PeriodState.FILED, "2026-10-31", filed = "2026-10-15")),
+                fact(period("E1" to "2026-Q3", PeriodState.FILED, "2026-10-31", filed = "2026-10-15")),
                 fact(
-                    period("E1", "2026-Q4", PeriodState.DUE, "2027-01-31"),
+                    period("E1" to "2026-Q4", PeriodState.DUE, "2027-01-31"),
                     StoredReadiness("E1", "2026-Q4", Verdict.BLOCKED, 2),
                 ),
-                fact(period("E1", "2027-Q1", PeriodState.OPEN, "2027-04-30")),
-                fact(period("E2", "2026-Q3", PeriodState.LATE, "2026-10-31", extension = true)),
+                fact(period("E1" to "2027-Q1", PeriodState.OPEN, "2027-04-30")),
+                fact(period("E2" to "2026-Q3", PeriodState.LATE, "2026-10-31", extension = true)),
                 fact(
-                    period("E2", "2026-Q4", PeriodState.DUE, "2026-12-15"),
+                    period("E2" to "2026-Q4", PeriodState.DUE, "2026-12-15"),
                     StoredReadiness("E2", "2026-Q4", Verdict.READY, null),
                 ),
-                fact(period("E3", "2026-Q3", PeriodState.DUE, "2026-10-01")),
+                fact(period("E3" to "2026-Q3", PeriodState.DUE, "2026-10-01")),
             ),
         )
 
