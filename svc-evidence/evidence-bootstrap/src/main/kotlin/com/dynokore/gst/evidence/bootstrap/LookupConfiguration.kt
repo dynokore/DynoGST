@@ -9,8 +9,11 @@ import com.dynokore.gst.evidence.application.integrity.IntegrityStatusQueryHandl
 import com.dynokore.gst.evidence.application.lookup.AcknowledgementChainLookup
 import com.dynokore.gst.evidence.application.lookup.DecisionTraceLookup
 import com.dynokore.gst.evidence.application.lookup.ReverseLookup
+import com.dynokore.gst.evidence.application.lookup.TransmittedVersionLookup
+import com.dynokore.gst.evidence.application.lookup.TransmittedVersionReader
 import com.dynokore.platform.auditlog.AuditedOperations
 import com.dynokore.platform.serviceruntime.replica.AuthorityReplica
+import com.dynokore.platform.tenancykernel.TransactionRunner
 import org.jooq.DSLContext
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.context.annotation.Bean
@@ -56,4 +59,20 @@ class LookupConfiguration {
         replica: AuthorityReplica,
         dsl: DSLContext,
     ): DecisionTraceLookup = DecisionTraceLookup(replica, JooqDecisionTraceReader(dsl))
+
+    @Bean
+    fun transmittedVersionLookup(
+        replica: AuthorityReplica,
+        dsl: DSLContext,
+        transactions: TransactionRunner,
+    ): TransmittedVersionLookup {
+        val reader = ChainWiring.transmittedVersionReader(dsl)
+        // the permission is decided first; the read of the store (RLS, ARC-21) runs in its own tenant transaction
+        return TransmittedVersionLookup(
+            replica,
+            TransmittedVersionReader { tenant, docUuid, version ->
+                transactions.inTransaction { reader.read(tenant, docUuid, version) }
+            },
+        )
+    }
 }

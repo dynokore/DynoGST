@@ -33,6 +33,7 @@ import com.dynokore.platform.serviceruntime.replica.ReplicaFallback
 import com.dynokore.platform.serviceruntime.replica.RoleGrant
 import com.dynokore.platform.serviceruntime.replica.RoleGrantState
 import com.dynokore.platform.tenancykernel.TenantId
+import com.dynokore.platform.tenancykernel.TransactionRunner
 import jakarta.servlet.http.HttpServletRequest
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -168,6 +169,12 @@ class LookupWiringTest {
 
     private val principal = Principal("user-42", PrincipalKind.HUMAN)
 
+    /** The mock database has no tenant transaction: the runner runs the block as it is. */
+    private val noTransaction =
+        object : TransactionRunner {
+            override fun <T> inTransaction(block: () -> T): T = block()
+        }
+
     @Test
     fun `INV-AC-20576 the use case bean behaves as the one built by hand and reads through chainRecordReader`() {
         val replica = replica()
@@ -225,6 +232,7 @@ class LookupWiringTest {
                     configuration.auditedReads(operations),
                 ),
                 configuration.decisionTraceLookup(replica(), dsl(recorded)),
+                configuration.transmittedVersionLookup(replica(), dsl(recorded), noTransaction),
                 object : ObjectProvider<HttpServletRequest> {
                     override fun getObject(): HttpServletRequest = request
                 },

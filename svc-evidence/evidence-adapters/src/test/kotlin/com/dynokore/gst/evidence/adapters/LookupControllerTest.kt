@@ -21,6 +21,8 @@ import com.dynokore.gst.evidence.application.lookup.DecisionTraceReader
 import com.dynokore.gst.evidence.application.lookup.ENQUIRY_LOOKUP_BY_ACKNOWLEDGEMENT
 import com.dynokore.gst.evidence.application.lookup.ReverseLookup
 import com.dynokore.gst.evidence.application.lookup.SubmissionIndexReader
+import com.dynokore.gst.evidence.application.lookup.TransmittedVersionLookup
+import com.dynokore.gst.evidence.application.lookup.TransmittedVersionReader
 import com.dynokore.gst.evidence.domain.integrity.IntegrityState
 import com.dynokore.gst.evidence.domain.integrity.RunCause
 import com.dynokore.gst.evidence.domain.integrity.RunResult
@@ -221,6 +223,7 @@ class LookupControllerTest {
                 AuditedReads(Audit()),
             ),
             DecisionTraceLookup(replica(granted), DecisionTraceReader { _, _, _ -> error("not used") }),
+            TransmittedVersionLookup(replica(granted), TransmittedVersionReader { _, _, _ -> error("not used") }),
             object : ObjectProvider<HttpServletRequest> {
                 override fun getObject(): HttpServletRequest = request
             },

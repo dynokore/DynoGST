@@ -18,6 +18,8 @@ import com.dynokore.gst.evidence.application.lookup.ReverseLookup
 import com.dynokore.gst.evidence.application.lookup.StoredDecisionTrace
 import com.dynokore.gst.evidence.application.lookup.SubmissionIndexReader
 import com.dynokore.gst.evidence.application.lookup.TraceInput
+import com.dynokore.gst.evidence.application.lookup.TransmittedVersionLookup
+import com.dynokore.gst.evidence.application.lookup.TransmittedVersionReader
 import com.dynokore.platform.auditlog.AuditEntry
 import com.dynokore.platform.auditlog.AuditedOperations
 import com.dynokore.platform.outboxandqueue.EventContext
@@ -144,6 +146,7 @@ class DecisionTraceControllerTest {
                     stored
                 },
             ),
+            TransmittedVersionLookup(replica(granted), TransmittedVersionReader { _, _, _ -> error("not used") }),
             object : ObjectProvider<HttpServletRequest> {
                 override fun getObject(): HttpServletRequest = request
             },

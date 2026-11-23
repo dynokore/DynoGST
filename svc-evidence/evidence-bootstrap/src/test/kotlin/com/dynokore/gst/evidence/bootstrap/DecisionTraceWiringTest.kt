@@ -22,6 +22,7 @@ import com.dynokore.platform.serviceruntime.replica.ReplicaFallback
 import com.dynokore.platform.serviceruntime.replica.RoleGrant
 import com.dynokore.platform.serviceruntime.replica.RoleGrantState
 import com.dynokore.platform.tenancykernel.TenantId
+import com.dynokore.platform.tenancykernel.TransactionRunner
 import jakarta.servlet.http.HttpServletRequest
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -94,6 +95,12 @@ class DecisionTraceWiringTest {
         return replica
     }
 
+    /** The mock database has no tenant transaction: the runner runs the block as it is. */
+    private val noTransaction =
+        object : TransactionRunner {
+            override fun <T> inTransaction(block: () -> T): T = block()
+        }
+
     @Test
     fun `INV-AC-20777 the controller is built with the decision trace bean and reads the trace table`() {
         val replica = replica()
@@ -119,6 +126,7 @@ class DecisionTraceWiringTest {
                 ),
                 configuration.reverseLookup(replica, dsl, IntegrityStatusQueryHandler(unusedStore), audited),
                 configuration.decisionTraceLookup(replica, dsl),
+                configuration.transmittedVersionLookup(replica, dsl, noTransaction),
                 object : ObjectProvider<HttpServletRequest> {
                     override fun getObject(): HttpServletRequest = request
                 },

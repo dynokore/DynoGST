@@ -22,6 +22,7 @@ import com.dynokore.platform.serviceruntime.replica.ReplicaFallback
 import com.dynokore.platform.serviceruntime.replica.RoleGrant
 import com.dynokore.platform.serviceruntime.replica.RoleGrantState
 import com.dynokore.platform.tenancykernel.TenantId
+import com.dynokore.platform.tenancykernel.TransactionRunner
 import jakarta.servlet.http.HttpServletRequest
 import org.assertj.core.api.Assertions.assertThat
 import org.jooq.SQLDialect
@@ -99,6 +100,12 @@ class ReverseLookupWiringTest {
         return replica
     }
 
+    /** The mock database has no tenant transaction: the runner runs the block as it is. */
+    private val noTransaction =
+        object : TransactionRunner {
+            override fun <T> inTransaction(block: () -> T): T = block()
+        }
+
     @Test
     fun `INV-AC-20724 the controller is built with the reverse lookup bean and serves the operation`() {
         val replica = replica()
@@ -124,6 +131,7 @@ class ReverseLookupWiringTest {
                 ),
                 configuration.reverseLookup(replica, dsl, IntegrityStatusQueryHandler(unusedStore), audited),
                 configuration.decisionTraceLookup(replica, dsl),
+                configuration.transmittedVersionLookup(replica, dsl, noTransaction),
                 object : ObjectProvider<HttpServletRequest> {
                     override fun getObject(): HttpServletRequest = request
                 },

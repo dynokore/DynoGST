@@ -12,6 +12,8 @@ import com.dynokore.gst.evidence.application.lookup.ReverseLookup
 import com.dynokore.gst.evidence.application.lookup.ReverseLookupFilter
 import com.dynokore.gst.evidence.application.lookup.ReverseLookupResult
 import com.dynokore.gst.evidence.application.lookup.ReverseLookupRow
+import com.dynokore.gst.evidence.application.lookup.TransmittedVersionLookup
+import com.dynokore.gst.evidence.application.lookup.TransmittedVersionResult
 import com.dynokore.gst.evidence.contract.api.LookupApi
 import com.dynokore.gst.evidence.contract.model.DecisionTraceEntry
 import com.dynokore.gst.evidence.contract.model.DecisionTraceInput
@@ -22,6 +24,7 @@ import com.dynokore.gst.evidence.contract.model.IntegrityResult
 import com.dynokore.gst.evidence.contract.model.PackVersion
 import com.dynokore.gst.evidence.contract.model.ReverseLookupItem
 import com.dynokore.gst.evidence.contract.model.ReverseLookupPage
+import com.dynokore.gst.evidence.contract.model.TransmittedVersion
 import com.dynokore.platform.outboxandqueue.CausationId
 import com.dynokore.platform.outboxandqueue.CorrelationId
 import com.dynokore.platform.outboxandqueue.EntityRef
@@ -79,10 +82,12 @@ class LookupRefusalAdvice {
  * Incomplete 500 (never an empty 200).
  */
 @RestController
+@Suppress("TooManyFunctions") // one method per operation of the generated LookupApi
 open class LookupController(
     private val acknowledgementChain: AcknowledgementChainLookup,
     private val reverseLookup: ReverseLookup,
     private val decisionTrace: DecisionTraceLookup,
+    private val transmittedVersion: TransmittedVersionLookup,
     private val requests: ObjectProvider<HttpServletRequest>,
 ) : LookupApi {
     override fun getAcknowledgementChain(
@@ -211,6 +216,51 @@ open class LookupController(
             }
 
             DecisionTraceResult.Malformed -> {
+                refuse(ClosedErrorCode.INTERNAL_ERROR)
+            }
+        }
+    }
+
+    /**
+     * `getTransmittedVersion` (INV-T-26265; INV-REQ-645): tenant 401, version below 1 400 SRT-001 with no store read,
+     * then the use case: Found 200 (the bytes as transmitted, base64, with their SHA-256), NotFound 404 SRT-005,
+     * Forbidden 403 SRT-004, Unavailable 500 SRT-010 (never bytes of an untrusted record).
+     */
+    override fun getTransmittedVersion(
+        docUuid: UUID,
+        version: Int,
+    ): ResponseEntity<TransmittedVersion> {
+        val caller =
+            requests.getObject().getAttribute(EndUserPrincipalBindingFilter.PRINCIPAL_ATTRIBUTE) as? EndUserPrincipal
+        val tenant = caller?.tenant ?: throw LookupRefusal(ClosedErrorCode.UNAUTHENTICATED)
+        if (version < 1) throw LookupRefusal(ClosedErrorCode.CONTRACT_VIOLATION)
+        return when (
+            val result =
+                transmittedVersion.lookup(tenant, Principal(caller.actor, PrincipalKind.HUMAN), docUuid, version)
+        ) {
+            is TransmittedVersionResult.Found -> {
+                ResponseEntity.ok(
+                    TransmittedVersion(
+                        docUuid = result.docUuid,
+                        version = result.version,
+                        xmlBase64 = Base64.getEncoder().encodeToString(result.xml),
+                        xmlSha256 = result.xmlSha256,
+                        submittedAt = result.submittedAt.atOffset(ZoneOffset.UTC),
+                        acknowledgementId = result.acknowledgementId,
+                        acknowledgedAt = result.acknowledgedAt?.atOffset(ZoneOffset.UTC),
+                    ),
+                )
+            }
+
+            TransmittedVersionResult.NotFound -> {
+                refuse(ClosedErrorCode.NOT_FOUND)
+            }
+
+            TransmittedVersionResult.Forbidden -> {
+                refuse(ClosedErrorCode.ACCESS_DENIED)
+            }
+
+            TransmittedVersionResult.Unavailable -> {
                 refuse(ClosedErrorCode.INTERNAL_ERROR)
             }
         }

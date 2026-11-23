@@ -28,4 +28,4 @@ channel	gst.evidence.example-happened.v1	UNASSIGNED
 channel	gst.evidence.archive-volume-measured.v1	INV-T-9909
 channel	gst.evidence.offboarding-export-finished.v1	INV-T-22956
 operation	listRenditionSampleChecks	UNASSIGNED
-operation	getTransmittedVersion	UNASSIGNED
+operation	getTransmittedVersion	INV-T-26265
