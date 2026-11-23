@@ -2,6 +2,7 @@ package com.dynokore.gst.canonical.application.document
 
 import com.dynokore.gst.canonical.application.source.RecordedResult
 import com.dynokore.gst.canonical.domain.document.Direction
+import com.dynokore.gst.canonical.domain.netting.DocumentFunction
 import com.dynokore.gst.canonical.domain.source.SourceKey
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -32,6 +33,7 @@ data class RecordDocumentCommand(
     val documentNumber: String? = null,
     val networkPath: RoutingNetworkPath = RoutingNetworkPath.NOT_ON_NETWORK,
     val nettedCreditNoteKeys: List<String> = emptyList(),
+    val documentFunction: DocumentFunction? = null,
 )
 
 /** Builds the result text of a recorded document; implemented outside this service. */

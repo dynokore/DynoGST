@@ -1,8 +1,12 @@
 package com.dynokore.gst.canonical.application.document
 
+import com.dynokore.gst.canonical.application.inbound.InboundEventStore
 import com.dynokore.gst.canonical.application.netting.DeclaredCreditNotes
 import com.dynokore.gst.canonical.application.netting.NetRederivation
+import com.dynokore.gst.canonical.domain.document.Direction
 import com.dynokore.gst.canonical.domain.document.NewDocument
+import com.dynokore.gst.canonical.domain.inbound.InboundEvent
+import com.dynokore.gst.canonical.domain.inbound.InboundKind
 import com.dynokore.platform.serviceruntime.persistence.UpdateOutcome
 import java.util.UUID
 
@@ -14,7 +18,9 @@ class DocumentRowConflict(
 
 /**
  * Writes the row of a record only through the single version writer, so `CanonicalVersionCreated` is staged in the
- * same transaction as the version (transactional outbox). It takes no store: nothing is written behind the writer.
+ * same transaction as the version (transactional outbox). Every version also appends its `inbound_event` row through
+ * [inbound] (kind POSTING, the asserted document function unchanged), in the caller's transaction, so both roll back
+ * together. A network receipt is refused before any write: the receipt fields are not on the command.
  * A version without a scope verdict or without a prescribed period is written but not announced; a later version
  * announces. After an ERP version above 1 it calls [rederivation] in the same transaction (INV-REQ-558 behavior 6)
  * with the credit notes the ERP declared on the record, resolved by [declaredCreditNotes].
@@ -23,6 +29,7 @@ class DocumentRowWriter(
     private val writer: CanonicalVersionWriter,
     private val rederivation: NetRederivation,
     private val declaredCreditNotes: DeclaredCreditNotes,
+    private val inbound: InboundEventStore,
 ) {
     fun write(
         command: RecordDocumentCommand,
@@ -30,6 +37,9 @@ class DocumentRowWriter(
         version: Int,
         facts: DocumentRowFacts,
     ) {
+        check(command.networkPath != RoutingNetworkPath.RECEIVED_VIA_NETWORK) {
+            "a network receipt is recorded as a RECEIPT row, not by the record path"
+        }
         val reason = unannouncedReason(facts)
         if (version == 1) {
             val document = newDocument(command, docUuid, facts)
@@ -38,6 +48,7 @@ class DocumentRowWriter(
             } else {
                 writer.createFirstUnannounced(document, reason)
             }
+            inbound.append(inboundEventOf(command, facts), docUuid, version)
             return
         }
         val expected = version - 1
@@ -48,7 +59,24 @@ class DocumentRowWriter(
                 writer.nextUnannounced(docUuid, expected, facts.version, reason)
             }
         if (outcome is UpdateOutcome.Conflict) throw DocumentRowConflict(docUuid, expected)
+        inbound.append(inboundEventOf(command, facts), docUuid, version)
         rederivation.afterErpVersion(docUuid, version, declaredCreditNotes.of(command, facts.entityId))
+    }
+
+    private fun inboundEventOf(
+        command: RecordDocumentCommand,
+        facts: DocumentRowFacts,
+    ): InboundEvent {
+        val purchase = checkNotNull(command.direction) { "direction is absent" } == Direction.PURCHASE
+        return InboundEvent(
+            kind = InboundKind.POSTING,
+            entityId = facts.entityId,
+            documentFunction = checkNotNull(command.documentFunction) { "documentFunction is absent" },
+            supplierScheme = if (purchase) command.supplier.scheme else "",
+            supplierValue = if (purchase) command.supplier.value else "",
+            documentNumber = checkNotNull(command.documentNumber) { "documentNumber is absent" },
+            transactionDate = facts.version.transactionDate,
+        )
     }
 
     private fun unannouncedReason(facts: DocumentRowFacts): UnannouncedReason? =

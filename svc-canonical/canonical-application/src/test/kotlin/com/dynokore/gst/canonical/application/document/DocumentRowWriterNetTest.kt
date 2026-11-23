@@ -1,5 +1,6 @@
 package com.dynokore.gst.canonical.application.document
 
+import com.dynokore.gst.canonical.application.inbound.InboundEventStore
 import com.dynokore.gst.canonical.application.netting.DeclaredCreditNotes
 import com.dynokore.gst.canonical.application.netting.NetCreditNoteRef
 import com.dynokore.gst.canonical.application.netting.NetDerivationDocuments
@@ -11,6 +12,11 @@ import com.dynokore.gst.canonical.domain.document.DocumentState
 import com.dynokore.gst.canonical.domain.document.NewDocument
 import com.dynokore.gst.canonical.domain.document.NewVersion
 import com.dynokore.gst.canonical.domain.document.ScopeVerdict
+import com.dynokore.gst.canonical.domain.inbound.BuyerDisposition
+import com.dynokore.gst.canonical.domain.inbound.Existing
+import com.dynokore.gst.canonical.domain.inbound.FallbackKey
+import com.dynokore.gst.canonical.domain.inbound.InboundEvent
+import com.dynokore.gst.canonical.domain.inbound.UuidKey
 import com.dynokore.gst.canonical.domain.netting.Derived
 import com.dynokore.gst.canonical.domain.netting.DocumentFunction
 import com.dynokore.gst.canonical.domain.netting.NetBase
@@ -198,7 +204,22 @@ class DocumentRowWriterNetTest {
             }
         }
 
-    private val rowWriter = DocumentRowWriter(versionWriter, rederivation, declaredCreditNotes)
+    private val noInbound =
+        object : InboundEventStore {
+            override fun append(
+                event: InboundEvent,
+                docUuid: UUID,
+                version: Int,
+            ) = Unit
+
+            override fun findByUuidKey(uuidKey: UuidKey): List<Existing> = error("not used")
+
+            override fun findByFallbackKey(fallbackKey: FallbackKey): List<Existing> = error("not used")
+
+            override fun previousDisposition(docUuid: UUID): BuyerDisposition? = error("not used")
+        }
+
+    private val rowWriter = DocumentRowWriter(versionWriter, rederivation, declaredCreditNotes, noInbound)
 
     private val command =
         RecordDocumentCommand(
@@ -213,6 +234,7 @@ class DocumentRowWriterNetTest {
             buyer = PartyIdentifier("UEN", "BUY-1"),
             invoiceBacked = true,
             documentNumber = "INV-001",
+            documentFunction = DocumentFunction.INVOICE,
         )
 
     private val facts =

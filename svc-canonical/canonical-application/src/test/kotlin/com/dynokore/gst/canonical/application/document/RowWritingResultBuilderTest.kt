@@ -1,5 +1,6 @@
 package com.dynokore.gst.canonical.application.document
 
+import com.dynokore.gst.canonical.application.inbound.InboundEventStore
 import com.dynokore.gst.canonical.application.netting.DeclaredCreditNotes
 import com.dynokore.gst.canonical.application.netting.NetCreditNoteRef
 import com.dynokore.gst.canonical.application.netting.NetDerivationDocuments
@@ -11,7 +12,13 @@ import com.dynokore.gst.canonical.domain.document.DocumentState
 import com.dynokore.gst.canonical.domain.document.NewDocument
 import com.dynokore.gst.canonical.domain.document.NewVersion
 import com.dynokore.gst.canonical.domain.document.ScopeVerdict
+import com.dynokore.gst.canonical.domain.inbound.BuyerDisposition
+import com.dynokore.gst.canonical.domain.inbound.Existing
+import com.dynokore.gst.canonical.domain.inbound.FallbackKey
+import com.dynokore.gst.canonical.domain.inbound.InboundEvent
+import com.dynokore.gst.canonical.domain.inbound.UuidKey
 import com.dynokore.gst.canonical.domain.netting.Derived
+import com.dynokore.gst.canonical.domain.netting.DocumentFunction
 import com.dynokore.platform.serviceruntime.persistence.UpdateOutcome
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
@@ -32,6 +39,7 @@ class RowWritingResultBuilderTest {
     private val versionCalls = mutableListOf<Triple<UUID, Int, NewVersion>>()
     private val staged = mutableListOf<CanonicalVersionCreatedFacts>()
     private var conflict = false
+    private val appended = mutableListOf<UUID>()
 
     private val store =
         object : DocumentStore {
@@ -132,7 +140,24 @@ class RowWritingResultBuilderTest {
                 entityId: UUID,
             ): List<UUID> = emptyList()
         }
-    private val rowWriter = DocumentRowWriter(versionWriter, noRederivation, noDeclared)
+    private val noInbound =
+        object : InboundEventStore {
+            override fun append(
+                event: InboundEvent,
+                docUuid: UUID,
+                version: Int,
+            ) {
+                appended += docUuid
+            }
+
+            override fun findByUuidKey(uuidKey: UuidKey): List<Existing> = error("not used")
+
+            override fun findByFallbackKey(fallbackKey: FallbackKey): List<Existing> = error("not used")
+
+            override fun previousDisposition(docUuid: UUID): BuyerDisposition? = error("not used")
+        }
+
+    private val rowWriter = DocumentRowWriter(versionWriter, noRederivation, noDeclared, noInbound)
 
     private fun version(
         verdict: ScopeVerdict? = ScopeVerdict.IN_SCOPE,
@@ -176,6 +201,7 @@ class RowWritingResultBuilderTest {
         invoiceBacked = true,
         documentNumber = number,
         networkPath = path,
+        documentFunction = DocumentFunction.INVOICE,
     )
 
     private var innerCalls = 0
@@ -247,6 +273,14 @@ class RowWritingResultBuilderTest {
     fun `INV-AC-21478 absent document number is refused SRT-001 before any call`() {
         assertThrows<RecordRefused> { builder().build(command(number = null), d1) }.code shouldBe "SRT-001"
         calls shouldBe emptyList()
+    }
+
+    @Test
+    fun `INV-AC-28091 C5 an absent document function is refused SRT-001 before any call`() {
+        val refused = assertThrows<RecordRefused> { builder().build(command().copy(documentFunction = null), d1) }
+        refused.code shouldBe "SRT-001"
+        calls shouldBe emptyList()
+        appended shouldBe emptyList()
     }
 
     @Test

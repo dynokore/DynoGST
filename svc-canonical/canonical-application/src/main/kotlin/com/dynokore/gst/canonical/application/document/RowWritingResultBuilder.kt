@@ -17,7 +17,11 @@ class RowWritingResultBuilder(
         command: RecordDocumentCommand,
         docUuid: UUID,
     ): String {
-        if (command.direction == null || command.documentNumber == null) throw RecordRefused("SRT-001")
+        if (command.direction == null || command.documentNumber == null ||
+            command.documentFunction == null
+        ) {
+            throw RecordRefused("SRT-001")
+        }
         val version = versions.nextVersion(docUuid)
         val text = inner.build(command, docUuid)
         val facts = source.factsOf(command, docUuid, version, text) ?: return text
