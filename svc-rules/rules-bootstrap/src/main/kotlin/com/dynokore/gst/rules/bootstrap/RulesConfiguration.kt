@@ -829,7 +829,7 @@ class RulesConfiguration {
         return AcknowledgePackDelta(permission, store, deltas, policies, acknowledgements, clock)
     }
 
-    /** The read of the stored acknowledgement (INV-T-27762): each tenant-bound read in its own transaction, no write. */
+    /** The read of the stored acknowledgement (INV-T-27762); each tenant-bound read has its own transaction. */
     @Bean
     fun storedPackDeltaAcknowledgements(
         permission: AcknowledgementPermissionPort,

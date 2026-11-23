@@ -918,9 +918,12 @@ class StoredPackDeltaAcknowledgements(
         actor: String,
     ): StoredPackDeltaAcknowledgement {
         if (!permission.mayAcknowledge(actor)) return StoredPackDeltaAcknowledgement.Denied
-        val row =
-            acknowledgements.find(tenantId, packType, version) ?: return StoredPackDeltaAcknowledgement.NotFound
-        return StoredPackDeltaAcknowledgement.Found(row, graceWindowEnd(tenantId, packType, version))
+        val row = acknowledgements.find(tenantId, packType, version)
+        return if (row == null) {
+            StoredPackDeltaAcknowledgement.NotFound
+        } else {
+            StoredPackDeltaAcknowledgement.Found(row, graceWindowEnd(tenantId, packType, version))
+        }
     }
 
     private fun graceWindowEnd(
@@ -928,8 +931,9 @@ class StoredPackDeltaAcknowledgements(
         packType: String,
         version: String,
     ): LocalDate? {
-        val registryRow = registry.find(packType, version) ?: return null
-        val completedAt = deltas.completedAt(tenantId, packType, version) ?: return null
+        val registryRow = registry.find(packType, version)
+        val completedAt = registryRow?.let { deltas.completedAt(tenantId, packType, version) }
+        if (registryRow == null || completedAt == null) return null
         val p = policies.read(tenantId)
         val end =
             GraceWindow.endsOn(
