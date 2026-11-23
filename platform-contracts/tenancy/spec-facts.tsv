@@ -41,3 +41,10 @@ openapi.yaml	/components/schemas/RenditionResponsibilityRequest/properties/rende
 openapi.yaml	/components/schemas/RenditionResponsibilityRequest/properties/renderer/enum	equals	["SELF","AGENT","AGGREGATOR"]	FR-AC.1
 openapi.yaml	/components/schemas/CreateGroupRequest/properties/groupKind/x-extensible-enum	absent	-	FR-G.1
 openapi.yaml	/components/schemas/CreateGroupRequest/properties/groupKind/enum	equals	["GST_GROUP","DIVISIONAL"]	FR-G.1
+openapi.yaml	/paths/~1internal~1v1~1tenancy~1entities~1{entityRef}~1rate-source-elections/post/x-requirements	contains	"INV-REQ-505"	INV-REQ-505
+openapi.yaml	/paths/~1internal~1v1~1tenancy~1entities~1{entityRef}~1elections/post/x-requirements	contains	"INV-REQ-505"	INV-REQ-505
+openapi.yaml	/paths/~1internal~1v1~1tenancy~1entities~1{entityRef}~1election-changes~1{changeRef}~1approve/post/x-requirements	contains	"INV-REQ-505"	INV-REQ-505
+openapi.yaml	/paths/~1internal~1v1~1tenancy~1entities~1{entityRef}~1deregister/post/x-requirements	contains	"INV-REQ-956"	INV-REQ-956
+openapi.yaml	/paths/~1internal~1v1~1tenancy~1tenants~1{tenantRef}~1offboarding/post/x-requirements	contains	"INV-REQ-956"	INV-REQ-956
+openapi.yaml	/paths/~1internal~1v1~1tenancy~1tenants~1{tenantRef}~1open/post/x-requirements	contains	"INV-REQ-8100"	INV-REQ-8100
+openapi.yaml	/paths/~1internal~1v1~1tenancy~1tenants~1{tenantRef}~1close/post/x-requirements	contains	"INV-REQ-8100"	INV-REQ-8100

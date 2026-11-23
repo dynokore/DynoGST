@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: tenancy API
-  version: 2.3.0
+  version: 2.3.1
   description: 'Contract-first source of truth for tenancy (API-01, STK-44), replacing the INV-T-2849
     scaffold (INV-T-2857, T13). Internal API only (SDS/04-api-standards §1): organisation structure and
     each entity''s regulatory profile, called by console-bff (commands), control-plane-svc (tenant provisioning
@@ -452,6 +452,7 @@ paths:
       - FR-AC.1
       - FR-X.5
       - FR-AB.9
+      - INV-REQ-956
       x-error-codes:
       - TNC-008
       x-operation:
@@ -1244,6 +1245,7 @@ paths:
       x-requirements:
       - FR-AC.1
       - FR-6.13
+      - INV-REQ-505
       x-error-codes:
       - POL-014
       - TNC-013
@@ -1920,6 +1922,7 @@ paths:
       x-requirements:
       - FR-AC.1
       - FR-6.1
+      - INV-REQ-505
       x-error-codes:
       - POL-014
       - TNC-013
@@ -2021,6 +2024,7 @@ paths:
       x-requirements:
       - FR-AC.1
       - FR-6.1
+      - INV-REQ-505
       x-error-codes:
       - POL-014
       x-operation:
@@ -2923,6 +2927,7 @@ paths:
       x-requirements:
       - FR-AC.1
       - FR-Q.16
+      - INV-REQ-8100
       x-error-codes:
       - TNC-012
       x-sync-edge: control-plane-svc->tenancy-svc
@@ -3010,6 +3015,7 @@ paths:
       - FR-G.10
       - FR-AB.9
       - FR-AF.8
+      - INV-REQ-956
       x-entity-ref: entityRef
       x-error-codes:
       - TNC-008
@@ -3110,6 +3116,7 @@ paths:
       - FR-G.10
       - FR-AB.9
       - FR-AF.8
+      - INV-REQ-8100
       x-error-codes:
       - DEP-007
       - TNC-014
