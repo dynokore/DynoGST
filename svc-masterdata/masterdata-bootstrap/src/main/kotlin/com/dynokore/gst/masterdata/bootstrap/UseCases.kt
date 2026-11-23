@@ -33,6 +33,7 @@ import java.time.Clock
  * INV-Q-4196): the one application pool is Spring Boot's `dataSource` from spring.datasource.* (TPL-16).
  */
 @Configuration(proxyBeanMethods = false)
+@Suppress("TooManyFunctions") // one bean method per wired part (INV-Q-4629), as the sibling configurations do
 class UseCases {
     @Bean
     fun tripleRepository(

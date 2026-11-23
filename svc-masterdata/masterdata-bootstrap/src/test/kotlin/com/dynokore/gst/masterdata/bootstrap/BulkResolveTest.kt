@@ -165,8 +165,7 @@ class BulkResolveTest {
             assertThat(env.captured.envelopes.size).isEqualTo(events)
         }
 
-    private fun CounterpartyEnv.partyVersions(party: String) =
-        rows("counterparty_version", party, "party_version").size
+    private fun CounterpartyEnv.partyVersions(party: String) = rows("counterparty_version", party, "party_version").size
 
     private fun CounterpartyEnv.keyRows(
         actor: String,

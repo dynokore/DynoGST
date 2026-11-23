@@ -64,7 +64,9 @@ open class RemediationController(
                 actor,
                 RecordCommand(entity, party, change, evidence, WriteOrigin.OPERATOR, request.docUuids.distinct()),
             )
-        return ResponseEntity.ok(BulkResolveResult(resolvedCount = outcome.resolved, unchangedCount = outcome.unchanged))
+        return ResponseEntity.ok(
+            BulkResolveResult(resolvedCount = outcome.resolved, unchangedCount = outcome.unchanged),
+        )
     }
 
     override fun resolveMasterDataGap(
