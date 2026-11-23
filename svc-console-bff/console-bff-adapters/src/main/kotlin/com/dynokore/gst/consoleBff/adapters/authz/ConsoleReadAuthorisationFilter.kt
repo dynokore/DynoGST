@@ -63,7 +63,10 @@ class ConsoleReadAuthorisationFilter(
             (request.getAttribute(ConsoleSessionFilter.TENANT_ATTRIBUTE) as? String)
                 ?.let { runCatching { TenantId.of(it) }.getOrNull() }
         // HEAD is the same read as GET
-        val key = permissions.keyFor("GET", request.requestURI)
+        val key =
+            permissions.keyFor("GET", request.requestURI) { name ->
+                request.getParameterValues(name)?.singleOrNull()?.takeIf { it.isNotBlank() }
+            }
         return when {
             principalId == null || tenant == null -> {
                 Verdict.UNAUTHENTICATED

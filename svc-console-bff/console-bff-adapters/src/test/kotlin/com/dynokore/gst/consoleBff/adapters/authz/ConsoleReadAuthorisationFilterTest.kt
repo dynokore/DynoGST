@@ -277,6 +277,113 @@ class ConsoleReadAuthorisationFilterTest {
         }
     }
 
+    private val asked = mutableListOf<String>()
+    private val domainReplica =
+        AuthorityReplica(
+            clock,
+            OperationRoleMap { key ->
+                asked += key
+                if (key == "key.a") mapOf(FIXTURE_ROLE to CellAllowance.PERMITTED) else emptyMap()
+            },
+        )
+    private val domainFilter =
+        ConsoleReadAuthorisationFilter(
+            CatalogueReadPermissions(
+                domainEntries =
+                    listOf(
+                        CatalogueReadPermissions.DomainEntry(
+                            "GET",
+                            "/x/{id}/y",
+                            "fixtureOp",
+                            "d",
+                            mapOf("a" to "key.a", "b" to "key.b"),
+                        ),
+                    ),
+            ),
+            domainReplica,
+            clock,
+        )
+
+    private fun runDomain(
+        uri: String,
+        vararg query: Pair<String, String>,
+    ): Outcome {
+        val request = MockHttpServletRequest("GET", uri).apply { requestURI = uri }
+        request.setAttribute(ConsoleSessionFilter.PRINCIPAL_ATTRIBUTE, "p1")
+        request.setAttribute(ConsoleSessionFilter.TENANT_ATTRIBUTE, tenant.toString())
+        query.forEach { request.addParameter(it.first, it.second) }
+        val response = MockHttpServletResponse()
+        val chain = MockFilterChain()
+        domainFilter.doFilter(request, response, chain)
+        return Outcome(response, chain)
+    }
+
+    private fun domainGranted() {
+        domainReplica.onSnapshotComplete(1)
+        domainReplica.accept(
+            AuthorityChanged(
+                tenant,
+                "p1",
+                2,
+                AuthorityRecord.RoleGrantRecord(
+                    "g1",
+                    RoleGrantState.ACTIVE,
+                    RoleGrant(FIXTURE_ROLE, GrantScope.TENANT, tenant.toString(), clock.instant().minusSeconds(60)),
+                ),
+            ),
+        )
+    }
+
+    private fun refused(out: Outcome) {
+        out.response.status shouldBe 403
+        out.response.contentAsString shouldContain "SRT-004"
+        out.called shouldBe false
+    }
+
+    @Test
+    fun `INV-AC-27033 the first domain value passes, the chain is called once and only its key is asked`() {
+        domainGranted()
+        val out = runDomain("/x/q1/y", "d" to "a")
+        out.response.status shouldBe 200
+        out.called shouldBe true
+        asked shouldBe listOf("key.a")
+    }
+
+    @Test
+    fun `INV-AC-27033 the second domain value is refused 403 SRT-004`() {
+        domainGranted()
+        refused(runDomain("/x/q1/y", "d" to "b"))
+    }
+
+    @Test
+    fun `INV-AC-27033 an unlisted, case look-alike, missing, doubled or blank value is refused`() {
+        domainGranted()
+        refused(runDomain("/x/q1/y", "d" to "c"))
+        refused(runDomain("/x/q1/y", "d" to "A"))
+        refused(runDomain("/x/q1/y"))
+        refused(runDomain("/x/q1/y", "d" to "a", "d" to "a"))
+        refused(runDomain("/x/q1/y", "d" to ""))
+        asked shouldBe emptyList()
+    }
+
+    @Test
+    fun `INV-AC-27033 a path of another shape is refused`() {
+        domainGranted()
+        for (uri in listOf("/x//y", "/x/q1/z/y", "/x/q1/y/", "/x/q1", "/x/q1/z", "/w/q1/y")) {
+            refused(runDomain(uri, "d" to "a"))
+        }
+        asked shouldBe emptyList()
+    }
+
+    @Test
+    fun `INV-AC-27033 a template without braces still matches by equality`() {
+        caughtUp()
+        grant(2)
+        run(uri = "/v1/exceptions").called shouldBe true
+        refused(run(uri = "/v1/exceptions/"))
+        CatalogueReadPermissions.DOMAIN_ENTRIES shouldBe emptyList()
+    }
+
     private companion object {
         const val FIXTURE_ROLE = "fixture-holder"
     }

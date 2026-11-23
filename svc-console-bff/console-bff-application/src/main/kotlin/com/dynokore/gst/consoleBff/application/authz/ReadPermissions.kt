@@ -12,6 +12,17 @@ fun interface ReadPermissions {
     ): String?
 
     /**
+     * The permission key of the request ([method], concrete [path]), where [queryValue] returns the single non-blank
+     * value of a named query parameter, or null when it is missing, blank or given more than once. Defaults to the
+     * path-only lookup, so an implementer that needs no query value is unchanged.
+     */
+    fun keyFor(
+        method: String,
+        path: String,
+        queryValue: (String) -> String?,
+    ): String? = keyFor(method, path)
+
+    /**
      * The name of the query parameter that carries the entity a read of the route names, or null when the read names
      * no entity (then it is decided at tenant scope). Meaningful only for a mapped route.
      */
