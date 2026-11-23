@@ -17,11 +17,16 @@ data class PreIssuanceReason(
     val overridable: Boolean,
 )
 
+/** Who performs the wrongful GST charge check (VP-50, INV-REQ-1311). */
+enum class WrongfulChargeCheck { SYSTEM_EVERY_PATH, RELY_ON_AP_CHECK }
+
 /** Decision input. [gstAmount] is the document-level GST amount as a decimal string; null means missing. */
 data class PreIssuanceInput(
     val submissionType: PreIssuanceSubmissionType,
     val registerStatus: PreIssuanceRegisterStatus,
     val gstAmount: String?,
+    val wrongfulChargeCheck: WrongfulChargeCheck,
+    val relayIssuance: Boolean,
 )
 
 /** Typed input error: invalid input is refused, never decided as PASS (OWASP ASVS V5, NIST SP 800-53 SI-10). */
@@ -53,9 +58,23 @@ object PreIssuanceVerdictDecision {
     fun decide(input: PreIssuanceInput): PreIssuanceOutcome {
         val text = input.gstAmount
         return when {
-            text == null -> PreIssuanceOutcome.Refused(PreIssuanceInputError.MISSING_AMOUNT)
-            !AMOUNT.matches(text) -> PreIssuanceOutcome.Refused(PreIssuanceInputError.INVALID_AMOUNT)
-            else -> decideValid(input.submissionType, input.registerStatus, BigDecimal(text))
+            text == null -> {
+                PreIssuanceOutcome.Refused(PreIssuanceInputError.MISSING_AMOUNT)
+            }
+
+            !AMOUNT.matches(text) -> {
+                PreIssuanceOutcome.Refused(PreIssuanceInputError.INVALID_AMOUNT)
+            }
+
+            else -> {
+                decideValid(
+                    input.submissionType,
+                    input.registerStatus,
+                    BigDecimal(text),
+                    input.wrongfulChargeCheck,
+                    input.relayIssuance,
+                )
+            }
         }
     }
 
@@ -63,12 +82,20 @@ object PreIssuanceVerdictDecision {
         type: PreIssuanceSubmissionType,
         status: PreIssuanceRegisterStatus,
         amount: BigDecimal,
+        check: WrongfulChargeCheck,
+        relayIssuance: Boolean,
     ): PreIssuanceOutcome {
         val wrongful = status == PreIssuanceRegisterStatus.NOT_REGISTERED && amount.compareTo(BigDecimal.ZERO) != 0
         return when {
             wrongful -> {
                 val verdict =
-                    if (type == PreIssuanceSubmissionType.TYPE_1A) PreIssuanceVerdict.BLOCK else PreIssuanceVerdict.WARN
+                    if (check == WrongfulChargeCheck.RELY_ON_AP_CHECK && !relayIssuance) {
+                        PreIssuanceVerdict.WARN
+                    } else if (type == PreIssuanceSubmissionType.TYPE_1A) {
+                        PreIssuanceVerdict.BLOCK
+                    } else {
+                        PreIssuanceVerdict.WARN
+                    }
                 decided(verdict, listOf(PreIssuanceReason(WRONGFUL_GST_CODE, WRONGFUL_GST_FIELD, true)))
             }
 
@@ -87,13 +114,18 @@ object PreIssuanceVerdictDecision {
         submissionType: String?,
         registerStatus: String?,
         gstAmount: String?,
+        wrongfulChargeCheck: String?,
+        relayIssuance: Boolean,
     ): PreIssuanceOutcome {
+        val check =
+            WrongfulChargeCheck.entries.firstOrNull { it.name == wrongfulChargeCheck }
+                ?: WrongfulChargeCheck.SYSTEM_EVERY_PATH
         val type = PreIssuanceSubmissionType.entries.firstOrNull { it.name == submissionType }
         val status = PreIssuanceRegisterStatus.entries.firstOrNull { it.name == registerStatus }
         return when {
             type == null -> PreIssuanceOutcome.Refused(PreIssuanceInputError.INVALID_SUBMISSION_TYPE)
             status == null -> PreIssuanceOutcome.Refused(PreIssuanceInputError.INVALID_STATUS)
-            else -> decide(PreIssuanceInput(type, status, gstAmount))
+            else -> decide(PreIssuanceInput(type, status, gstAmount, check, relayIssuance))
         }
     }
 
