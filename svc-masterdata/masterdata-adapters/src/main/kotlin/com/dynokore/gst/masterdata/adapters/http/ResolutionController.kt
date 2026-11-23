@@ -259,10 +259,20 @@ open class ResolutionController(
         correctCounterpartyDataRequest: CorrectCounterpartyDataRequest,
     ): ResponseEntity<CounterpartyVersion> {
         val request = correctCounterpartyDataRequest
-        val caller = permitted()
+        val caller = tenants.currentActor()?.takeIf { it.isNotBlank() }
+        if (caller == null || !permission.holds(caller, PRIVACY_REQUEST_HANDLE)) {
+            throw ApiRefusal(ClosedErrorCode.ACCESS_DENIED)
+        }
         val party = runCatching { PartyRef(counterpartyRef) }.getOrElse { invalid("counterpartyRef is invalid") }
         val entity = request.entityRef.trim().takeIf { it.isNotEmpty() } ?: invalid("entityRef must not be blank")
-        val field = correctableField(request.field.value)
+        val field =
+            when (request.field.value) {
+                "legalName" -> CorrectableField.LEGAL_NAME
+                "addressLine1" -> CorrectableField.ADDRESS_LINE_1
+                "addressLine2" -> CorrectableField.ADDRESS_LINE_2
+                "postalCode" -> CorrectableField.POSTAL_CODE
+                else -> invalid("field is not correctable")
+            }
         val command = CorrectionCommand(entity, party, request.caseId, field, request.correctedValue, caller)
         val result =
             tx.inTransaction {
@@ -294,25 +304,6 @@ open class ResolutionController(
             }
         }
     }
-
-    /** The acting user ID, once `privacy-request.handle` is decided for it through the replica (INV-Q-10027). */
-    private fun permitted(): String {
-        val caller = tenants.currentActor()?.takeIf { it.isNotBlank() }
-        if (caller == null || !permission.holds(caller, PRIVACY_REQUEST_HANDLE)) {
-            throw ApiRefusal(ClosedErrorCode.ACCESS_DENIED)
-        }
-        return caller
-    }
-
-    /** The contract `field` value to the correctable field, by equality; any other value is refused. */
-    private fun correctableField(value: String): CorrectableField =
-        when (value) {
-            "legalName" -> CorrectableField.LEGAL_NAME
-            "addressLine1" -> CorrectableField.ADDRESS_LINE_1
-            "addressLine2" -> CorrectableField.ADDRESS_LINE_2
-            "postalCode" -> CorrectableField.POSTAL_CODE
-            else -> invalid("field is not correctable")
-        }
 
     private fun invalid(message: String): Nothing = throw ApiRefusal(ClosedErrorCode.CONTRACT_VIOLATION, message)
 
