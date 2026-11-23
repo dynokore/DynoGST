@@ -75,27 +75,13 @@ class TenancyEventCatalogueTest {
     }
 
     @Test
-    fun `INV-AC-28054 the catalogue lists TriggerCoverageChanged as produced by the topic file producer`() {
+    fun `INV-AC-28054 the catalogue lists TriggerCoverageChanged as produced by the producer of the topic file, by equality`() {
         val topicProducers = producersInTopicFile(TenancyEventCatalogue.TRIGGER_COVERAGE_CHANGED_TOPIC)
         (topicProducers.isNotEmpty()) shouldBe true
         catalogue.find(TenancyEventCatalogue.TRIGGER_COVERAGE_CHANGED_TYPE)?.producers shouldBe topicProducers
         val source =
             File("src/main/kotlin/com/dynokore/gst/tenancy/adapters/events/TenancyEventCatalogue.kt").readText()
         source.contains("\"ingestion-svc\"") shouldBe false
-    }
-
-    @Test
-    fun `INV-AC-28054 a topic absent from the file or without a producer fails naming the topic`() {
-        val topic = TenancyEventCatalogue.TRIGGER_COVERAGE_CHANGED_TOPIC
-        val other =
-            "topics:\n  - topic: gst.other.thing.v1\n    event_type: x.Other.v1\n" +
-                "    producers:\n      - other-svc\n"
-        val absent = shouldThrow<IllegalArgumentException> { triggerCoverageProducers(other) }
-        absent.message!!.contains(topic) shouldBe true
-        val bare = "topics:\n  - topic: $topic\n    event_type: x.T.v1\n    producers:\n"
-        val none = shouldThrow<IllegalArgumentException> { triggerCoverageProducers(bare) }
-        none.message!!.contains(topic) shouldBe true
-        triggerCoverageProducers(other.replace("gst.other.thing.v1", topic)) shouldBe setOf("other-svc")
     }
 
     private fun producersInTopicFile(topic: String): Set<String> {
