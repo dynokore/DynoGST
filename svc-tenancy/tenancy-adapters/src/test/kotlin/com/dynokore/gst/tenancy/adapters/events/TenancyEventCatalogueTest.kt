@@ -75,7 +75,7 @@ class TenancyEventCatalogueTest {
     }
 
     @Test
-    fun `INV-AC-28054 the catalogue lists TriggerCoverageChanged as produced by the producer of the topic file, by equality`() {
+    fun `INV-AC-28054 the catalogue lists TriggerCoverageChanged as produced by the topic file producer`() {
         val topicProducers = producersInTopicFile(TenancyEventCatalogue.TRIGGER_COVERAGE_CHANGED_TOPIC)
         (topicProducers.isNotEmpty()) shouldBe true
         catalogue.find(TenancyEventCatalogue.TRIGGER_COVERAGE_CHANGED_TYPE)?.producers shouldBe topicProducers
