@@ -1,0 +1,2 @@
+directory	file	unit	minimum_class	justification
+svcx	openapi.yaml	Item.name	SENSITIVE	the property carries the raw transmitted document

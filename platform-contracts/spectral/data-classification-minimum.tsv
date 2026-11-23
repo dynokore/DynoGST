@@ -1,0 +1,2 @@
+directory	file	unit	minimum_class	justification
+evidence	openapi.yaml	TransmittedVersion.xmlBase64	SENSITIVE	The property carries the raw transmitted invoice document (the XML exactly as transmitted).

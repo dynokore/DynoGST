@@ -1,0 +1,2 @@
+directory	file	unit	minimum_class	justification
+svc	openapi.yaml	Item.name	SENSITIVE	

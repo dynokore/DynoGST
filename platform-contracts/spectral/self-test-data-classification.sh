@@ -41,12 +41,21 @@ fail-defs-missing|\$defs.DataClass
 fail-defs-order|\$defs.DataClass
 fail-defs-lookalike|\$defs.DataClass
 fail-partial-wrapper-root|doc.a: row names a unit that does not exist
+fail-minimum-none|Item.name: class NONE is below the reviewed minimum SENSITIVE
+fail-minimum-identifying|Item.name: class IDENTIFYING is below the reviewed minimum SENSITIVE
+fail-minimum-unit-missing|Item.ghost: reviewed unit does not exist in the file
+fail-minimum-lookalike-unit|Item.nam: reviewed unit does not exist in the file
+fail-minimum-bad-header|minimum table: the header is not exactly directory TAB file TAB unit TAB minimum_class TAB justification
+fail-minimum-empty-justification|justification is empty
+fail-minimum-unknown-directory|svcx: openapi.yaml: Item.name: directory is not in the required table
 "
 run_case() {
   dirs=""
   for d in "$F/$1"/*/; do dirs="$dirs ${d%/}"; done
+  min="$F/minimum-empty.tsv"
+  [ -f "$F/$1/minimum.tsv" ] && min="$F/$1/minimum.tsv"
   # shellcheck disable=SC2086
-  python3 check-data-classification.py --required "$F/$1/required.tsv" $dirs 2>&1
+  python3 check-data-classification.py --required "$F/$1/required.tsv" --minimum "$min" $dirs 2>&1
 }
 for d in "$F"/pass-*/; do
   c=$(basename "$d")

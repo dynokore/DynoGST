@@ -20,8 +20,14 @@ from its schema node through `$ref` (`#/components/schemas/<N>` only), `items`, 
 Wrappers: `classification` must be `{type: string, enum: [<row class>]}`; a file with a wrapper must
 carry `$defs.DataClass` = string enum NONE, IDENTIFYING, SENSITIVE in that order.
 
+Minimum list (INV-T-27358): `--minimum <tsv>` (default: data-classification-minimum.tsv next to this script;
+header `directory` TAB `file` TAB `unit` TAB `minimum_class` TAB `justification`) names reviewed units whose
+registry class must be at or above `minimum_class` (NONE < IDENTIFYING < SENSITIVE). Directory, file and unit
+are compared by whole-string equality. The default list must have a data row; only an explicit `--minimum`
+file may be header-only.
+
 Exit 1 on any finding; every finding is one line `<directory>: <file>: <unit>: <reason>`.
-Usage: check-data-classification.py [--required <tsv>] <service-dir> [<service-dir> ...]
+Usage: check-data-classification.py [--required <tsv>] [--minimum <tsv>] <service-dir> [<service-dir> ...]
 Standard library plus PyYAML.
 """
 from __future__ import annotations
@@ -40,13 +46,16 @@ CHILD_KEYS = ("items", "additionalProperties")
 LIST_KEYS = ("allOf", "oneOf", "anyOf")
 
 findings: list[str] = []
+REGISTRY: dict[str, dict[tuple[str, str], str]] = {}
+UNITS: dict[tuple[str, str], set[str]] = {}
+MINIMUM_HEADER = ["directory", "file", "unit", "minimum_class", "justification"]
 
 
 def find(directory: str, file: str, unit: str, reason: str) -> None:
     findings.append(f"{directory}: {file}: {unit}: {reason}")
 
 
-def read_table(path: Path, header: list[str]):
+def read_table(path: Path, header: list[str], allow_empty: bool = False):
     """Rows (list of cells) after the header, or (None, reason)."""
     try:
         text = path.read_text()
@@ -58,7 +67,7 @@ def read_table(path: Path, header: list[str]):
     if lines[0].split("\t") != header:
         return None, "the header is not exactly " + " TAB ".join(header)
     if len(lines) == 1:
-        return None, "the table has no rows"
+        return ([], None) if allow_empty else (None, "the table has no rows")
     return [ln.split("\t") for ln in lines[1:]], None
 
 
@@ -172,6 +181,7 @@ def check_dir(directory: Path, name: str, files: list[str]) -> None:
             find(name, f, u, "duplicate row")
             continue
         registry[(f, u)] = c
+        REGISTRY.setdefault(name, {})[(f, u)] = c
         if f not in files:
             find(name, f, u, "row file is not a required file of the directory")
     for file in files:
@@ -179,6 +189,7 @@ def check_dir(directory: Path, name: str, files: list[str]) -> None:
         if err:
             find(name, file, "-", err)
             continue
+        UNITS[(name, file)] = set(units)
         if not units:
             find(name, file, "-", "the file has no unit")
         for u in units:
@@ -236,16 +247,48 @@ def check_dataclass(name, file, doc) -> None:
         find(name, file, "$defs.DataClass", "missing or not a string enum NONE, IDENTIFYING, SENSITIVE in that order")
 
 
+def check_minimum(rows: list[list[str]], req: dict[str, list[str]], given: dict[str, Path]) -> None:
+    for cells in rows:
+        if len(cells) != 5:
+            find("-", "minimum table", "-", f"row with {len(cells)} columns: {cells[0]!r}")
+            continue
+        d, f, u, m, j = cells
+        if m not in CLASSES:
+            find(d, f, u, f"minimum_class {m!r} is not NONE, IDENTIFYING or SENSITIVE")
+            continue
+        if j.strip() == "":
+            find(d, f, u, "justification is empty")
+            continue
+        if d not in req:
+            find(d, f, u, "directory is not in the required table")
+            continue
+        if f not in req[d] or u not in UNITS.get((d, f), set()):
+            if d in given:
+                find(d, f, u, "reviewed unit does not exist in the file")
+            continue
+        got = REGISTRY.get(d, {}).get((f, u))
+        if got is not None and CLASSES.index(got) < CLASSES.index(m):
+            find(d, f, u, f"class {got} is below the reviewed minimum {m}")
+
+
 def main(argv: list[str]) -> int:
     required_path = Path(__file__).resolve().parent / "data-classification-required.tsv"
+    minimum_path = Path(__file__).resolve().parent / "data-classification-minimum.tsv"
+    explicit_minimum = False
+    usage = "usage: check-data-classification.py [--required <tsv>] [--minimum <tsv>] <service-dir> ..."
     args = argv[:]
     if args[:1] == ["--required"]:
         if len(args) < 2:
-            print("usage: check-data-classification.py [--required <tsv>] <service-dir> ...")
+            print(usage)
             return 2
         required_path, args = Path(args[1]), args[2:]
+    if args[:1] == ["--minimum"]:
+        if len(args) < 2:
+            print(usage)
+            return 2
+        minimum_path, explicit_minimum, args = Path(args[1]), True, args[2:]
     if not args:
-        print("usage: check-data-classification.py [--required <tsv>] <service-dir> ...")
+        print(usage)
         return 2
     req: dict[str, list[str]] = {}
     rows, err = read_table(required_path, ["directory", "file"])
@@ -275,6 +318,11 @@ def main(argv: list[str]) -> int:
     for n in req:
         if n not in given:
             find(n, "-", "-", "required directory was not passed")
+    mrows, merr = read_table(minimum_path, MINIMUM_HEADER, allow_empty=explicit_minimum)
+    if merr:
+        find("-", str(minimum_path), "-", "minimum table: " + merr)
+    elif not err:
+        check_minimum(mrows, req, given)
     for line in findings:
         print(line)
     if findings:

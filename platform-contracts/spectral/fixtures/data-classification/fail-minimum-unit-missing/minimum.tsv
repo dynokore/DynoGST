@@ -1,0 +1,2 @@
+directory	file	unit	minimum_class	justification
+svc	openapi.yaml	Item.ghost	SENSITIVE	the property carries the raw transmitted document
