@@ -8,9 +8,9 @@ import java.sql.SQLException
 import java.util.UUID
 
 /**
- * INV-AC-28106 (INV-T-28107): the service-runtime tables of the notification schema are tenant data under forced row
- * level security, read through the runtime login bound to a tenant as the other database tests bind it; the installation
- * setting table is platform-scoped and the runtime login cannot write it.
+ * INV-AC-28106 (INV-T-28107): the service-runtime tables of the notification schema are tenant data under forced
+ * row level security, read through the runtime login bound to a tenant as the other database tests bind it; the
+ * installation setting table is platform-scoped and the runtime login cannot write it.
  */
 class ServiceRuntimeTablesDbTest {
     private fun <T> runtime(
@@ -91,7 +91,7 @@ class ServiceRuntimeTablesDbTest {
     }
 
     @Test
-    fun `INV-AC-28106 the installation setting table has no tenant column and the runtime login cannot insert into it`() {
+    fun `INV-AC-28106 the installation setting table has no tenant column and the runtime cannot insert`() {
         NotificationDb.superuser().use { connection ->
             connection.createStatement().use { s ->
                 s

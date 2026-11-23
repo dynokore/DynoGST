@@ -41,7 +41,7 @@ class PolicyRouteSettableTest {
     }
 
     @Test
-    fun `INV-AC-28106 a tenant-bound request with no grant gets 422 POL-006 from VP-67 and not 500 SRT-010`(
+    fun `INV-AC-28106 a tenant-bound request with no grant gets 422 POL-006 from VP-67, not 500`(
         @TempDir dir: Path,
     ) {
         NotificationContext
@@ -74,6 +74,8 @@ class PolicyRouteSettableTest {
 
     private companion object {
         const val VP = "VP-67"
-        const val TENANT = "0b8f5f0e-52a4-4d0a-9d4e-3f1f6a1c7e11" // the tenant of TestWorkloadVerifier.testEndUserResolver
+
+        // the tenant of TestWorkloadVerifier.testEndUserResolver
+        const val TENANT = "0b8f5f0e-52a4-4d0a-9d4e-3f1f6a1c7e11"
     }
 }
