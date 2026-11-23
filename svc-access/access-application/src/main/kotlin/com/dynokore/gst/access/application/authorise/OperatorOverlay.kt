@@ -1,5 +1,6 @@
 package com.dynokore.gst.access.application.authorise
 
+import com.dynokore.gst.access.application.consultant.ConsultantGrantKeys
 import com.dynokore.gst.access.application.elevation.ElevationKeys
 import com.dynokore.gst.access.application.elevation.Elevations
 import com.dynokore.gst.access.application.grant.GrantAudit
@@ -24,6 +25,7 @@ import java.time.Instant
  *   elevation of the same identity for that tenant, and only while the identity still holds `elevation.request` on a
  *   live platform grant ([operatorLive], read in a platform-bound transaction, so a revoked or expired grant closes the
  *   elevation at once; NIST SP 800-53 AC-2, AC-6). Every other key, tenant or instant keeps the DENY.
+ * - Exception: on the scope platform (no tenant) the keys in [OPEN_WITHOUT_INVITATION] stand without an invitation.
  * Each access it opens is audited (INV-AC-1930, INV-AC-7953).
  */
 class OperatorOverlay(
@@ -53,19 +55,7 @@ class OperatorOverlay(
     ): Decision =
         when {
             decision is Decision.Allow && decision.role == Role.DEPLOYMENT_OPERATOR -> {
-                val records = elevations.findByRequester(principal)
-                val invited =
-                    if (tenant == null) {
-                        OperatorAccess.invitedHere(records, principal, at)
-                    } else {
-                        OperatorAccess.invited(records, principal, tenant, at)
-                    }
-                if (invited) {
-                    used("operatorDiagnosticAccess", principal, permission, tenant)
-                    decision
-                } else {
-                    Decision.Deny(OperatorAccess.NO_INVITATION)
-                }
+                invitationRule(decision, principal, permission, tenant, at)
             }
 
             decision is Decision.Deny &&
@@ -81,6 +71,39 @@ class OperatorOverlay(
                 decision
             }
         }
+
+    /** The invitation rule of an operator ALLOW; the keys of [OPEN_WITHOUT_INVITATION] on the platform are exempt. */
+    private fun invitationRule(
+        decision: Decision.Allow,
+        principal: IdentityRef,
+        permission: Permission,
+        tenant: TenantRef?,
+        at: Instant,
+    ): Decision {
+        if (tenant == null && permission in OPEN_WITHOUT_INVITATION) return decision
+        val records = elevations.findByRequester(principal)
+        val invited =
+            if (tenant == null) {
+                OperatorAccess.invitedHere(records, principal, at)
+            } else {
+                OperatorAccess.invited(records, principal, tenant, at)
+            }
+        return if (invited) {
+            used("operatorDiagnosticAccess", principal, permission, tenant)
+            decision
+        } else {
+            Decision.Deny(OperatorAccess.NO_INVITATION)
+        }
+    }
+
+    companion object {
+        /**
+         * The exact keys an operator holds on the scope platform without an invitation (INV-REQ-888, owner ruling
+         * 2026-11-22, option A); compared by equality, every other key keeps the invitation rule (NIST SP 800-53 AC-6).
+         * The request endpoint audits each request itself (INV-AC-1942), so no second audit entry is written here.
+         */
+        val OPEN_WITHOUT_INVITATION: Set<Permission> = setOf(ConsultantGrantKeys.REQUEST)
+    }
 
     private fun used(
         action: String,

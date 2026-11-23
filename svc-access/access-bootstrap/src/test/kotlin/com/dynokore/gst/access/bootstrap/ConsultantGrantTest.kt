@@ -10,6 +10,7 @@ import com.dynokore.gst.access.contract.model.AuthoriseResponse
 import com.dynokore.gst.access.contract.model.ConsultantGrantDecisionRequest
 import com.dynokore.gst.access.contract.model.ConsultantGrantRequest
 import com.dynokore.gst.access.contract.model.ConsultantGrantRequestResponse
+import com.dynokore.gst.access.domain.elevation.OperatorAccess
 import com.dynokore.gst.access.domain.grant.IdentityRef
 import com.dynokore.gst.access.domain.role.Role
 import com.dynokore.platform.configresolver.VariationPointCatalogue
@@ -164,6 +165,11 @@ class ConsultantGrantTest {
             actor: String,
             permission: String,
         ) = into(a, actor) { authorise.authorise(actor, permission, "platform").body!!.decision }
+
+        fun platformBody(
+            actor: String,
+            permission: String,
+        ) = into(a, actor) { authorise.authorise(actor, permission, "platform").body!! }
 
         fun <T> sql(
             query: String,
@@ -396,12 +402,30 @@ class ConsultantGrantTest {
         run("PRIVATE") { env ->
             assertThat(env.request(actor = env.operator).status)
                 .isEqualTo(ConsultantGrantRequestResponse.Status.PENDING)
+            // INV-AC-27614: the platform decision is ALLOW without an invitation
+            assertThat(env.platformDecision(env.operator, "consultant-grant.request"))
+                .isEqualTo(AuthoriseResponse.Decision.ALLOW)
         }
         run("SAAS") { env ->
             denied { env.request(actor = env.operator) }
             assertThat(env.requestRows()).isZero()
         }
     }
+
+    @Test
+    fun `INV-AC-27614 private operator on platform for support-bundle export is DENY NO_INVITATION`() =
+        run("PRIVATE") { env ->
+            val body = env.platformBody(env.operator, "support-bundle.export")
+            assertThat(body.decision).isEqualTo(AuthoriseResponse.Decision.DENY)
+            assertThat(body.reasonCode).isEqualTo(OperatorAccess.NO_INVITATION)
+        }
+
+    @Test
+    fun `INV-AC-27614 saas operator platform decision for the request key stays DENY`() =
+        run("SAAS") { env ->
+            assertThat(env.platformDecision(env.operator, "consultant-grant.request"))
+                .isEqualTo(AuthoriseResponse.Decision.DENY)
+        }
 
     @Test
     fun `INV-AC-1942 a repeat of the same request while pending returns the stored one`() =
