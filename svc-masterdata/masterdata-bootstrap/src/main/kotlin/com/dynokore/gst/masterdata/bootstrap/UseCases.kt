@@ -1,10 +1,13 @@
 package com.dynokore.gst.masterdata.bootstrap
 
+import com.dynokore.gst.masterdata.adapters.persistence.JooqBulkResolveOperations
 import com.dynokore.gst.masterdata.adapters.persistence.JooqCounterpartyRepository
 import com.dynokore.gst.masterdata.adapters.persistence.JooqPendingChangeRepository
 import com.dynokore.gst.masterdata.adapters.persistence.JooqStructureNodeRepository
 import com.dynokore.gst.masterdata.adapters.persistence.JooqTripleRepository
 import com.dynokore.gst.masterdata.application.counterparty.ApplyStructureNode
+import com.dynokore.gst.masterdata.application.counterparty.BulkResolve
+import com.dynokore.gst.masterdata.application.counterparty.BulkResolveOperations
 import com.dynokore.gst.masterdata.application.counterparty.CounterpartyRepository
 import com.dynokore.gst.masterdata.application.counterparty.MasterDataResolvedPublisher
 import com.dynokore.gst.masterdata.application.counterparty.ReadCounterpartyHistory
@@ -71,6 +74,12 @@ class UseCases {
     ): CounterpartyRepository = JooqCounterpartyRepository(dsl, clock)
 
     @Bean
+    fun bulkResolveOperations(
+        dsl: DSLContext,
+        clock: Clock,
+    ): BulkResolveOperations = JooqBulkResolveOperations(dsl, clock)
+
+    @Bean
     fun structureNodeRepository(
         dsl: DSLContext,
         clock: Clock,
@@ -90,6 +99,13 @@ class UseCases {
         clock: Clock,
         publisher: MasterDataResolvedPublisher,
     ) = RecordCounterparty(tx, parties, clock, publisher)
+
+    @Bean
+    fun bulkResolve(
+        tx: TransactionRunner,
+        record: RecordCounterparty,
+        operations: BulkResolveOperations,
+    ) = BulkResolve(tx, record, operations)
 
     @Bean
     fun readCounterpartyHistory(

@@ -1,12 +1,19 @@
 package com.dynokore.gst.masterdata.bootstrap
 
+import com.dynokore.gst.masterdata.application.counterparty.MasterDataResolvedPublisher
+import com.dynokore.gst.masterdata.application.permission.MasterdataPermissions
+import com.dynokore.gst.masterdata.application.permission.TenantPermission
+import com.dynokore.gst.masterdata.domain.counterparty.CounterpartyVersion
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.springframework.beans.factory.config.BeanPostProcessor
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** `bulkResolveCounterparty` (INV-T-4944): one counterparty, one write, 2,000 documents in, 5,001 refused. */
 class BulkResolveTest {
@@ -29,6 +36,7 @@ class BulkResolveTest {
     private fun CounterpartyEnv.bulk(
         json: String,
         actor: String = OPERATOR,
+        key: UUID = UUID.randomUUID(),
     ): Pair<Int, String> {
         val mvc = MockMvcBuilders.webAppContextSetup(context.sourceApplicationContext as WebApplicationContext).build()
         return inTenant(actor) {
@@ -36,7 +44,7 @@ class BulkResolveTest {
                 .perform(
                     MockMvcRequestBuilders
                         .post("/internal/v1/masterdata/counterparties/bulk-resolution")
-                        .header("Idempotency-Key", UUID.randomUUID().toString())
+                        .header("Idempotency-Key", key.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json),
                 ).andReturn()
@@ -156,4 +164,168 @@ class BulkResolveTest {
             assertThat(env.versions()).isEqualTo(versions)
             assertThat(env.captured.envelopes.size).isEqualTo(events)
         }
+
+    private fun CounterpartyEnv.partyVersions(party: String) =
+        rows("counterparty_version", party, "party_version").size
+
+    private fun CounterpartyEnv.keyRows(
+        actor: String,
+        key: UUID,
+    ) = count(
+        "select count(*) from masterdata.bulk_resolve_operation where tenant_id = '${tenant.value}' " +
+            "and principal = '$actor' and operation_id = '$key'",
+    )
+
+    private fun threeDocs(party: String) = docs(3).let { ids -> ids to ids.map { it to party } }
+
+    /** The runner of the shared fixture with extra post-processors, for the cases that arm a fault or a grant. */
+    private fun runWith(
+        vararg processors: BeanPostProcessor,
+        block: (CounterpartyEnv) -> Unit,
+    ) {
+        processors
+            .fold(BoundaryFixture.runner()) { runner, p -> runner.withBean(BeanPostProcessor::class.java, { p }) }
+            .run { context ->
+                context.startupFailure?.let { throw it }
+                block(CounterpartyEnv(context))
+            }
+    }
+
+    @Test
+    fun `INV-AC-27568 a repeat with the same key answers unchanged and writes nothing, a new key is not a repeat`() =
+        runCounterparty { env ->
+            val party = unique("CTP-BULK")
+            val (ids, documents) = threeDocs(party)
+            val json = body(ids, documents, uen = unique("U"))
+            val key = UUID.randomUUID()
+
+            val first = env.bulk(json, key = key)
+            assertThat(first.first).isEqualTo(200)
+            assertThat(first.second).contains("\"resolvedCount\":3").contains("\"unchangedCount\":0")
+            val versions = env.partyVersions(party)
+            val events = env.captured.envelopes.size
+            assertThat(versions).isEqualTo(1)
+
+            val second = env.bulk(json, key = key)
+            assertThat(second.first).isEqualTo(200)
+            assertThat(second.second).contains("\"resolvedCount\":0").contains("\"unchangedCount\":3")
+            assertThat(env.partyVersions(party)).isEqualTo(versions)
+            assertThat(env.captured.envelopes.size).isEqualTo(events)
+
+            val fresh = env.bulk(json)
+            assertThat(fresh.first).isEqualTo(200)
+            assertThat(fresh.second).contains("\"resolvedCount\":3").contains("\"unchangedCount\":0")
+            assertThat(env.partyVersions(party)).isEqualTo(versions + 1)
+        }
+
+    @Test
+    fun `INV-AC-27568 the same key as another acting user is not a repeat`() =
+        runCounterparty { env ->
+            val party = unique("CTP-BULK")
+            val (ids, documents) = threeDocs(party)
+            val json = body(ids, documents, uen = unique("U"))
+            val key = UUID.randomUUID()
+            assertThat(env.bulk(json, key = key).second).contains("\"resolvedCount\":3")
+            val versions = env.partyVersions(party)
+
+            val other = env.bulk(json, actor = TestPermissions.OTHER_OPERATOR, key = key)
+            assertThat(other.first).isEqualTo(200)
+            assertThat(other.second).contains("\"resolvedCount\":3").contains("\"unchangedCount\":0")
+            assertThat(env.partyVersions(party)).isEqualTo(versions + 1)
+        }
+
+    @Test
+    fun `INV-AC-27568 a request refused with 400 under a key records nothing`() =
+        runCounterparty { env ->
+            val party = unique("CTP-BULK")
+            val (ids, documents) = threeDocs(party)
+            val key = UUID.randomUUID()
+            val bad = body(ids, listOf(ids[0] to party), uen = unique("U"))
+            assertThat(env.bulk(bad, key = key).first).isEqualTo(400)
+            assertThat(env.partyVersions(party)).isEqualTo(0)
+
+            val fixed = env.bulk(body(ids, documents, uen = unique("U")), key = key)
+            assertThat(fixed.first).isEqualTo(200)
+            assertThat(fixed.second).contains("\"resolvedCount\":3").contains("\"unchangedCount\":0")
+            assertThat(env.partyVersions(party)).isEqualTo(1)
+        }
+
+    @Test
+    fun `INV-AC-27568 a request refused with 403 under a key records nothing, the retry after the grant resolves`() {
+        val later = "IDN-LATER-GRANT"
+        val granted: MutableSet<String> = ConcurrentHashMap.newKeySet()
+        // the fixture decision of TestPermissions, widened by the people this test grants between two calls
+        val permission =
+            object : BeanPostProcessor {
+                override fun postProcessAfterInitialization(
+                    bean: Any,
+                    beanName: String,
+                ): Any =
+                    if (bean is TenantPermission) {
+                        TenantPermission { person, key ->
+                            (person in granted && key == MasterdataPermissions.MASTERDATA_EXCEPTION_RESOLVE) ||
+                                bean.holds(person, key)
+                        }
+                    } else {
+                        bean
+                    }
+            }
+        runWith(permission) { env ->
+            val party = unique("CTP-BULK")
+            val (ids, documents) = threeDocs(party)
+            val json = body(ids, documents, uen = unique("U"))
+            val key = UUID.randomUUID()
+            assertThat(env.bulk(json, actor = later, key = key).first).isEqualTo(403)
+            assertThat(env.partyVersions(party)).isEqualTo(0)
+
+            granted += later
+            val retry = env.bulk(json, actor = later, key = key)
+            assertThat(retry.first).isEqualTo(200)
+            assertThat(retry.second).contains("\"resolvedCount\":3").contains("\"unchangedCount\":0")
+            assertThat(env.partyVersions(party)).isEqualTo(1)
+        }
+    }
+
+    @Test
+    fun `INV-AC-27568 a write that fails after the claim leaves no key and no version, the repeat resolves`() {
+        val armed = AtomicBoolean(true)
+        val fault =
+            object : BeanPostProcessor {
+                override fun postProcessAfterInitialization(
+                    bean: Any,
+                    beanName: String,
+                ): Any =
+                    if (bean is MasterDataResolvedPublisher) {
+                        object : MasterDataResolvedPublisher by bean {
+                            override fun publish(
+                                entity: String,
+                                version: CounterpartyVersion,
+                                docUuids: List<UUID>,
+                            ) {
+                                check(!armed.getAndSet(false)) { "publisher made to fail once" }
+                                bean.publish(entity, version, docUuids)
+                            }
+                        }
+                    } else {
+                        bean
+                    }
+            }
+        runWith(fault) { env ->
+            val party = unique("CTP-BULK")
+            val (ids, documents) = threeDocs(party)
+            val json = body(ids, documents, uen = unique("U"))
+            val key = UUID.randomUUID()
+            val failed = runCatching { env.bulk(json, key = key).first }
+            assertThat(failed.getOrElse { 500 }).isEqualTo(500)
+            assertThat(armed.get()).isFalse()
+            assertThat(env.keyRows(OPERATOR, key)).isEqualTo(0)
+            assertThat(env.partyVersions(party)).isEqualTo(0)
+
+            val retry = env.bulk(json, key = key)
+            assertThat(retry.first).isEqualTo(200)
+            assertThat(retry.second).contains("\"resolvedCount\":3").contains("\"unchangedCount\":0")
+            assertThat(env.partyVersions(party)).isEqualTo(1)
+            assertThat(env.keyRows(OPERATOR, key)).isEqualTo(1)
+        }
+    }
 }

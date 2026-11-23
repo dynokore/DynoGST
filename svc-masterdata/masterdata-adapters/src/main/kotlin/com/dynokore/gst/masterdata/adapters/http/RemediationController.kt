@@ -1,5 +1,6 @@
 package com.dynokore.gst.masterdata.adapters.http
 
+import com.dynokore.gst.masterdata.application.counterparty.BulkResolve
 import com.dynokore.gst.masterdata.application.counterparty.RecordCommand
 import com.dynokore.gst.masterdata.application.counterparty.RecordCounterparty
 import com.dynokore.gst.masterdata.application.permission.MasterdataPermissions
@@ -35,6 +36,7 @@ import java.util.UUID
 // template)
 open class RemediationController(
     private val record: RecordCounterparty,
+    private val bulkResolve: BulkResolve,
     private val permission: TenantPermission,
     private val tenants: TenantContext,
 ) : RemediationApi {
@@ -56,10 +58,13 @@ open class RemediationController(
         val party = runCatching { PartyRef(parties.single()) }.getOrElse { invalid("counterpartyRef is invalid") }
         val change = CounterpartyChangeMapping.change(request.resolvedIdentifiers, null, null, null, null)
         val evidence = CounterpartyChangeMapping.evidence(request.evidenceRef)
-        record.handle(
-            RecordCommand(entity, party, change, evidence, WriteOrigin.OPERATOR, request.docUuids.distinct()),
-        )
-        return ResponseEntity.ok(BulkResolveResult(resolvedCount = docs.size, unchangedCount = 0))
+        val outcome =
+            bulkResolve.handle(
+                idempotencyKey,
+                actor,
+                RecordCommand(entity, party, change, evidence, WriteOrigin.OPERATOR, request.docUuids.distinct()),
+            )
+        return ResponseEntity.ok(BulkResolveResult(resolvedCount = outcome.resolved, unchangedCount = outcome.unchanged))
     }
 
     override fun resolveMasterDataGap(
