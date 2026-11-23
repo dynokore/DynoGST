@@ -71,7 +71,8 @@ class TenantTablesTest {
     @Test
     fun `the exemption names equal the platform-scoped tables of the outbox library`() {
         PLATFORM_SCOPED.toSet() shouldBe
-            OutboxSchema.platformScopedTables("notification").map { it.removePrefix("notification.") }.toSet()
+            OutboxSchema.platformScopedTables("notification").map { it.removePrefix("notification.") }.toSet() +
+            "config_installation_setting" // ConfigSchema: platform-scoped, no tenant data (INV-T-28107)
     }
 
     @Test
@@ -94,6 +95,7 @@ class TenantTablesTest {
                 "consumer_replay_marker",
                 "consumer_source_seen",
                 "lane_rate_window",
+                "config_installation_setting",
             )
 
         fun exempt(
