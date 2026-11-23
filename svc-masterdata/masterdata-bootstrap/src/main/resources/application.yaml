@@ -1,6 +1,7 @@
 # masterdata-bootstrap/src/main/resources/application.yaml — TPL-16 (INV-T-4942)
 spring:
   threads.virtual.enabled: true                     # STK-03
+  jackson.deserialization.fail-on-unknown-properties: true   # a body member its schema does not name is 400 SRT-001 (OWASP API6)
   main.lazy-initialization: false                   # STK-06
   # One DataSource, declared only here and in the Helm values: Spring Boot's `dataSource`, the service's one bounded,
   # elastic HikariCP pool (STK-17). No code names or builds a DataSource; service-runtime serves every platform-libs

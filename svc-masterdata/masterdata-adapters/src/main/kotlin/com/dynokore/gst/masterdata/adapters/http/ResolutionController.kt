@@ -32,13 +32,22 @@ import com.dynokore.gst.masterdata.domain.identity.EntityRef
 import com.dynokore.gst.masterdata.domain.identity.Resolution
 import com.dynokore.platform.partyregistry.IdentifierScheme
 import com.dynokore.platform.serviceruntime.http.ClosedErrorCode
+import com.dynokore.platform.serviceruntime.http.IdempotencyOutcome
+import com.dynokore.platform.serviceruntime.http.IdempotencyStore
 import com.dynokore.platform.serviceruntime.http.MasterdataErrorCode
+import com.dynokore.platform.serviceruntime.http.StoredResponse
 import com.dynokore.platform.tenancykernel.TenantContext
 import com.dynokore.platform.tenancykernel.TransactionRunner
+import org.springframework.beans.factory.ObjectProvider
+import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.RestController
+import tools.jackson.databind.ObjectMapper
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
 import java.time.LocalDate
 import java.time.ZoneOffset
+import java.util.Locale
 import java.util.UUID
 
 /**
@@ -63,6 +72,8 @@ open class ResolutionController(
     private val permission: TenantPermission,
     private val tenants: TenantContext,
     private val tx: TransactionRunner,
+    private val idempotency: ObjectProvider<IdempotencyStore>,
+    private val mapper: ObjectMapper,
 ) : ResolutionApi,
     PrivacyApi {
     override fun resolveCounterparty(
@@ -247,11 +258,11 @@ open class ResolutionController(
 
     /**
      * `correctCounterpartyData` (INV-T-27119, INV-REQ-886): the entity outside the principal's set is refused 403
-     * SRT-004 by the runtime's gate and the Idempotency-Key (same key and body: the first answer; same key, other body:
-     * 422) is handled by the runtime's idempotency filter, both before this method, as for `sendCounterpartyRequest`.
-     * The permission `privacy-request.handle` is decided per request through the replica (INV-Q-10027): a caller
-     * without it gets 403 and nothing is written. The use case appends the version and the audit entry is written in
-     * the same transaction. evidence-svc is never called.
+     * SRT-004 by the runtime's gate before this method. The permission `privacy-request.handle` is decided per request
+     * through the replica (INV-Q-10027) before the key is looked at, so a replay never outlives the grant. The
+     * Idempotency-Key is handled by the shared [IdempotencyStore] (API-15): the version, the audit entry and the key
+     * record commit or roll back in one transaction; a replay answers the stored version, the same key with another
+     * body is 422 SRT-009 and a key in flight is 409 SRT-007. evidence-svc is never called.
      */
     override fun correctCounterpartyData(
         counterpartyRef: String,
@@ -262,26 +273,46 @@ open class ResolutionController(
         val caller = permitted()
         val party = runCatching { PartyRef(counterpartyRef) }.getOrElse { invalid("counterpartyRef is invalid") }
         val entity = request.entityRef.trim().takeIf { it.isNotEmpty() } ?: invalid("entityRef must not be blank")
-        val field = correctableField(request.field.value)
+        val field = correctableField(request.field.value) ?: invalid("field is not correctable")
         val command = CorrectionCommand(entity, party, request.caseId, field, request.correctedValue, caller)
-        val result =
+        val requestLine = "POST $CORRECTIONS_PATH_PREFIX$counterpartyRef$CORRECTIONS_PATH_SUFFIX"
+        val fingerprint = fingerprint(mapper, requestLine, request)
+        val outcome =
             tx.inTransaction {
-                val done = correct.handle(command)
-                if (done is CorrectionResult.Applied) {
-                    correctionAudit.corrected(caller, entity, party.value, request.caseId, field)
+                idempotency.getObject().once(tenants.current(), caller, idempotencyKey, fingerprint) { _ ->
+                    StoredResponse(HttpStatus.OK.value(), mapper.writeValueAsString(apply(command, field)))
                 }
-                done
             }
-        return when (result) {
+        val stored =
+            when (outcome) {
+                is IdempotencyOutcome.Fresh -> outcome.response
+                is IdempotencyOutcome.Replay -> outcome.response
+                IdempotencyOutcome.InFlight -> throw ApiRefusal(ClosedErrorCode.IN_FLIGHT)
+                IdempotencyOutcome.DifferentRequest -> throw ApiRefusal(ClosedErrorCode.DIFFERENT_REQUEST)
+            }
+        return ResponseEntity.ok(mapper.readValue(stored.body, CounterpartyVersion::class.java))
+    }
+
+    /** The correction and its audit entry, inside the transaction of the key record; a refusal rolls both back. */
+    private fun apply(
+        command: CorrectionCommand,
+        field: CorrectableField,
+    ): CounterpartyVersion =
+        when (val result = correct.handle(command)) {
             is CorrectionResult.Applied -> {
+                correctionAudit.corrected(
+                    command.actor,
+                    command.entity,
+                    command.party.value,
+                    command.caseId,
+                    field,
+                )
                 val version = result.version
-                ResponseEntity.ok(
-                    CounterpartyVersion(
-                        version = version.version.toInt(),
-                        recordedAt = version.recordedAt.atOffset(ZoneOffset.UTC),
-                        current = true,
-                        counterparty = CounterpartyMapping.counterparty(version, version.content.schemes),
-                    ),
+                CounterpartyVersion(
+                    version = version.version.toInt(),
+                    recordedAt = version.recordedAt.atOffset(ZoneOffset.UTC),
+                    current = true,
+                    counterparty = CounterpartyMapping.counterparty(version, version.content.schemes),
                 )
             }
 
@@ -293,7 +324,6 @@ open class ResolutionController(
                 invalid(result.reason)
             }
         }
-    }
 
     /** The acting user ID, once `privacy-request.handle` is decided for it through the replica (INV-Q-10027). */
     private fun permitted(): String {
@@ -304,20 +334,34 @@ open class ResolutionController(
         return caller
     }
 
-    /** The contract `field` value to the correctable field, by equality; any other value is refused. */
-    private fun correctableField(value: String): CorrectableField =
-        when (value) {
-            "legalName" -> CorrectableField.LEGAL_NAME
-            "addressLine1" -> CorrectableField.ADDRESS_LINE_1
-            "addressLine2" -> CorrectableField.ADDRESS_LINE_2
-            "postalCode" -> CorrectableField.POSTAL_CODE
-            else -> invalid("field is not correctable")
-        }
-
     private fun invalid(message: String): Nothing = throw ApiRefusal(ClosedErrorCode.CONTRACT_VIOLATION, message)
 
     companion object {
         /** `x-operation.permission` of `correctCounterpartyData` (INV-REQ-886), decided per request by the replica. */
         const val PRIVACY_REQUEST_HANDLE = "privacy-request.handle"
+        private const val CORRECTIONS_PATH_PREFIX = "/internal/v1/masterdata/counterparties/"
+        private const val CORRECTIONS_PATH_SUFFIX = "/corrections"
     }
 }
+
+/** SHA-256 of the request line, a newline and the JSON bytes of the body (API-15). */
+private fun fingerprint(
+    mapper: ObjectMapper,
+    requestLine: String,
+    body: CorrectCounterpartyDataRequest,
+): String {
+    val digest = MessageDigest.getInstance("SHA-256")
+    digest.update("$requestLine\n".toByteArray(StandardCharsets.UTF_8))
+    digest.update(mapper.writeValueAsBytes(body))
+    return digest.digest().joinToString("") { "%02x".format(Locale.ROOT, it) }
+}
+
+/** The contract `field` value to the correctable field, by equality; null for any other value. */
+private fun correctableField(value: String): CorrectableField? =
+    when (value) {
+        "legalName" -> CorrectableField.LEGAL_NAME
+        "addressLine1" -> CorrectableField.ADDRESS_LINE_1
+        "addressLine2" -> CorrectableField.ADDRESS_LINE_2
+        "postalCode" -> CorrectableField.POSTAL_CODE
+        else -> null
+    }
