@@ -27,7 +27,7 @@ import org.junit.jupiter.api.Test
 import java.time.LocalDate
 import java.util.UUID
 
-/** INV-AC-28091: the document row and its `inbound_event` row of one record transaction commit or roll back together. */
+/** INV-AC-28091: the document row and the `inbound_event` row of a record transaction commit or roll back together. */
 class RecordInboundEventDbTest {
     private val kit = DocumentKit()
     private val t1 = UUID.randomUUID()
