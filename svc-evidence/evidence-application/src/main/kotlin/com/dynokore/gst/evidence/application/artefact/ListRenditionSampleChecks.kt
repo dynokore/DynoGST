@@ -66,7 +66,23 @@ class ListRenditionSampleChecks(
         if (!allowed(tenant, principal, entityRef)) return ListRenditionSampleChecksResult.Forbidden
         val now = clock.instant()
         val after = cursor?.let { cursors.open(it, entityRef, principal.id, now) }
-        if (limit !in 1..MAX_LIMIT || (cursor != null && after == null)) return ListRenditionSampleChecksResult.Invalid
+        val valid = limit in 1..MAX_LIMIT && (cursor == null || after != null)
+        return if (valid) {
+            page(tenant, principal, entityRef, limit, after, now)
+        } else {
+            ListRenditionSampleChecksResult.Invalid
+        }
+    }
+
+    @Suppress("LongParameterList") // one read of one page
+    private fun page(
+        tenant: TenantId,
+        principal: Principal,
+        entityRef: String,
+        limit: Int,
+        after: SampleCheckPosition?,
+        now: Instant,
+    ): ListRenditionSampleChecksResult {
         val page = reader.page(tenant, entityRef, limit, after)
         return ListRenditionSampleChecksResult.Page(
             page.rows,

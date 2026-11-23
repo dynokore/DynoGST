@@ -44,7 +44,7 @@ class JooqArtefactStore(
             ).doNothing()
             .execute() == 1
 
-    /** Keyset page over (recorded_at, reference, hash); one row more than [limit] is read to know whether more exist. */
+    /** Keyset page over (recorded_at, reference, hash); reads one row more than [limit] to know if more exist. */
     override fun page(
         tenant: TenantId,
         entityRef: String,

@@ -122,6 +122,7 @@ class ListRenditionSampleChecksTest {
         return replica
     }
 
+    @Suppress("LongParameterList") // every input of one list call, each defaulted to the happy case
     private fun list(
         who: Principal = u1,
         replica: AuthorityReplica = replica(),

@@ -237,6 +237,7 @@ class EvidenceArtefactStoreTest {
     }
 
     /** Stores one row through the port with a controlled recordedAt (the handler stamps its own clock). */
+    @Suppress("LongParameterList") // one stored row, each column named
     private fun insertAt(
         tenant: UUID,
         entity: String?,
