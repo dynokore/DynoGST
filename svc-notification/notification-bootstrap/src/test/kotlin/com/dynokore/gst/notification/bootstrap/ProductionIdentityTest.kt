@@ -4,14 +4,6 @@ import com.dynokore.gst.notification.adapters.NotificationDb
 import com.dynokore.platform.configresolver.PolicyWriter
 import com.dynokore.platform.serviceruntime.identity.WorkloadTokenVerifier
 import com.dynokore.platform.serviceruntime.identity.WorkloadVerification
-import com.dynokore.platform.serviceruntime.replica.AuthorityChanged
-import com.dynokore.platform.serviceruntime.replica.AuthorityRecord
-import com.dynokore.platform.serviceruntime.replica.AuthorityReplica
-import com.dynokore.platform.serviceruntime.replica.CellAllowance
-import com.dynokore.platform.serviceruntime.replica.GrantScope
-import com.dynokore.platform.serviceruntime.replica.OperationRoleMap
-import com.dynokore.platform.serviceruntime.replica.RoleGrant
-import com.dynokore.platform.serviceruntime.replica.RoleGrantState
 import com.dynokore.platform.tenancykernel.TenantId
 import com.nimbusds.jose.JWSAlgorithm
 import com.nimbusds.jose.JWSHeader
@@ -70,9 +62,8 @@ class WorkloadTokensOnly {
 /**
  * INV-AC-2510 and INV-AC-2511 (INV-T-26178): the production wiring of notification-svc binds the
  * `IdentityProvider` from required properties; `setPolicy` of the planned VP-67 and VP-68 is refused
- * 422 POL-006 by `PolicyChecks.settable`. service-runtime 12.0.0 decides the permission key `vp-NN.set` first
- * (INV-Q-10027), so the end user holds a tenant-scoped grant of a role the generated operation-role map lists
- * for that key; the grant does not change the refusal. The token is signed by a test key whose key set the test serves at `jwk-set-uri`.
+ * 422 POL-006 by `PolicyChecks.settable` before any permission decision, so no grant is seeded. The token
+ * is signed by a test key whose key set the test serves at `jwk-set-uri`.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @Suppress("TooManyFunctions")
@@ -232,35 +223,6 @@ class ProductionIdentityTest {
             }
         }
 
-    /** The end user `p1` holds a tenant-scoped grant of a role the generated map lists for `vp-NN.set`. */
-    private fun grantSetter(
-        context: ConfigurableApplicationContext,
-        tenant: TenantId,
-        vp: String,
-    ) {
-        val role =
-            context
-                .getBean(OperationRoleMap::class.java)
-                .rolesFor(vp.lowercase() + ".set")
-                .entries
-                .first { it.value == CellAllowance.PERMITTED }
-                .key
-        val replica = context.getBean(AuthorityReplica::class.java)
-        replica.onSnapshotComplete(0)
-        replica.accept(
-            AuthorityChanged(
-                tenant,
-                "p1",
-                1L,
-                AuthorityRecord.RoleGrantRecord(
-                    "g-p1-$role",
-                    RoleGrantState.ACTIVE,
-                    RoleGrant(role, GrantScope.TENANT, tenant.toString(), Instant.now().minusSeconds(60)),
-                ),
-            ),
-        )
-    }
-
     /** The refusal of [vp] and every probe; the stored state is equal before and after each call. */
     private fun refused(
         dir: Path,
@@ -274,8 +236,7 @@ class ProductionIdentityTest {
             val before = settingRows()
             val path = "/internal/v1/policies/$vp"
             val change = body(tenant, option, value)
-            grantSetter(context, tenant, vp)
-            val ok = token(tenant)
+            val ok = token(tenant) // no grant is seeded: the planned refusal precedes the permission decision
 
             post(context, path, change, ok) shouldBe (422 to "POL-006")
             settingRows() shouldBe before
