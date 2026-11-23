@@ -5,6 +5,7 @@ import com.dynokore.gst.evidence.adapters.events.CanonicalVersionCreatedHandler
 import com.dynokore.gst.evidence.adapters.events.DecisionTraceRecordedHandler
 import com.dynokore.gst.evidence.adapters.events.EvidenceArtefactRecordedHandler
 import com.dynokore.gst.evidence.adapters.events.GstReturnRecordedHandler
+import com.dynokore.gst.evidence.adapters.events.PayloadRejectedHandler
 import com.dynokore.gst.evidence.application.artefact.ArtefactRecorder
 import com.dynokore.gst.evidence.application.chain.AcknowledgementRecorder
 import com.dynokore.gst.evidence.application.chain.LocatorRecorder
@@ -148,6 +149,12 @@ object ChainWiring {
         dsl: DSLContext,
         clock: Clock = Clock.systemUTC(),
     ): EventHandler = AuditEntryRecordedHandler(recordAppender(dsl, clock), clock)
+
+    /** The handler of `PayloadRejected`, the third record source, to run inside the inbox consumer's transaction. */
+    fun payloadRejectedHandler(
+        dsl: DSLContext,
+        clock: Clock = Clock.systemUTC(),
+    ): EventHandler = PayloadRejectedHandler(recordAppender(dsl, clock), clock)
 
     /** The handler of `EvidenceArtefactRecorded`, to run inside the inbox consumer's transaction. */
     fun evidenceArtefactHandler(

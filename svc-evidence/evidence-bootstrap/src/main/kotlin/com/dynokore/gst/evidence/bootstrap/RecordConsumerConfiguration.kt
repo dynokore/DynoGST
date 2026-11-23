@@ -17,8 +17,8 @@ import org.springframework.context.annotation.Configuration
 import java.time.Clock
 
 /**
- * The subscriptions of evidence-svc to the two record topics (INV-REQ-3650 b1, INV-REQ-1226 b4), one inbox consumer
- * each on the inbox, offset and dead-letter tables of schema `evidence`. Both types are catalogued as record types
+ * The subscriptions of evidence-svc to the three record topics (INV-REQ-3650 b1, INV-REQ-1226 b4), one inbox consumer
+ * each on the inbox, offset and dead-letter tables of schema `evidence`. All three types are catalogued as record types
  * ([EvidenceEvents.recordEntries]), so the consumer takes no `docsequence` check for them (INV-Q-3809). The handler
  * runs in the consumer's transaction, so the record, its `applied_record` row, the inbox row and the offset commit
  * together (INV-REQ-1222). After each poll the position of the topic is written
@@ -90,6 +90,38 @@ class RecordConsumerConfiguration {
         )
     }
 
+    @Bean
+    @Suppress("LongParameterList")
+    fun payloadRejectedConsumer(
+        catalogue: EventCatalogue,
+        reader: EventLogReader,
+        scope: TenantScope,
+        rebuildRequired: RebuildRequiredSink,
+        clock: Clock,
+        dsl: DSLContext,
+        positions: EventLogPositions,
+        meters: MeterRegistry,
+    ): InboxConsumer {
+        val entry = entry(PAYLOAD_REJECTED_BEAN)
+        return recording(
+            entry.topic,
+            scope,
+            dsl,
+            positions,
+            meters,
+            JdbcInboxConsumer(
+                ConsumerSubscription(LocatorConsumerConfiguration.CONSUMER, entry.topic, ChainWiring.SCHEMA),
+                catalogue,
+                reader,
+                scope,
+                dsl,
+                entry.handler(dsl, clock),
+                rebuildRequired,
+                clock,
+            ),
+        )
+    }
+
     /**
      * The subscription to `gst.platform.evidence-artefact-recorded.v1` (INV-REQ-1036 behavior 2): an ordinary inbox
      * consumer, not a record topic, so it keeps the `docsequence` check and takes no position writer.
@@ -134,10 +166,12 @@ class RecordConsumerConfiguration {
     companion object {
         const val DECISION_TRACE_TOPIC = "gst.canonical.decision-trace-recorded.v1"
         const val AUDIT_ENTRY_TOPIC = "gst.platform.audit-entry-recorded.v1"
+        const val PAYLOAD_REJECTED_TOPIC = "gst.payload.payload-rejected.v1"
         const val EVIDENCE_ARTEFACT_TOPIC = "gst.platform.evidence-artefact-recorded.v1"
 
         const val DECISION_TRACE_BEAN = "decisionTraceConsumer"
         const val AUDIT_ENTRY_BEAN = "auditEntryConsumer"
+        const val PAYLOAD_REJECTED_BEAN = "payloadRejectedConsumer"
         const val EVIDENCE_ARTEFACT_BEAN = "evidenceArtefactConsumer"
 
         /** One subscription of the registry: the consumer bean, its topic and the handler made for it. */
@@ -147,7 +181,7 @@ class RecordConsumerConfiguration {
             val handler: (DSLContext, Clock) -> EventHandler,
         )
 
-        /** The one registry the three consumer beans are built from: each bean takes its topic and handler here. */
+        /** The one registry the four consumer beans are built from: each bean takes its topic and handler here. */
         internal val REGISTRY: List<Entry> =
             listOf(
                 Entry(
@@ -155,6 +189,9 @@ class RecordConsumerConfiguration {
                     DECISION_TRACE_TOPIC,
                 ) { dsl, clock -> ChainWiring.decisionTraceHandler(dsl, clock) },
                 Entry(AUDIT_ENTRY_BEAN, AUDIT_ENTRY_TOPIC) { dsl, clock -> ChainWiring.auditEntryHandler(dsl, clock) },
+                Entry(PAYLOAD_REJECTED_BEAN, PAYLOAD_REJECTED_TOPIC) { dsl, clock ->
+                    ChainWiring.payloadRejectedHandler(dsl, clock)
+                },
                 Entry(EVIDENCE_ARTEFACT_BEAN, EVIDENCE_ARTEFACT_TOPIC) { dsl, clock ->
                     ChainWiring.evidenceArtefactHandler(dsl, clock)
                 },

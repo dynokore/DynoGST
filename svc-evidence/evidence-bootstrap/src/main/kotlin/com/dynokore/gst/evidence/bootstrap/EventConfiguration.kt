@@ -63,7 +63,7 @@ object EvidenceEvents {
         }
 
     /**
-     * The two record-topic types evidence-svc consumes (INV-REQ-3650 b1, platform-contracts `event-log/topics.yaml`):
+     * The three record-topic types evidence-svc consumes (INV-REQ-3650 b1, platform-contracts `event-log/topics.yaml`):
      * evidence-svc is not their producer, so the emission guard refuses it to emit them. `recordTopic` makes the inbox
      * consumer skip the `docsequence` check (INV-Q-3809).
      */
@@ -82,6 +82,14 @@ object EvidenceEvents {
                 RecordConsumerConfiguration.AUDIT_ENTRY_TOPIC,
                 setOf(CatalogueEntry.EVERY_SERVICE),
                 contentTopic = false,
+                recordTopic = true,
+                retainedWhileResolvable = false,
+            ),
+            CatalogueEntry(
+                "com.dynokore.gst.payload.PayloadRejected.v1",
+                RecordConsumerConfiguration.PAYLOAD_REJECTED_TOPIC,
+                setOf("payload-svc"),
+                contentTopic = true,
                 recordTopic = true,
                 retainedWhileResolvable = false,
             ),

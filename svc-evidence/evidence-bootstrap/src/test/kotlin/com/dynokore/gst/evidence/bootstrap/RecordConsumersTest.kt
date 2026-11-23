@@ -33,6 +33,7 @@ import com.dynokore.platform.tenancykernel.TenantId
 import com.dynokore.platform.tenancykernel.TransactionRunner
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import org.jooq.DSLContext
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -47,7 +48,7 @@ import java.util.UUID
 import com.dynokore.platform.outboxandqueue.EntityRef as EventEntityRef
 
 /**
- * INV-AC-7216 through the real inbox consumers (`JdbcInboxConsumer`) of the two record topics, with the handlers and
+ * INV-AC-7216 through the real inbox consumers (`JdbcInboxConsumer`) of the three record topics, with the handlers and
  * stores of the TPL-18 context over PostgreSQL (P109). Only the event-log read is a list in memory.
  */
 class RecordConsumersTest {
@@ -80,6 +81,7 @@ class RecordConsumersTest {
         val locatorLog = Log()
         val traceLog = Log()
         val auditLog = Log()
+        val payloadLog = Log()
 
         // a consumer name of its own per test: the offset row is platform-scoped and the database is shared
         private val name = LocatorConsumerConfiguration.CONSUMER + "-" + UUID.randomUUID()
@@ -113,6 +115,12 @@ class RecordConsumersTest {
                 RecordConsumerConfiguration.AUDIT_ENTRY_TOPIC,
                 auditLog,
                 ChainWiring.auditEntryHandler(dsl),
+            )
+        val payloadConsumer =
+            consumer(
+                RecordConsumerConfiguration.PAYLOAD_REJECTED_TOPIC,
+                payloadLog,
+                ChainWiring.payloadRejectedHandler(dsl),
             )
     }
 
@@ -237,6 +245,21 @@ class RecordConsumersTest {
         entityRef ?: EventEntityRef.TENANT_WIDE,
         null,
         data,
+    )
+
+    private fun payloadRejected(
+        tenant: TenantId,
+        eventId: String,
+        data: String = """{"docUuid":"$doc","version":1,"decisions":[{"code":"PAY-002","outcome":"rejected"}]}""",
+    ) = envelope(
+        tenant,
+        eventId,
+        "com.dynokore.gst.payload.PayloadRejected.v1",
+        "/gst/payload-svc",
+        EventEntityRef(entity),
+        null,
+        data,
+        DocUuid(doc),
     )
 
     private fun result(
@@ -370,6 +393,85 @@ class RecordConsumersTest {
         deadLetters(tenant) shouldBe 1
         chain(tenant, RecordKind.AUDIT_LOG, entity, "AUDIT-2026-10").size shouldBe 0
         applied(tenant, "au-1").size shouldBe 0
+    }
+
+    @ParameterizedTest(name = "{displayName} [{0}]")
+    @EnumSource(EvidenceDb.Version::class)
+    fun `INV-AC-27154 a PayloadRejected event with decisions arriving after the locator is chained as a DECISION_TRACE record carrying the version of the locator`(
+        version: EvidenceDb.Version,
+        @TempDir dir: Path,
+    ) = run(dir, version) { tenant ->
+        locatorLog.add(locator(tenant, "ev-1"))
+        locatorConsumer.pollOnce().applied shouldBe 1
+        partition(tenant, RecordKind.DECISION_TRACE, entity, "2026-Q1")
+        payloadLog.add(payloadRejected(tenant, "pr-1"))
+        payloadConsumer.pollOnce() shouldBe result(1, 0, 0)
+        val appended = traces(tenant).single()
+        String(appended.content) shouldBe """{"decisions":[{"code":"PAY-002","outcome":"rejected"}]}"""
+        appended.index.docUuid shouldBe doc
+        appended.index.version shouldBe 1
+        applied(tenant, "pr-1").single().kind shouldBe "decision_trace"
+    }
+
+    @ParameterizedTest(name = "{displayName} [{0}]")
+    @EnumSource(EvidenceDb.Version::class)
+    fun `INV-AC-27154 a PayloadRejected event arriving before the locator waits as pending and is chained when the locator arrives`(
+        version: EvidenceDb.Version,
+        @TempDir dir: Path,
+    ) = run(dir, version) { tenant ->
+        partition(tenant, RecordKind.DECISION_TRACE, entity, "2026-Q1")
+        payloadLog.add(payloadRejected(tenant, "pr-1"))
+        payloadConsumer.pollOnce() shouldBe result(1, 0, 0)
+        traces(tenant).size shouldBe 0
+        pendingCount(tenant) shouldBe 1
+
+        locatorLog.add(locator(tenant, "ev-1"))
+        locatorConsumer.pollOnce().applied shouldBe 1
+        String(traces(tenant).single().content) shouldBe
+            """{"decisions":[{"code":"PAY-002","outcome":"rejected"}]}"""
+        applied(tenant, "pr-1").size shouldBe 1
+    }
+
+    @ParameterizedTest(name = "{displayName} [{0}]")
+    @EnumSource(EvidenceDb.Version::class)
+    fun `INV-AC-27154 the position of the payload topic is written to its record-position row`(
+        version: EvidenceDb.Version,
+        @TempDir dir: Path,
+    ) = run(dir, version) { tenant ->
+        val written = mutableListOf<Pair<String, Long>>()
+        val consumer =
+            RecordConsumerConfiguration().payloadRejectedConsumer(
+                catalogue,
+                payloadLog,
+                scope,
+                RebuildRequiredSink { },
+                Clock.systemUTC(),
+                dsl,
+                { topic, offset ->
+                    written += topic to offset
+                    offset
+                },
+                SimpleMeterRegistry(),
+            )
+        partition(tenant, RecordKind.DECISION_TRACE, entity, "2026-Q1")
+        payloadLog.add(payloadRejected(tenant, "pr-1"))
+        consumer.pollOnce().applied shouldBe 1
+        written shouldBe listOf(RecordConsumerConfiguration.PAYLOAD_REJECTED_TOPIC to 1L)
+    }
+
+    @ParameterizedTest(name = "{displayName} [{0}]")
+    @EnumSource(EvidenceDb.Version::class)
+    fun `INV-AC-27154 a PayloadRejected event with a poison payload goes to the dead letter and appends nothing`(
+        version: EvidenceDb.Version,
+        @TempDir dir: Path,
+    ) = run(dir, version) { tenant ->
+        partition(tenant, RecordKind.DECISION_TRACE, entity, "2026-Q1")
+        payloadLog.add(payloadRejected(tenant, "pr-1", data = """{"version":1,"decisions":[]}"""))
+        payloadConsumer.pollOnce() shouldBe result(0, 0, 1)
+        deadLetters(tenant) shouldBe 1
+        traces(tenant).size shouldBe 0
+        pendingCount(tenant) shouldBe 0
+        applied(tenant, "pr-1").size shouldBe 0
     }
 
     @Test
