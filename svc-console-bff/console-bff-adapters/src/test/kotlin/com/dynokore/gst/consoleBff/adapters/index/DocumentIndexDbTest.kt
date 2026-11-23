@@ -286,6 +286,52 @@ class DocumentIndexDbTest {
         search(t, setOf("E1"), DocumentSearchCriteria(categoryCode = "ZR")).items.size shouldBe 0
     }
 
+    private fun docsFor(
+        t: UUID,
+        value: String,
+    ) = search(t, setOf("E1"), DocumentSearchCriteria(counterparty = value)).items.map { it.docUuid }.toSet()
+
+    @Test
+    fun `INV-AC-26808 the counterparty name matches by contains ignoring case and the UEN only exactly`() {
+        val t = UUID.randomUUID()
+        val acme = row(t, "E1", counterparty = "ACME Pte Ltd", uen = "201912345A")
+        val bigAcme = row(t, "E1", counterparty = "Big Acme Ltd", uen = "202000001B")
+        val zenith = row(t, "E1", counterparty = "Zenith Ltd", uen = "202100002C")
+        write(t, acme, bigAcme, zenith)
+        docsFor(t, "acme") shouldBe setOf(acme.docUuid, bigAcme.docUuid)
+        docsFor(t, "201912345A") shouldBe setOf(acme.docUuid)
+        docsFor(t, "2019123") shouldBe emptySet()
+        docsFor(t, "201912345a") shouldBe emptySet()
+    }
+
+    @Test
+    fun `INV-AC-26808 percent and underscore in a counterparty value match only themselves`() {
+        val t = UUID.randomUUID()
+        val plain = row(t, "E1", counterparty = "Plain Ltd")
+        val other = row(t, "E1", counterparty = "Other Co")
+        write(t, plain, other)
+        docsFor(t, "%") shouldBe emptySet()
+        docsFor(t, "_") shouldBe emptySet()
+        val literal = row(t, "E1", counterparty = "50%_Off Ltd")
+        write(t, literal)
+        docsFor(t, "%") shouldBe setOf(literal.docUuid)
+        docsFor(t, "_") shouldBe setOf(literal.docUuid)
+        docsFor(t, "0%_O") shouldBe setOf(literal.docUuid)
+    }
+
+    @Test
+    fun `INV-AC-26808 a cursor the reader did not issue throws and no page is returned`() {
+        val t = UUID.randomUUID()
+        write(t, row(t, "E1"))
+        shouldThrow<IllegalArgumentException> { search(t, setOf("E1"), cursor = "not-a-cursor") }
+        val notIssued =
+            java.util.Base64
+                .getUrlEncoder()
+                .withoutPadding()
+                .encodeToString("hello".toByteArray())
+        shouldThrow<IllegalArgumentException> { search(t, setOf("E1"), cursor = notIssued) }
+    }
+
     // ---- readers ----
 
     private val sample =
