@@ -49,9 +49,9 @@ import com.dynokore.platform.outboxandqueue.EntityRef as EventEntityRef
 
 /**
  * INV-AC-7216 through the real inbox consumers (`JdbcInboxConsumer`) of the three record topics, with the handlers and
- * stores of the TPL-18 context over PostgreSQL (P109). Only the event-log read is a list in memory.
+ * stores of the TPL-18 context over PostgreSQL (P109). Only the event-log read is a list in memory. One class holds
+ * every record-topic case over the shared boundary (LargeClass is suppressed: the task scope allows no new file).
  */
-// one class holds every record-topic case over the shared boundary; the task scope allows no new file
 @Suppress("LargeClass")
 class RecordConsumersTest {
     private val actor = "svc:evidence-svc"
