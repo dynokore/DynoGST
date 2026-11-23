@@ -6,7 +6,7 @@ import com.dynokore.gst.notification.adapters.events.MessageRequestedHandler
 import com.dynokore.gst.notification.adapters.persistence.JooqMessageDeliveryRecords
 import com.dynokore.gst.notification.application.delivery.MessageChannels
 import com.dynokore.gst.notification.application.delivery.MessageDeliveryRecords
-import com.dynokore.gst.notification.application.delivery.RefusingPasscodeOpener
+import com.dynokore.gst.notification.application.delivery.PasscodeOpener
 import com.dynokore.gst.notification.application.delivery.TemplateVersions
 import com.dynokore.platform.outboxandqueue.ConsumerSubscription
 import com.dynokore.platform.outboxandqueue.EventCatalogue
@@ -29,8 +29,8 @@ import java.time.Clock
  * The subscription of notification-svc to `MessageRequested` (INV-REQ-817, INV-REQ-2762), as one inbox consumer of its
  * own next to the other consumers of the service. The handler runs in the consumer's transaction, so the delivery
  * rows, the inbox row and the offset commit together. No channel adapter ships here: with no `MessageDelivery` bean
- * bound, every record is FAILED CHANNEL_NOT_BOUND (fail closed). The passcode opener is the refusing one until the
- * real opener is wired: a passcode message is FAILED PASSCODE_UNOPENABLE and reaches no channel.
+ * bound, every record is FAILED CHANNEL_NOT_BOUND (fail closed). The passcode opener is the bean of
+ * [PasscodeOpenerConfiguration].
  */
 @Configuration(proxyBeanMethods = false)
 class MessageRequestedConsumerConfiguration {
@@ -54,8 +54,8 @@ class MessageRequestedConsumerConfiguration {
         templates: TemplateVersions,
         clock: Clock,
         mapper: ObjectMapper,
-    ): MessageRequestedHandler =
-        MessageRequestedHandler(records, channels, templates, clock, mapper, RefusingPasscodeOpener)
+        passcodes: PasscodeOpener,
+    ): MessageRequestedHandler = MessageRequestedHandler(records, channels, templates, clock, mapper, passcodes)
 
     @Bean
     @Suppress("LongParameterList")
