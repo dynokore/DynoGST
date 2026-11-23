@@ -337,6 +337,8 @@ class ProductionIdentityTest {
             .offline(dir)
             // the Gradle test task's system properties would otherwise supply the issuer and the audience
             .withInitializer { it.environment.propertySources.remove("systemProperties") }
+            // the signing key reference is required too (INV-T-27742); this test is about the identity binding
+            .withPropertyValues("evidence.audit-pack.signing-key-ref=audit-pack/signing-key")
             .withPropertyValues(*properties)
             .run { failure = it.startupFailure }
         val thrown = checkNotNull(failure) { "the context started" }
