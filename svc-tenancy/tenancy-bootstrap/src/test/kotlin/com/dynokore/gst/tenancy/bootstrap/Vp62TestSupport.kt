@@ -113,8 +113,7 @@ internal open class Vp62TestSupport {
                         .withBean("decoyClock", Clock::class.java, { DECOY_CLOCK })
                         .withBean("fixedClock", Clock::class.java, { it }, primaryBean())
                 } ?: runner
-            }
-            .run { context ->
+            }.run { context ->
                 context.startupFailure?.let { throw it }
                 val env = ProfileEnv(context)
                 env.withGroup(1, DIVISIONAL) { tenant, group, members ->
