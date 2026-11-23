@@ -34,9 +34,14 @@ import org.junit.jupiter.api.Test
 import tools.jackson.databind.ObjectMapper
 import java.time.Clock
 import java.time.DayOfWeek
+import java.time.Instant
 import java.time.LocalDate
 import java.time.YearMonth
+import java.time.ZoneOffset
 import java.util.UUID
+
+/** A second, non-primary Clock bean: without primaryBean() on the fixed clock the context has two candidates. */
+private val DECOY_CLOCK: Clock = Clock.fixed(Instant.parse("2027-01-01T04:00:00Z"), ZoneOffset.UTC)
 
 internal val DIVISIONAL = CreateGroupRequest.GroupKind.DIVISIONAL
 
@@ -102,7 +107,13 @@ internal open class Vp62TestSupport {
     ) {
         BoundaryFixture
             .runner()
-            .let { runner -> clock?.let { runner.withBean(Clock::class.java, { it }, primaryBean()) } ?: runner }
+            .let { runner ->
+                clock?.let {
+                    runner
+                        .withBean("decoyClock", Clock::class.java, { DECOY_CLOCK })
+                        .withBean("fixedClock", Clock::class.java, { it }, primaryBean())
+                } ?: runner
+            }
             .run { context ->
                 context.startupFailure?.let { throw it }
                 val env = ProfileEnv(context)
