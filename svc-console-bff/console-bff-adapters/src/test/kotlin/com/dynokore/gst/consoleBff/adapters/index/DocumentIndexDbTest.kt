@@ -2,6 +2,7 @@ package com.dynokore.gst.consoleBff.adapters.index
 
 import com.dynokore.gst.consoleBff.adapters.ConsoleDb
 import com.dynokore.gst.consoleBff.adapters.SignedBindings
+import com.dynokore.gst.consoleBff.adapters.persistence.jooq.tables.references.DOCUMENT_INDEX
 import com.dynokore.gst.consoleBff.application.index.DocumentIndexStore
 import com.dynokore.gst.consoleBff.domain.index.DocumentIndexRow
 import com.dynokore.gst.consoleBff.domain.index.DocumentSearchCriteria
@@ -12,11 +13,8 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
-import org.jooq.ExecuteContext
-import org.jooq.ExecuteListener
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
-import org.jooq.impl.DefaultConfiguration
 import org.junit.jupiter.api.Test
 import java.math.BigDecimal
 import java.time.LocalDate
@@ -29,8 +27,6 @@ import java.util.UUID
 class DocumentIndexDbTest {
     private val migration =
         checkNotNull(javaClass.getResource("/db/migration/V202611211400__console_bff_document_index.sql")).readText()
-
-    private val statements = mutableListOf<String>()
 
     private val doc = "3fa85f64-5717-4562-b3fc-2c963f66afa6"
 
@@ -50,15 +46,7 @@ class DocumentIndexDbTest {
         ConsoleDb.connect(ConsoleDb.RUNTIME, ConsoleDb.RUNTIME_PASSWORD).use { c ->
             c.autoCommit = false
             if (tenant != null) SignedBindings.bind(c, tenant)
-            val config =
-                DefaultConfiguration().set(c).set(SQLDialect.POSTGRES).set(
-                    object : ExecuteListener {
-                        override fun executeStart(ctx: ExecuteContext) {
-                            statements.add(ctx.sql() ?: "")
-                        }
-                    },
-                )
-            val result = block(DSL.using(config))
+            val result = block(DSL.using(c, SQLDialect.POSTGRES))
             c.commit()
             result
         }
@@ -73,6 +61,7 @@ class DocumentIndexDbTest {
             }
         }
 
+    @Suppress("LongParameterList") // a row fixture with one named default per column
     private fun row(
         tenant: UUID,
         entity: String,
@@ -109,14 +98,15 @@ class DocumentIndexDbTest {
         vararg rows: DocumentIndexRow,
     ) = asTenant(tenant) { dsl -> rows.forEach { JooqDocumentIndexStore(dsl).upsert(it) } }
 
+    @Suppress("LongParameterList") // the port arguments plus the binding tenant
     private fun search(
         tenant: UUID,
         entities: Set<String>,
         criteria: DocumentSearchCriteria = DocumentSearchCriteria(),
         limit: Int = 50,
         cursor: String? = null,
-        as_: UUID = tenant,
-    ) = asTenant(as_) { JooqDocumentIndexReads(it).search(tenant.toString(), entities, criteria, limit, cursor) }
+        asTenantId: UUID = tenant,
+    ) = asTenant(asTenantId) { JooqDocumentIndexReads(it).search(tenant.toString(), entities, criteria, limit, cursor) }
 
     @Test
     fun `INV-AC-26808 the table has the columns, key, indexes, RLS section and least-privilege grants`() {
@@ -148,6 +138,10 @@ class DocumentIndexDbTest {
             "select numeric_precision, numeric_scale from information_schema.columns " +
                 "where table_name = 'document_index' and column_name = 'amount'",
         ) { it.getInt(1) to it.getInt(2) } shouldBe listOf(19 to 2)
+    }
+
+    @Test
+    fun `INV-AC-26808 the key, the two indexes, the forced RLS and the grants are those of the design`() {
         catalog(
             "select a.attname from pg_index i join pg_attribute a " +
                 "on a.attrelid = i.indrelid and a.attnum = any(i.indkey) " +
@@ -199,17 +193,18 @@ class DocumentIndexDbTest {
             )
         fourth.items.map { it.docUuid } shouldBe listOf(e1.docUuid)
         // the T2 statement asks for the rows of T1 by Doc UUID (the T1 tenant id in the statement, the T2 binding)
-        search(t1, setOf("E1", "E2"), DocumentSearchCriteria(docUuid = e1.docUuid), as_ = t2).items shouldBe emptyList()
+        search(t1, setOf("E1", "E2"), DocumentSearchCriteria(docUuid = e1.docUuid), asTenantId = t2).items shouldBe
+            emptyList()
         // the row level security alone, without any tenant or entity predicate in the statement
+        val sameDoc = UUID.fromString(e1.docUuid)
         asTenant(t2) { dsl ->
-            dsl.fetch("select doc_uuid from console_bff.document_index where doc_uuid = ?::uuid", e1.docUuid)
-        }.size shouldBe 1
-        asTenant(t2) { dsl ->
-            dsl.fetch("select tenant_id from console_bff.document_index where doc_uuid = ?::uuid", e1.docUuid)[0][0]
-        } shouldBe t2
-        asTenant(UUID.randomUUID()) { dsl ->
-            dsl.fetch("select 1 from console_bff.document_index")
-        }.size shouldBe 0
+            dsl
+                .selectFrom(DOCUMENT_INDEX)
+                .where(DOCUMENT_INDEX.DOC_UUID.eq(sameDoc))
+                .fetch()
+                .map { it.tenantId }
+        } shouldBe listOf(t2)
+        asTenant(UUID.randomUUID()) { dsl -> dsl.selectFrom(DOCUMENT_INDEX).fetch() }.size shouldBe 0
     }
 
     @Test
@@ -228,17 +223,18 @@ class DocumentIndexDbTest {
                 DocumentSearchCriteria(categoryCode = "SR", errorCode = "E", acknowledgementId = "A"),
                 DocumentSearchCriteria(docUuid = UUID.randomUUID().toString()),
             )
-        for (c in criteria) {
-            statements.clear()
-            search(t, setOf("E1"), c)
-            val select = statements.single { it.contains("document_index") }
-            val where = select.substringAfter(" where ")
-            where shouldContain "\"entity_ref\" = any (cast(? as varchar[]))"
-            where shouldContain "\"tenant_id\" = "
+        asTenant(t) { dsl ->
+            val reads = JooqDocumentIndexReads(dsl)
+            for (c in criteria) {
+                val where =
+                    checkNotNull(
+                        reads.statement(t.toString(), setOf("E1"), c, 10, null),
+                    ).sql.substringAfter(" where ")
+                where shouldContain "\"entity_ref\" = any (cast(? as varchar[]))"
+                where shouldContain "\"tenant_id\" = "
+            }
+            reads.statement(t.toString(), emptySet(), DocumentSearchCriteria(), 10, null) shouldBe null
         }
-        statements.clear()
-        search(t, emptySet())
-        statements.size shouldBe 0
     }
 
     @Test
