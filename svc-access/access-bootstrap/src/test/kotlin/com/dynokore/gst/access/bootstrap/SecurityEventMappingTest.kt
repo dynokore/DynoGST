@@ -271,7 +271,9 @@ class SecurityEventMappingTest {
             val lookAlikes = listOf("SignInBreakGlass", "signInBreakGlassX", " signInBreakGlass")
             lookAlikes.forEach { action ->
                 env.tenants.bind(env.tenant, ADMIN) {
-                    env.tx.inTransaction { audit.record(GrantAuditEntry(ADMIN, action, "break-glass:BG-L", null, null)) }
+                    env.tx.inTransaction {
+                        audit.record(GrantAuditEntry(ADMIN, action, "break-glass:BG-L", null, null))
+                    }
                 }
                 assertThat(env.auditRows(action)).hasSize(1)
             }
