@@ -7,6 +7,7 @@ import com.dynokore.gst.evidence.adapters.persistence.JooqLocatorStore
 import com.dynokore.gst.evidence.application.lookup.DOC_VIEW_CONTENT
 import com.dynokore.gst.evidence.contract.model.DecisionTraceView
 import com.dynokore.gst.evidence.domain.chain.DocumentLocator
+import com.dynokore.platform.evidencestore.ObjectStore
 import com.dynokore.platform.outboxandqueue.CausationId
 import com.dynokore.platform.outboxandqueue.ConsumerSubscription
 import com.dynokore.platform.outboxandqueue.CorrelationId
@@ -93,6 +94,12 @@ class DecisionTraceAssertionTextBootstrapDbTest {
         val log = Log()
         private val lookup = LookupConfiguration()
 
+        private val noObjects: ObjectStore =
+            Proxy.newProxyInstance(
+                javaClass.classLoader,
+                arrayOf(ObjectStore::class.java),
+            ) { _, _, _ -> error("no object is read by this handler") } as ObjectStore
+
         val consumer =
             JdbcInboxConsumer(
                 ConsumerSubscription(
@@ -106,7 +113,11 @@ class DecisionTraceAssertionTextBootstrapDbTest {
                 dsl,
                 RecordConsumerConfiguration.REGISTRY
                     .single { it.bean == RecordConsumerConfiguration.PAYLOAD_REJECTED_BEAN }
-                    .handler(dsl, Clock.systemUTC()),
+                    .handler(
+                        dsl,
+                        Clock.systemUTC(),
+                        noObjects,
+                    ),
                 RebuildRequiredSink { },
                 Clock.systemUTC(),
             )

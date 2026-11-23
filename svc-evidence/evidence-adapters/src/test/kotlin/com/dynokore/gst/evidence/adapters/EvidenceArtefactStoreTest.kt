@@ -3,6 +3,10 @@ package com.dynokore.gst.evidence.adapters
 import com.dynokore.gst.evidence.adapters.persistence.ChainWiring
 import com.dynokore.gst.evidence.adapters.persistence.JooqArtefactStore
 import com.dynokore.gst.evidence.application.artefact.SampleCheckPosition
+import com.dynokore.platform.evidencestore.ObjectKey
+import com.dynokore.platform.evidencestore.ObjectKeyPrefix
+import com.dynokore.platform.evidencestore.ObjectRef
+import com.dynokore.platform.evidencestore.ObjectStore
 import com.dynokore.platform.outboxandqueue.CausationId
 import com.dynokore.platform.outboxandqueue.ContractViolation
 import com.dynokore.platform.outboxandqueue.CorrelationId
@@ -69,7 +73,7 @@ class EvidenceArtefactStoreTest {
         EvidenceDb.connect(EvidenceDb.RUNTIME, EvidenceDb.RUNTIME_PASSWORD).use { connection ->
             connection.autoCommit = false
             SignedBindings.bind(connection, tenant)
-            val handler = ChainWiring.evidenceArtefactHandler(DSL.using(connection, SQLDialect.POSTGRES))
+            val handler = ChainWiring.evidenceArtefactHandler(DSL.using(connection, SQLDialect.POSTGRES), NoObjects)
             try {
                 events.map { handler.handle(it) }.also { connection.commit() }
             } catch (e: ContractViolation) {
@@ -231,7 +235,7 @@ class EvidenceArtefactStoreTest {
     ) = EvidenceDb.connect(EvidenceDb.RUNTIME, EvidenceDb.RUNTIME_PASSWORD).use { connection ->
         connection.autoCommit = false
         SignedBindings.bind(connection, tenant)
-        JooqArtefactStore(DSL.using(connection, SQLDialect.POSTGRES))
+        JooqArtefactStore(DSL.using(connection, SQLDialect.POSTGRES), NoObjects)
             .page(TenantId(tenant), entity, limit, after)
             .also { connection.rollback() }
     }
@@ -248,7 +252,7 @@ class EvidenceArtefactStoreTest {
     ) = EvidenceDb.connect(EvidenceDb.RUNTIME, EvidenceDb.RUNTIME_PASSWORD).use { connection ->
         connection.autoCommit = false
         SignedBindings.bind(connection, tenant)
-        JooqArtefactStore(DSL.using(connection, SQLDialect.POSTGRES)).insert(
+        JooqArtefactStore(DSL.using(connection, SQLDialect.POSTGRES), NoObjects).insert(
             TenantId(tenant),
             entity,
             EvidenceArtefact(EvidenceArtefactType(type), reference, hash),
@@ -288,6 +292,19 @@ class EvidenceArtefactStoreTest {
         insertAt(tenant, "E1", "SAMPLE_CHECK", "a", hashA, "2026-01-16T00:00:00Z")
         insertAt(tenant, "E1", "SAMPLE_CHECK", "z", hashA, "2026-01-15T00:00:00Z")
         page(tenant, "E1", 10).rows.map { it.reference } shouldBe listOf("z", "a")
+    }
+
+    /** These types are not work-papers: no object is ever read. */
+    private object NoObjects : ObjectStore {
+        override fun put(
+            key: ObjectKey,
+            bytes: ByteArray,
+            retainUntil: Instant,
+        ): ObjectRef = error("not used")
+
+        override fun get(key: ObjectKey): ByteArray = error("not used")
+
+        override fun bytesUnder(prefix: ObjectKeyPrefix): Long = error("not used")
     }
 
     private companion object {
