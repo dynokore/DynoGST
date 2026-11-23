@@ -108,3 +108,11 @@ correctPersonalData.SRT-009	operation_error_code	openapi.yaml	INV-REQ-886
 correctPersonalData.SRT-013	operation_error_code	openapi.yaml	INV-REQ-886
 ApplyOperatingProfileRequest.relaxationIds	schema_property	openapi.yaml	INV-REQ-1245
 OperatingProfileApplication.pendingAcknowledgements	schema_property	openapi.yaml	INV-REQ-1245
+getRenditionSampleContent	operation	openapi.yaml	INV-REQ-1036
+getRenditionSampleContent.200	operation_response	openapi.yaml	INV-REQ-1036
+getRenditionSampleContent.default	operation_response	openapi.yaml	INV-REQ-1036
+SampleCheckArtefact.sample	schema_property	openapi.yaml	INV-REQ-1036
+EntityRenditionEvidence.standing	schema_property	openapi.yaml	INV-REQ-1036
+SampleCheckRecord.sampleSha256	schema_property	openapi.yaml	INV-REQ-1036
+RenditionSampleContent.sampleContent	schema_property	openapi.yaml	INV-REQ-1036
+RenditionSampleContent.sampleSha256	schema_property	openapi.yaml	INV-REQ-1036

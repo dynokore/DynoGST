@@ -1,0 +1,17 @@
+{
+  "checkId": "chk-0001",
+  "entityRef": "ENT-0001",
+  "scenario": "SELF_BILLING",
+  "submissionType": "TYPE_2",
+  "sampleSha256": "e5c62df5dab5c87b6a015ef3d43597074d1eec433b15f51aec63b8582d0e4ab4",
+  "result": "FAILED",
+  "textFound": true,
+  "missingWording": [
+    "Buyer Created Tax Invoice"
+  ],
+  "checkedAt": "2026-03-20T03:20:00Z",
+  "checkedBy": "5b1f7c0e-2d4a-4c55-9a3e-0c1d2e3f4a5b",
+  "findingCode": "PAY-014",
+  "sampleContent": "JVBERi0xLjQK",
+  "artefactBytes": "eyJjaGVja0lkIjoiY2hrLTAwMDEiLCJjaGVja2VkQXQiOiIyMDI2LTAzLTIwVDAzOjIwOjAwWiIsImNoZWNrZWRCeSI6IjViMWY3YzBlLTJkNGEtNGM1NS05YTNlLTBjMWQyZTNmNGE1YiIsImVudGl0eVJlZiI6IkVOVC0wMDAxIiwibWlzc2luZ1dvcmRpbmciOlsiQnV5ZXIgQ3JlYXRlZCBUYXggSW52b2ljZSJdLCJyZXN1bHQiOiJGQUlMRUQiLCJzYW1wbGVTaGEyNTYiOiJlNWM2MmRmNWRhYjVjODdiNmEwMTVlZjNkNDM1OTcwNzRkMWVlYzQzM2IxNWY1MWFlYzYzYjg1ODJkMGU0YWI0Iiwic2NlbmFyaW8iOiJTRUxGX0JJTExJTkciLCJzdWJtaXNzaW9uVHlwZSI6IlRZUEVfMiIsInRleHRGb3VuZCI6dHJ1ZX0="
+}

@@ -3,3 +3,4 @@
 ../openapi.yaml#/components/schemas/EntityRenditionEvidence entity-rendition-evidence-*.json
 ../openapi.yaml#/components/schemas/CorrectPersonalDataRequest correct-personal-data-request-*.json
 ../openapi.yaml#/components/schemas/ApplyOperatingProfileRequest apply-operating-profile-request-*.json
+../openapi.yaml#/components/schemas/RenditionSampleContent rendition-sample-content-*.json

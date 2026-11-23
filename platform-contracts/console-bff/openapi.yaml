@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: console-bff API
-  version: 1.23.0
+  version: 1.24.0
   description: >-
     Contract-first source of truth for console-bff (API-01, STK-44). The
     `console-bff-contract` module generates its server interfaces and DTOs
@@ -1188,6 +1188,13 @@ paths:
         and console-bff stores nothing. `limit` applies to each page. No offset
         and no total (API-18). It changes no state and produces no event.
 
+        A 200 answer carries `sample` (the stored metadata, `sampleSha256` and
+        `result`, never the bytes) on every sample check item, read from
+        payload-svc `getRenditionSampleCheckMetadata`, and `standing` whenever
+        `sampleChecks.items` is not empty. The list answers an error and no
+        page when a payload read is unavailable (fail closed). The bytes of
+        one check are read by `getRenditionSampleContent`.
+
 
         Timeout class (INV-REQ-1204 b7, INV-Q-3476): `console-web ->
         console-bff`, 5 s for two downstream calls (x-timeout 5000): the
@@ -1245,6 +1252,53 @@ paths:
                           reference: "sample-check-0001"
                           hash: "0000000000000000000000000000000000000000000000000000000000000000"
                           recordedAt: "2026-04-01T02:05:00Z"
+        default:
+          $ref: '#/components/responses/Error'
+  /bff/entities/{entityRef}/rendition-sample-checks/{checkId}/content:
+    get:
+      operationId: getRenditionSampleContent
+      summary: Read the stored sample bytes of one sample check
+      description: >-
+        People, through console-bff only (INV-REQ-1036). The caller holds the
+        scoped key `rendition-evidence.view` at entity scope. It returns the
+        stored sample bytes of one sample check, read from payload-svc
+        `getRenditionSampleCheck`. The answer is an error and no bytes when the
+        payload read is unavailable or when the SHA-256 of the decoded bytes
+        differs from `sampleSha256` (fail closed). It changes no state and
+        produces no event.
+      tags: [evidence]
+      x-principal: filing-workflow
+      x-caller-auth: end-user
+      x-timeout: 5000
+      x-error-codes: []
+      x-requirements: [INV-REQ-1036]
+      parameters:
+        - name: entityRef
+          in: path
+          required: true
+          schema:
+            type: string
+            maxLength: 40
+        - name: checkId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 64
+      responses:
+        '200':
+          description: The stored sample bytes of the sample check.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RenditionSampleContent'
+              examples:
+                default:
+                  value:
+                    checkId: "chk-0001"
+                    sampleSha256: "e5c62df5dab5c87b6a015ef3d43597074d1eec433b15f51aec63b8582d0e4ab4"
+                    sampleContent: "JVBERi0xLjQK"
         default:
           $ref: '#/components/responses/Error'
   /bff/documents/{docUuid}/version-comparison:
@@ -1678,6 +1732,79 @@ components:
         recordedAt:
           type: string
           format: date-time
+        sample:
+          $ref: '#/components/schemas/SampleCheckRecord'
+    SampleCheckRecord:
+      type: object
+      additionalProperties: false
+      description: The stored sample metadata, `sampleSha256` and `result` of one sample check, never the bytes (INV-REQ-1036).
+      properties:
+        checkId:
+          type: string
+          minLength: 1
+          maxLength: 64
+        entityRef:
+          type: string
+          maxLength: 40
+        scenario:
+          type: string
+          maxLength: 64
+        submissionType:
+          type: string
+          enum: [TYPE_1A, TYPE_1B, TYPE_2, TYPE_3]
+          x-extensible-enum: true
+        sampleSha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        result:
+          type: string
+          enum: [PASSED, FAILED]
+          x-extensible-enum: true
+        textFound:
+          type: boolean
+          description: False when no text could be extracted from the sample; every required wording is then missing.
+        missingWording:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+            maxLength: 200
+        checkedAt:
+          type: string
+          format: date-time
+        checkedBy:
+          type: string
+          maxLength: 64
+          description: The acting user ID (INV-Q-10647).
+        findingCode:
+          type: string
+          const: PAY-014
+          description: Present exactly when `result` is FAILED; the finding is the entity's, not a document's.
+      required: [checkId, entityRef, scenario, submissionType, sampleSha256, result, textFound, missingWording, checkedAt, checkedBy]
+    RenditionStanding:
+      type: object
+      description: The PAY-014 standing of the entity.
+      properties:
+        open:
+          type: boolean
+          description: True exactly while the latest stored result of at least one (scenario, submissionType) pair is FAILED.
+      required: [open]
+    RenditionSampleContent:
+      type: object
+      description: The stored sample bytes of one sample check (INV-REQ-1036).
+      properties:
+        checkId:
+          type: string
+          minLength: 1
+          maxLength: 64
+        sampleSha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        sampleContent:
+          type: string
+          contentEncoding: base64
+          maxLength: 14000000
+      required: [checkId, sampleSha256, sampleContent]
     RenditionAttestationRecordPage:
       type: object
       required: [items]
@@ -1711,6 +1838,8 @@ components:
           $ref: '#/components/schemas/RenditionAttestationRecordPage'
         sampleChecks:
           $ref: '#/components/schemas/SampleCheckArtefactPage'
+        standing:
+          $ref: '#/components/schemas/RenditionStanding'
     DocumentSearchPage:
       type: object
       properties:

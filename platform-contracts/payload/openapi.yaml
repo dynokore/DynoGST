@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: payload API
-  version: 2.4.0
+  version: 2.5.0
   description: >-
     Contract-first source of truth for payload (API-01, STK-44). The
     `payload-contract` module generates its server interfaces and DTOs
@@ -518,6 +518,109 @@ paths:
           $ref: '#/components/responses/Error'
         default:
           $ref: '#/components/responses/Error'
+  /internal/v1/payload/entities/{entityRef}/rendition-sample-checks/{checkId}:
+    get:
+      operationId: getRenditionSampleCheck
+      summary: Read one stored sample check with its sample bytes
+      description: >-
+        Single-sample read of one stored sample check (INV-REQ-1033,
+        INV-REQ-1036; INV-AC-2010 option A): it returns the stored sample
+        bytes (`sampleContent`), the exact artefact bytes (`artefactBytes`,
+        the byte string whose SHA-256 is the artefact hash), the result and
+        the PAY-014 `standing` of the entity. It is the only payload read
+        where the SHA-256 of the sample bytes is checked against
+        `sampleSha256`; the list of console-bff does not call it.
+
+        Read only, no event. The caller holds the scoped key
+        `rendition-evidence.view` at entity scope. The sample check is keyed by
+        the artefact reference `entityRef/checkId`. An unknown entity or sample
+        check is refused with `404` and SRT-005.
+      tags: [rendition]
+      x-principal: filing-workflow
+      x-caller-auth: end-user
+      x-timeout: 2000
+      x-sync-edge: console-bff->payload-svc
+      x-error-codes: [SRT-005]
+      x-requirements: [INV-REQ-1033, INV-REQ-1036]
+      parameters:
+        - $ref: '#/components/parameters/EntityRef'
+        - $ref: '#/components/parameters/CheckId'
+      responses:
+        '200':
+          description: The stored sample check, with the uploaded sample bytes and the retained artefact bytes, and the standing of the entity.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RenditionSampleCheckRead'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          description: The entity or the sample check is unknown (SRT-005).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '../service-runtime/schemas/error-envelope.schema.json'
+              examples:
+                default:
+                  value:
+                    type: "about:blank"
+                    title: "Not found"
+                    status: 404
+                    code: "SRT-005"
+                    correlationId: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+        default:
+          $ref: '#/components/responses/Error'
+  /internal/v1/payload/entities/{entityRef}/rendition-sample-checks/{checkId}/metadata:
+    get:
+      operationId: getRenditionSampleCheckMetadata
+      summary: Read one stored sample check without bytes
+      description: >-
+        Metadata read of one stored sample check (INV-REQ-1033, INV-REQ-1036):
+        a projection of the record of `getRenditionSampleCheck` that returns
+        the stored sample metadata, `sampleSha256`, `result` and the PAY-014
+        `standing` of the entity, and no `sampleContent` and no
+        `artefactBytes` (OWASP API4, a list never moves binary content). The
+        list of console-bff reads it for each item.
+
+        Read only, no event. The caller holds the scoped key
+        `rendition-evidence.view` at entity scope. The sample check is keyed by
+        the artefact reference `entityRef/checkId`. An unknown entity or sample
+        check is refused with `404` and SRT-005.
+      tags: [rendition]
+      x-principal: filing-workflow
+      x-caller-auth: end-user
+      x-timeout: 2000
+      x-sync-edge: console-bff->payload-svc
+      x-error-codes: [SRT-005]
+      x-requirements: [INV-REQ-1033, INV-REQ-1036]
+      parameters:
+        - $ref: '#/components/parameters/EntityRef'
+        - $ref: '#/components/parameters/CheckId'
+      responses:
+        '200':
+          description: The stored sample check without any bytes member, and the standing of the entity.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RenditionSampleCheckMetadataRead'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          description: The entity or the sample check is unknown (SRT-005).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '../service-runtime/schemas/error-envelope.schema.json'
+              examples:
+                default:
+                  value:
+                    type: "about:blank"
+                    title: "Not found"
+                    status: 404
+                    code: "SRT-005"
+                    correlationId: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+        default:
+          $ref: '#/components/responses/Error'
   /internal/v1/payload/entities/{entityRef}/rendition-samples:
     post:
       operationId: recordRenditionSample
@@ -913,6 +1016,14 @@ components:
       schema:
         type: string
         maxLength: 40
+    CheckId:
+      name: checkId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 64
     DocUuid:
       name: docUuid
       in: path
@@ -1305,6 +1416,133 @@ components:
           const: PAY-014
           description: Present exactly when `result` is FAILED; the finding is the entity's, not a document's.
       required: [entityRef, scenario, submissionType, sampleSha256, result, textFound, missingWording, checkedAt, packVersion]
+    RenditionSampleCheckRecord:
+      type: object
+      description: One stored sample check with the uploaded sample bytes and the retained artefact bytes (INV-REQ-1033, INV-REQ-1036).
+      properties:
+        checkId:
+          type: string
+          minLength: 1
+          maxLength: 64
+        entityRef:
+          type: string
+          maxLength: 40
+        scenario:
+          type: string
+          maxLength: 64
+        submissionType:
+          type: string
+          enum: [TYPE_1A, TYPE_1B, TYPE_2, TYPE_3]
+          x-extensible-enum: true
+        sampleContent:
+          type: string
+          contentEncoding: base64
+          maxLength: 14000000
+          description: The uploaded sample PDF, base64-encoded.
+        sampleSha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        result:
+          type: string
+          enum: [PASSED, FAILED]
+          x-extensible-enum: true
+        textFound:
+          type: boolean
+          description: False when no text could be extracted from the sample; every required wording is then missing.
+        missingWording:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+            maxLength: 200
+        checkedAt:
+          type: string
+          format: date-time
+        checkedBy:
+          type: string
+          maxLength: 64
+          description: The acting user ID (INV-Q-10647).
+        findingCode:
+          type: string
+          const: PAY-014
+          description: Present exactly when `result` is FAILED; the finding is the entity's, not a document's.
+        artefactBytes:
+          type: string
+          contentEncoding: base64
+          maxLength: 24000
+          description: The exact byte string whose SHA-256 is the artefact hash.
+      required: [checkId, entityRef, scenario, submissionType, sampleContent, sampleSha256, result, textFound, missingWording, checkedAt, checkedBy, artefactBytes]
+    RenditionSampleCheckMetadata:
+      type: object
+      additionalProperties: false
+      description: The stored sample check without any bytes member (INV-REQ-1033, INV-REQ-1036).
+      properties:
+        checkId:
+          type: string
+          minLength: 1
+          maxLength: 64
+        entityRef:
+          type: string
+          maxLength: 40
+        scenario:
+          type: string
+          maxLength: 64
+        submissionType:
+          type: string
+          enum: [TYPE_1A, TYPE_1B, TYPE_2, TYPE_3]
+          x-extensible-enum: true
+        sampleSha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        result:
+          type: string
+          enum: [PASSED, FAILED]
+          x-extensible-enum: true
+        textFound:
+          type: boolean
+          description: False when no text could be extracted from the sample; every required wording is then missing.
+        missingWording:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+            maxLength: 200
+        checkedAt:
+          type: string
+          format: date-time
+        checkedBy:
+          type: string
+          maxLength: 64
+          description: The acting user ID (INV-Q-10647).
+        findingCode:
+          type: string
+          const: PAY-014
+          description: Present exactly when `result` is FAILED; the finding is the entity's, not a document's.
+      required: [checkId, entityRef, scenario, submissionType, sampleSha256, result, textFound, missingWording, checkedAt, checkedBy]
+    RenditionStanding:
+      type: object
+      description: The PAY-014 standing of the entity.
+      properties:
+        open:
+          type: boolean
+          description: True exactly while the latest stored result of at least one (scenario, submissionType) pair is FAILED.
+      required: [open]
+    RenditionSampleCheckRead:
+      type: object
+      properties:
+        check:
+          $ref: '#/components/schemas/RenditionSampleCheckRecord'
+        standing:
+          $ref: '#/components/schemas/RenditionStanding'
+      required: [check, standing]
+    RenditionSampleCheckMetadataRead:
+      type: object
+      properties:
+        check:
+          $ref: '#/components/schemas/RenditionSampleCheckMetadata'
+        standing:
+          $ref: '#/components/schemas/RenditionStanding'
+      required: [check, standing]
     RenditionStatus:
       type: object
       properties:
