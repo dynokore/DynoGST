@@ -7,7 +7,6 @@ import com.dynokore.gst.payload.adapters.schematron.CompiledPackCache
 import com.dynokore.gst.payload.adapters.schematron.SchXslt2Compiler
 import com.dynokore.gst.payload.adapters.schematron.StagedSchematronSource
 import com.dynokore.gst.payload.domain.SchematronCompiler
-import com.dynokore.gst.payload.domain.SchematronValidator
 import com.dynokore.gst.payload.domain.StagedPackSource
 import com.dynokore.platform.integrationcanon.schematron.SchematronRunner
 import org.springframework.context.annotation.Bean
@@ -27,17 +26,17 @@ class SchematronConfiguration {
 
     @Bean
     fun stagedPackSource(rules: JooqRulePackReplica): StagedPackSource =
-        StagedSchematronSource { version -> rules.contentsOfVersion(RulePackEventsHandler.SCHEMATRON_PACK_TYPE, version) }
+        StagedSchematronSource { version ->
+            rules.contentsOfVersion(RulePackEventsHandler.SCHEMATRON_PACK_TYPE, version)
+        }
 
+    /** The one cache bean; it is also the [com.dynokore.gst.payload.domain.SchematronValidator] port by its type. */
     @Bean
     fun compiledPackCache(
         runner: SchematronRunner,
         source: StagedPackSource,
         compiler: SchematronCompiler,
     ): CompiledPackCache = CompiledPackCache(runner, source, compiler)
-
-    @Bean
-    fun schematronValidator(cache: CompiledPackCache): SchematronValidator = cache
 
     @Bean
     fun schematronActivation(cache: CompiledPackCache): SchematronActivation =

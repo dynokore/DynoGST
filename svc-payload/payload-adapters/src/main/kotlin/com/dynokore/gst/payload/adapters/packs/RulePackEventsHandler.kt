@@ -133,7 +133,9 @@ class RulePackEventsHandler(
                     // a throw rolls the activation back with the inbox transaction; the inbox retries
                     onSchematronActivated.activated(
                         version,
-                        checkNotNull(rules.contentsOf(packType, identifier, version)) { "the activated pack has no contents" },
+                        checkNotNull(
+                            rules.contentsOf(packType, identifier, version),
+                        ) { "the activated pack has no contents" },
                     )
                 }
                 if (changed) HandleOutcome.APPLIED else HandleOutcome.IGNORED
