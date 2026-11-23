@@ -16,6 +16,8 @@ import io.kotest.matchers.string.shouldNotContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 import org.junit.jupiter.api.Test
 import org.springframework.boot.test.context.runner.ApplicationContextRunner
+import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Configuration
 import java.io.ByteArrayInputStream
 import java.security.cert.CertificateFactory
 
@@ -38,12 +40,16 @@ class ReportSigningConfigurationTest {
         }
     }
 
-    // not a nested @Configuration: the bootstrap package is component-scanned and would pick up a fake store
+    @Configuration(proxyBeanMethods = false)
+    class StoreConfiguration {
+        @Bean
+        fun secretStore(): SecretStore = FakeStore(P256_KEY + "\n" + P256_CERT)
+    }
+
     private fun runner(): ApplicationContextRunner =
         ApplicationContextRunner()
             .withInitializer { it.environment.propertySources.remove("systemProperties") }
-            .withBean(SecretStore::class.java, { FakeStore(P256_KEY + "\n" + P256_CERT) })
-            .withUserConfiguration(ReportSigningConfiguration::class.java)
+            .withUserConfiguration(StoreConfiguration::class.java, ReportSigningConfiguration::class.java)
 
     private fun startFailure(vararg values: String): String {
         var failure: Throwable? = null
@@ -52,11 +58,7 @@ class ReportSigningConfigurationTest {
         return generateSequence(failure) { it.cause }.joinToString(" | ") { it.message.orEmpty() }
     }
 
-    private fun key(secret: String?) =
-        FakeStore(secret).let {
-            it to
-                SecretSigningKey(it, SecretRef("audit-pack/signing-key"))
-        }
+    private fun key(secret: String?) = FakeStore(secret).let { it to SecretSigningKey(it, SecretRef("audit-pack/signing-key")) }
 
     private fun pem(vararg blocks: String) = blocks.joinToString("\n")
 
@@ -175,78 +177,78 @@ class ReportSigningConfigurationTest {
     }
 
     private companion object {
-        private val P256_KEY =
-            listOf(
-                "-----BEGIN PRIVATE KEY-----",
-                "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgZrqp+p2dyYyFZ8S0",
-                "GiIvAWgzBo0p2DnLY/oyexfHgwChRANCAAQdVDXlLE0CKSYRwgJNWfjcHCkwyD/2",
-                "iTfrnIyUd/jmmYn31w7QrNq+rjmWXjWtJKGsyB06mDU5jMvn9LOIB99s",
-                "-----END PRIVATE KEY-----",
-            ).joinToString("\n")
+    private val P256_KEY =
+        listOf(
+            "-----BEGIN PRIVATE KEY-----",
+            "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgZrqp+p2dyYyFZ8S0",
+            "GiIvAWgzBo0p2DnLY/oyexfHgwChRANCAAQdVDXlLE0CKSYRwgJNWfjcHCkwyD/2",
+            "iTfrnIyUd/jmmYn31w7QrNq+rjmWXjWtJKGsyB06mDU5jMvn9LOIB99s",
+            "-----END PRIVATE KEY-----",
+        ).joinToString("\n")
 
-        private val P256_CERT =
-            listOf(
-                "-----BEGIN CERTIFICATE-----",
-                "MIIBmDCCAT2gAwIBAgIUZfd/11smjHdJ1LcAI8Lx67Z+lMowCgYIKoZIzj0EAwIw",
-                "IDEeMBwGA1UEAwwVZXZpZGVuY2Utc2lnbmluZy10ZXN0MCAXDTI2MTEyMzEzNTYw",
-                "NloYDzIxMjYxMDMwMTM1NjA2WjAgMR4wHAYDVQQDDBVldmlkZW5jZS1zaWduaW5n",
-                "LXRlc3QwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAAQdVDXlLE0CKSYRwgJNWfjc",
-                "HCkwyD/2iTfrnIyUd/jmmYn31w7QrNq+rjmWXjWtJKGsyB06mDU5jMvn9LOIB99s",
-                "o1MwUTAdBgNVHQ4EFgQU8Ym2CTFxzgN6uN/fElVgyrLDPkUwHwYDVR0jBBgwFoAU",
-                "8Ym2CTFxzgN6uN/fElVgyrLDPkUwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQD",
-                "AgNJADBGAiEAwxn7lagv77QARjz6sgkjpy6TW0gBU4+2EKLgIqf0pM0CIQC9iO+I",
-                "foyyA4RSc+eq6PLJY2QxY9dR/Be5JzGpcFXnkw==",
-                "-----END CERTIFICATE-----",
-            ).joinToString("\n")
+    private val P256_CERT =
+        listOf(
+            "-----BEGIN CERTIFICATE-----",
+            "MIIBmDCCAT2gAwIBAgIUZfd/11smjHdJ1LcAI8Lx67Z+lMowCgYIKoZIzj0EAwIw",
+            "IDEeMBwGA1UEAwwVZXZpZGVuY2Utc2lnbmluZy10ZXN0MCAXDTI2MTEyMzEzNTYw",
+            "NloYDzIxMjYxMDMwMTM1NjA2WjAgMR4wHAYDVQQDDBVldmlkZW5jZS1zaWduaW5n",
+            "LXRlc3QwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAAQdVDXlLE0CKSYRwgJNWfjc",
+            "HCkwyD/2iTfrnIyUd/jmmYn31w7QrNq+rjmWXjWtJKGsyB06mDU5jMvn9LOIB99s",
+            "o1MwUTAdBgNVHQ4EFgQU8Ym2CTFxzgN6uN/fElVgyrLDPkUwHwYDVR0jBBgwFoAU",
+            "8Ym2CTFxzgN6uN/fElVgyrLDPkUwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQD",
+            "AgNJADBGAiEAwxn7lagv77QARjz6sgkjpy6TW0gBU4+2EKLgIqf0pM0CIQC9iO+I",
+            "foyyA4RSc+eq6PLJY2QxY9dR/Be5JzGpcFXnkw==",
+            "-----END CERTIFICATE-----",
+        ).joinToString("\n")
 
-        private val P256B_KEY =
-            listOf(
-                "-----BEGIN PRIVATE KEY-----",
-                "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgtb9JT9luVCus8mzP",
-                "LYWr1A1+7MEvo0kNOTGiNwyyc9ihRANCAATDD+IFpk+C1krywT2wRYBEqjgid1mc",
-                "0finYNDWQlEq5qdHPA0wtfW266L6PgpDF5QMSKcZZT2uIZHNLqDNSIWh",
-                "-----END PRIVATE KEY-----",
-            ).joinToString("\n")
+    private val P256B_KEY =
+        listOf(
+            "-----BEGIN PRIVATE KEY-----",
+            "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgtb9JT9luVCus8mzP",
+            "LYWr1A1+7MEvo0kNOTGiNwyyc9ihRANCAATDD+IFpk+C1krywT2wRYBEqjgid1mc",
+            "0finYNDWQlEq5qdHPA0wtfW266L6PgpDF5QMSKcZZT2uIZHNLqDNSIWh",
+            "-----END PRIVATE KEY-----",
+        ).joinToString("\n")
 
-        private val P256B_CERT =
-            listOf(
-                "-----BEGIN CERTIFICATE-----",
-                "MIIBljCCAT2gAwIBAgIUa9opyeniDLsSpoq7+QuH1hAeX/cwCgYIKoZIzj0EAwIw",
-                "IDEeMBwGA1UEAwwVZXZpZGVuY2Utc2lnbmluZy10ZXN0MCAXDTI2MTEyMzEzNTYw",
-                "NloYDzIxMjYxMDMwMTM1NjA2WjAgMR4wHAYDVQQDDBVldmlkZW5jZS1zaWduaW5n",
-                "LXRlc3QwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAATDD+IFpk+C1krywT2wRYBE",
-                "qjgid1mc0finYNDWQlEq5qdHPA0wtfW266L6PgpDF5QMSKcZZT2uIZHNLqDNSIWh",
-                "o1MwUTAdBgNVHQ4EFgQUpj66WxssjGP6re+JQe/iGjDELPowHwYDVR0jBBgwFoAU",
-                "pj66WxssjGP6re+JQe/iGjDELPowDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQD",
-                "AgNHADBEAiBEqZ8NQhXcjfFtkeb9uXnSZ4qnIMI92AaodTGMBG2qagIgfNMQS9EI",
-                "se99abls1YWBnYHBAzO5AIygGhsfee+0PtA=",
-                "-----END CERTIFICATE-----",
-            ).joinToString("\n")
+    private val P256B_CERT =
+        listOf(
+            "-----BEGIN CERTIFICATE-----",
+            "MIIBljCCAT2gAwIBAgIUa9opyeniDLsSpoq7+QuH1hAeX/cwCgYIKoZIzj0EAwIw",
+            "IDEeMBwGA1UEAwwVZXZpZGVuY2Utc2lnbmluZy10ZXN0MCAXDTI2MTEyMzEzNTYw",
+            "NloYDzIxMjYxMDMwMTM1NjA2WjAgMR4wHAYDVQQDDBVldmlkZW5jZS1zaWduaW5n",
+            "LXRlc3QwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAATDD+IFpk+C1krywT2wRYBE",
+            "qjgid1mc0finYNDWQlEq5qdHPA0wtfW266L6PgpDF5QMSKcZZT2uIZHNLqDNSIWh",
+            "o1MwUTAdBgNVHQ4EFgQUpj66WxssjGP6re+JQe/iGjDELPowHwYDVR0jBBgwFoAU",
+            "pj66WxssjGP6re+JQe/iGjDELPowDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQD",
+            "AgNHADBEAiBEqZ8NQhXcjfFtkeb9uXnSZ4qnIMI92AaodTGMBG2qagIgfNMQS9EI",
+            "se99abls1YWBnYHBAzO5AIygGhsfee+0PtA=",
+            "-----END CERTIFICATE-----",
+        ).joinToString("\n")
 
-        private val P384_KEY =
-            listOf(
-                "-----BEGIN PRIVATE KEY-----",
-                "MIG2AgEAMBAGByqGSM49AgEGBSuBBAAiBIGeMIGbAgEBBDAa8gdHuqRvXVvLDRpA",
-                "n5Qo1SlOVAH52paf804mMKzlcV94e0mCoVYUKaxOvjc99x6hZANiAARqfBAUJZKD",
-                "g8RZKSq/LPxDnzZ97DEWmNWCQSbWXb85O3wBZdd9Wi95thc8vjD0yyHrdvZ0hqtU",
-                "t2BiozZRUgW9t370fsm71smlzyXEgHGlLnEtBylAqo69YUNq7yYPSto=",
-                "-----END PRIVATE KEY-----",
-            ).joinToString("\n")
+    private val P384_KEY =
+        listOf(
+            "-----BEGIN PRIVATE KEY-----",
+            "MIG2AgEAMBAGByqGSM49AgEGBSuBBAAiBIGeMIGbAgEBBDAa8gdHuqRvXVvLDRpA",
+            "n5Qo1SlOVAH52paf804mMKzlcV94e0mCoVYUKaxOvjc99x6hZANiAARqfBAUJZKD",
+            "g8RZKSq/LPxDnzZ97DEWmNWCQSbWXb85O3wBZdd9Wi95thc8vjD0yyHrdvZ0hqtU",
+            "t2BiozZRUgW9t370fsm71smlzyXEgHGlLnEtBylAqo69YUNq7yYPSto=",
+            "-----END PRIVATE KEY-----",
+        ).joinToString("\n")
 
-        private val P384_CERT =
-            listOf(
-                "-----BEGIN CERTIFICATE-----",
-                "MIIB1TCCAVqgAwIBAgIUfPFjTbVb4t9YnKfuLbBkysam6aYwCgYIKoZIzj0EAwIw",
-                "IDEeMBwGA1UEAwwVZXZpZGVuY2Utc2lnbmluZy10ZXN0MCAXDTI2MTEyMzEzNTYw",
-                "NloYDzIxMjYxMDMwMTM1NjA2WjAgMR4wHAYDVQQDDBVldmlkZW5jZS1zaWduaW5n",
-                "LXRlc3QwdjAQBgcqhkjOPQIBBgUrgQQAIgNiAARqfBAUJZKDg8RZKSq/LPxDnzZ9",
-                "7DEWmNWCQSbWXb85O3wBZdd9Wi95thc8vjD0yyHrdvZ0hqtUt2BiozZRUgW9t370",
-                "fsm71smlzyXEgHGlLnEtBylAqo69YUNq7yYPStqjUzBRMB0GA1UdDgQWBBQCdKyK",
-                "qUwPTEkEcWnYeODSTxM2ETAfBgNVHSMEGDAWgBQCdKyKqUwPTEkEcWnYeODSTxM2",
-                "ETAPBgNVHRMBAf8EBTADAQH/MAoGCCqGSM49BAMCA2kAMGYCMQCQcEbhkd9gefOZ",
-                "9+dgTCZ+3SX5VLBwiGdqoalLYIDMbiMGE3B0/xfssK4iBK5WGtMCMQCX/JRvoLIR",
-                "Oeljm9Nd2oTHMgN85lZ0OpkjPyfZ/iwnel5768DpMJCTt3un1ejTUoI=",
-                "-----END CERTIFICATE-----",
-            ).joinToString("\n")
+    private val P384_CERT =
+        listOf(
+            "-----BEGIN CERTIFICATE-----",
+            "MIIB1TCCAVqgAwIBAgIUfPFjTbVb4t9YnKfuLbBkysam6aYwCgYIKoZIzj0EAwIw",
+            "IDEeMBwGA1UEAwwVZXZpZGVuY2Utc2lnbmluZy10ZXN0MCAXDTI2MTEyMzEzNTYw",
+            "NloYDzIxMjYxMDMwMTM1NjA2WjAgMR4wHAYDVQQDDBVldmlkZW5jZS1zaWduaW5n",
+            "LXRlc3QwdjAQBgcqhkjOPQIBBgUrgQQAIgNiAARqfBAUJZKDg8RZKSq/LPxDnzZ9",
+            "7DEWmNWCQSbWXb85O3wBZdd9Wi95thc8vjD0yyHrdvZ0hqtUt2BiozZRUgW9t370",
+            "fsm71smlzyXEgHGlLnEtBylAqo69YUNq7yYPStqjUzBRMB0GA1UdDgQWBBQCdKyK",
+            "qUwPTEkEcWnYeODSTxM2ETAfBgNVHSMEGDAWgBQCdKyKqUwPTEkEcWnYeODSTxM2",
+            "ETAPBgNVHRMBAf8EBTADAQH/MAoGCCqGSM49BAMCA2kAMGYCMQCQcEbhkd9gefOZ",
+            "9+dgTCZ+3SX5VLBwiGdqoalLYIDMbiMGE3B0/xfssK4iBK5WGtMCMQCX/JRvoLIR",
+            "Oeljm9Nd2oTHMgN85lZ0OpkjPyfZ/iwnel5768DpMJCTt3un1ejTUoI=",
+            "-----END CERTIFICATE-----",
+        ).joinToString("\n")
     }
 }

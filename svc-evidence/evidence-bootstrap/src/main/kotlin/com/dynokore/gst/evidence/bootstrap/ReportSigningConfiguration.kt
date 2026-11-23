@@ -11,7 +11,6 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import java.security.AlgorithmParameters
-import java.security.GeneralSecurityException
 import java.security.KeyFactory
 import java.security.interfaces.ECPrivateKey
 import java.security.spec.ECGenParameterSpec
@@ -21,8 +20,7 @@ import java.util.Base64
 
 /**
  * `evidence.audit-pack.signing-key-ref`: the installation evidence-signing key, held as a key reference (INV-REQ-663,
- * STK-29). Set per installation by the Helm values; there is no default, so a service started without it does not
- * start.
+ * STK-29). Set per installation by the Helm values; there is no default, so a service started without it does not start.
  */
 @ConfigurationProperties(prefix = "evidence.audit-pack")
 class ReportSigningProperties(
@@ -64,7 +62,12 @@ class SecretSigningKey(
     override fun toString(): String = "SecretSigningKey($ref)"
 
     private fun load(): JcaSigningKey {
-        val pem = readSecret()
+        val pem =
+            try {
+                store.read(ref).reveal()
+            } catch (e: SecretNotFound) {
+                throw SigningKeyRefused("signing key secret '$ref' is not bound", e)
+            }
         val keys = blocks(pem, "PRIVATE KEY")
         val certs = blocks(pem, "CERTIFICATE")
         if (keys.size != 1 || certs.size != 1) {
@@ -73,28 +76,17 @@ class SecretSigningKey(
                     "(found ${keys.size} and ${certs.size})",
             )
         }
-        return JcaSigningKey(algorithm, privateKey(keys.single()), certs.single())
+        val key = privateKey(keys.single())
+        if (!isP256(key)) throw SigningKeyRefused("signing key secret '$ref' does not hold an EC P-256 private key")
+        return JcaSigningKey(algorithm, key, certs.single())
     }
 
-    private fun readSecret(): String =
+    private fun privateKey(der: ByteArray): ECPrivateKey =
         try {
-            store.read(ref).reveal()
-        } catch (e: SecretNotFound) {
-            throw SigningKeyRefused("signing key secret '$ref' is not bound", e)
-        }
-
-    // the parser's exception is dropped on purpose: its message can echo bytes of the key (no secret byte in a refusal)
-    @Suppress("SwallowedException")
-    private fun privateKey(der: ByteArray): ECPrivateKey {
-        val key =
-            try {
-                KeyFactory.getInstance("EC").generatePrivate(PKCS8EncodedKeySpec(der)) as? ECPrivateKey
-            } catch (e: GeneralSecurityException) {
-                throw SigningKeyRefused("signing key secret '$ref' does not hold a PKCS#8 EC private key")
-            }
-        return key?.takeIf { isP256(it) }
-            ?: throw SigningKeyRefused("signing key secret '$ref' does not hold an EC P-256 private key")
-    }
+            KeyFactory.getInstance("EC").generatePrivate(PKCS8EncodedKeySpec(der)) as? ECPrivateKey
+        } catch (e: java.security.GeneralSecurityException) {
+            null
+        } ?: throw SigningKeyRefused("signing key secret '$ref' does not hold a PKCS#8 EC private key")
 
     private fun isP256(key: ECPrivateKey): Boolean {
         val p256 =
@@ -106,20 +98,17 @@ class SecretSigningKey(
         return actual.curve == p256.curve && actual.generator == p256.generator && actual.order == p256.order
     }
 
-    @Suppress("SwallowedException") // the decoder's message can echo a character of the secret
     private fun blocks(
         pem: String,
         label: String,
     ): List<ByteArray> =
-        Regex("-----BEGIN $label-----([A-Za-z0-9+/=\\s]*?)-----END $label-----")
-            .findAll(pem)
-            .map { m ->
-                try {
-                    Base64.getMimeDecoder().decode(m.groupValues[1])
-                } catch (e: IllegalArgumentException) {
-                    throw SigningKeyRefused("signing key secret '$ref' holds a $label block that is not Base64")
-                }
-            }.toList()
+        Regex("-----BEGIN $label-----([A-Za-z0-9+/=\\s]*?)-----END $label-----").findAll(pem).map { m ->
+            try {
+                Base64.getMimeDecoder().decode(m.groupValues[1])
+            } catch (e: IllegalArgumentException) {
+                throw SigningKeyRefused("signing key secret '$ref' holds a $label block that is not Base64")
+            }
+        }.toList()
 }
 
 /** A signing-key secret that cannot be used. The message names the reference only, never a secret byte. */
