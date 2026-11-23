@@ -5,9 +5,9 @@ import com.dynokore.gst.payload.adapters.packs.JooqRulePackReplica
 import com.dynokore.gst.payload.adapters.packs.RulePackEventsHandler
 import com.dynokore.gst.payload.adapters.packs.SchematronActivation
 import com.dynokore.gst.payload.adapters.schematron.CompiledPackCache
+import com.dynokore.gst.payload.adapters.schematron.StagedSchematronSource
 import com.dynokore.gst.payload.domain.SchematronCompiler
 import com.dynokore.gst.payload.domain.StagedPackMissingException
-import com.dynokore.gst.payload.domain.StagedPackSource
 import com.dynokore.platform.integrationcanon.schematron.SchematronRunner
 import com.dynokore.platform.outboxandqueue.CausationId
 import com.dynokore.platform.outboxandqueue.ConsumerSubscription
@@ -48,10 +48,6 @@ class SchematronActivationDbTest {
     private val json = EnvelopeJson()
     private val document = "<doc/>".toByteArray()
 
-    private companion object {
-        val NEXT_OFFSET = java.util.concurrent.atomic.AtomicLong(1_000L)
-    }
-
     private class Log : EventLogReader {
         private val records = mutableMapOf<String, MutableList<LogRecord>>()
 
@@ -60,8 +56,7 @@ class SchematronActivationDbTest {
             envelopeJson: String,
         ) {
             val list = records.getOrPut(topic) { mutableListOf() }
-            // offsets rise over the whole JVM: the consumer of the configuration keeps one fixed name in the database
-            list += LogRecord(NEXT_OFFSET.incrementAndGet(), envelopeJson)
+            list += LogRecord(list.size + 1L, envelopeJson)
         }
 
         override fun read(
@@ -83,40 +78,22 @@ class SchematronActivationDbTest {
         val cache: CompiledPackCache = context.getBean(CompiledPackCache::class.java)
         val activation: SchematronActivation = context.getBean(SchematronActivation::class.java)
         val schematronRunner: SchematronRunner = context.getBean(SchematronRunner::class.java)
-        val source: StagedPackSource = context.getBean(StagedPackSource::class.java)
         val compiler: SchematronCompiler = context.getBean(SchematronCompiler::class.java)
         val log = Log()
         private val consumerName = PackReplicaConfiguration.CONSUMER + "-" + UUID.randomUUID()
 
-        private val configuration = context.getBean(PackReplicaConfiguration::class.java)
-
-        /** The consumer of `RulePackActivated` exactly as the configuration builds it, over the in-memory log. */
-        private fun activatedConsumer(clock: Clock) =
-            configuration.rulePackActivatedConsumer(
-                catalogue,
-                log,
-                scope,
-                RebuildRequiredSink { },
-                clock,
-                dsl,
-                replica,
-                rules,
-                activation,
-            )
-
         private fun consumer(
             type: String,
             topic: String,
-            clock: Clock = Clock.systemUTC(),
-        ) = if (type == RulePackEventsHandler.ACTIVATED_TYPE) activatedConsumer(clock) else JdbcInboxConsumer(
+        ) = JdbcInboxConsumer(
             ConsumerSubscription(consumerName, topic, PackReplicaConfiguration.SCHEMA),
             catalogue,
             log,
             scope,
             dsl,
-            RulePackEventsHandler(type, replica, rules),
+            RulePackEventsHandler(type, replica, rules, activation),
             RebuildRequiredSink { },
-            clock,
+            Clock.systemUTC(),
         )
 
         fun deliver(
@@ -130,13 +107,8 @@ class SchematronActivationDbTest {
             return consumer(type, topic).pollOnce()
         }
 
-        /** Polls the activated topic again, one day later (past the backoff): the retry of the item that did not commit. */
-        fun repoll() =
-            consumer(
-                RulePackEventsHandler.ACTIVATED_TYPE,
-                RulePackEventsHandler.ACTIVATED_TOPIC,
-                Clock.offset(Clock.systemUTC(), java.time.Duration.ofDays(1)),
-            ).pollOnce()
+        /** Polls the activated topic again without a new item: the retry of the item that did not commit. */
+        fun repoll() = consumer(RulePackEventsHandler.ACTIVATED_TYPE, RulePackEventsHandler.ACTIVATED_TOPIC).pollOnce()
 
         fun <T> tx(
             tenant: TenantId,
@@ -145,7 +117,11 @@ class SchematronActivationDbTest {
 
         /** A cache with no held version, reading the replica on a miss exactly as the configuration does. */
         fun newCache() =
-            CompiledPackCache(schematronRunner, source, compiler)
+            CompiledPackCache(
+                schematronRunner,
+                StagedSchematronSource { rules.contentsOfVersion("schematron", it) },
+                compiler,
+            )
 
         fun ids(
             tenant: TenantId,
