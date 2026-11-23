@@ -381,10 +381,103 @@ class ConsoleReadAuthorisationFilterTest {
         grant(2)
         run(uri = "/v1/exceptions").called shouldBe true
         refused(run(uri = "/v1/exceptions/"))
-        CatalogueReadPermissions.DOMAIN_ENTRIES shouldBe emptyList()
+        CatalogueReadPermissions.DOMAIN_ENTRIES.map { it.pathTemplate } shouldBe
+            listOf("/bff/configuration-bundles/{bundleId}/promotion-diff")
+    }
+
+    private val promoRoles =
+        OperationRoleMap { key ->
+            when (key) {
+                "mapping-pack.author" -> mapOf(AUTHOR_ROLE to CellAllowance.PERMITTED)
+                "entity-config.manage" -> mapOf(MANAGER_ROLE to CellAllowance.PERMITTED)
+                "exception.view" -> mapOf(FIXTURE_ROLE to CellAllowance.PERMITTED)
+                else -> emptyMap()
+            }
+        }
+    private val promoReplica = AuthorityReplica(clock, promoRoles)
+    private val promoFilter = ConsoleReadAuthorisationFilter(CatalogueReadPermissions(), promoReplica, clock)
+
+    private fun promoGrants() {
+        promoReplica.onSnapshotComplete(1)
+        listOf("p-author" to AUTHOR_ROLE, "p-manager" to MANAGER_ROLE, "p-viewer" to FIXTURE_ROLE).forEachIndexed { i, (p, r) ->
+            promoReplica.accept(
+                AuthorityChanged(
+                    tenant,
+                    p,
+                    2L + i,
+                    AuthorityRecord.RoleGrantRecord(
+                        "g-$p",
+                        RoleGrantState.ACTIVE,
+                        RoleGrant(r, GrantScope.TENANT, tenant.toString(), clock.instant().minusSeconds(60)),
+                    ),
+                ),
+            )
+        }
+    }
+
+    private fun promo(
+        principal: String,
+        vararg query: Pair<String, String>,
+    ): Outcome {
+        val uri = "/bff/configuration-bundles/b1/promotion-diff"
+        val request = MockHttpServletRequest("GET", uri).apply { requestURI = uri }
+        request.setAttribute(ConsoleSessionFilter.PRINCIPAL_ATTRIBUTE, principal)
+        request.setAttribute(ConsoleSessionFilter.TENANT_ATTRIBUTE, tenant.toString())
+        query.forEach { request.addParameter(it.first, it.second) }
+        val response = MockHttpServletResponse()
+        val chain = MockFilterChain()
+        promoFilter.doFilter(request, response, chain)
+        return Outcome(response, chain)
+    }
+
+    private fun passed(out: Outcome) {
+        out.response.status shouldBe 200
+        out.called shouldBe true
+    }
+
+    @Test
+    fun `INV-AC-27035 the mapping-pack author passes for mapping-pack and is refused for identity-triple`() {
+        promoGrants()
+        passed(promo("p-author", "domain" to "mapping-pack"))
+        refused(promo("p-author", "domain" to "identity-triple"))
+    }
+
+    @Test
+    fun `INV-AC-27035 the entity-config manager passes for identity-triple and is refused for mapping-pack`() {
+        promoGrants()
+        passed(promo("p-manager", "domain" to "identity-triple"))
+        refused(promo("p-manager", "domain" to "mapping-pack"))
+    }
+
+    @Test
+    fun `INV-AC-27035 a domain outside the two and a missing domain are refused for both callers`() {
+        promoGrants()
+        for (p in listOf("p-author", "p-manager")) {
+            refused(promo(p, "domain" to "other"))
+            refused(promo(p))
+        }
+    }
+
+    @Test
+    fun `INV-AC-27035 a case look-alike, a plural look-alike and a blank domain are refused for both callers`() {
+        promoGrants()
+        for (p in listOf("p-author", "p-manager")) {
+            refused(promo(p, "domain" to "Mapping-Pack"))
+            refused(promo(p, "domain" to "mapping-packs"))
+            refused(promo(p, "domain" to ""))
+            refused(promo(p, "domain" to "  "))
+        }
+    }
+
+    @Test
+    fun `INV-AC-27035 an exception view holder reading the route is refused`() {
+        promoGrants()
+        for (d in listOf("mapping-pack", "identity-triple")) refused(promo("p-viewer", "domain" to d))
     }
 
     private companion object {
         const val FIXTURE_ROLE = "fixture-holder"
+        const val AUTHOR_ROLE = "fixture-author"
+        const val MANAGER_ROLE = "fixture-manager"
     }
 }

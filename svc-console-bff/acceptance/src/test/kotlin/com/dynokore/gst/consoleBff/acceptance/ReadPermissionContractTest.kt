@@ -38,12 +38,13 @@ class ReadPermissionContractTest {
     private fun findings(
         contract: List<Op>,
         table: List<CatalogueReadPermissions.Entry>,
+        domainTable: List<CatalogueReadPermissions.DomainEntry>,
         unmapped: Set<String>,
         keys: Set<String>,
     ): List<String> {
         val out = mutableListOf<String>()
         val contractIds = contract.map { it.operationId }.toSet()
-        val tableIds = table.map { it.operationId }.toSet()
+        val tableIds = (table.map { it.operationId } + domainTable.map { it.operationId }).toSet()
         (contractIds - tableIds - unmapped).sorted().forEach {
             out +=
                 "GET operation not in the table or the unmapped list: $it"
@@ -64,11 +65,22 @@ class ReadPermissionContractTest {
                 out += "table key of ${e.operationId} is not listed by the generated map: ${e.permissionKey}"
             }
         }
+        domainTable.forEach { e ->
+            val op = contract.firstOrNull { it.operationId == e.operationId }
+            if (op != null && (e.method != "GET" || e.pathTemplate != op.path)) {
+                out += "domain entry ${e.operationId} is ${e.method} ${e.pathTemplate}, contract has GET ${op.path}"
+            }
+            e.keysByDomain.forEach { (domain, key) ->
+                if (key !in keys) {
+                    out += "domain key of ${e.operationId} for $domain is not listed by the generated map: $key"
+                }
+            }
+        }
         return out
     }
 
     private fun real() =
-        findings(getOperations(openapi), CatalogueReadPermissions.ENTRIES, EXPECTED_UNMAPPED, allKeys())
+        findings(getOperations(openapi), CatalogueReadPermissions.ENTRIES, DOMAINS, EXPECTED_UNMAPPED, allKeys())
 
     @Test
     fun `INV-AC-20321 the table covers every GET operation of the pinned contract with listed keys`() {
@@ -85,7 +97,7 @@ class ReadPermissionContractTest {
                 "paths:\n  /v1/probe:\n    get:\n      operationId: probeOperation\n" +
                     "      responses:\n        '200':\n          description: ok",
             )
-        val offences = findings(getOperations(extra), CatalogueReadPermissions.ENTRIES, EXPECTED_UNMAPPED, allKeys())
+        val offences = findings(getOperations(extra), CatalogueReadPermissions.ENTRIES, DOMAINS, EXPECTED_UNMAPPED, allKeys())
         check(offences == listOf("GET operation not in the table or the unmapped list: probeOperation")) { "$offences" }
     }
 
@@ -93,21 +105,21 @@ class ReadPermissionContractTest {
     fun `INV-AC-20321 a table entry that is not a GET operation of the contract fails`() {
         val post = CatalogueReadPermissions.Entry("GET", "/v1/exceptions", "overrideException", "exception.view")
         val offences =
-            findings(getOperations(openapi), CatalogueReadPermissions.ENTRIES + post, EXPECTED_UNMAPPED, allKeys())
+            findings(getOperations(openapi), CatalogueReadPermissions.ENTRIES + post, DOMAINS, EXPECTED_UNMAPPED, allKeys())
         check(offences.any { it.contains("not a GET operation of the contract: overrideException") }) { "$offences" }
     }
 
     @Test
     fun `INV-AC-20321 a path template different from the contract fails`() {
         val moved = CatalogueReadPermissions.ENTRIES.map { it.copy(pathTemplate = it.pathTemplate + "/") }
-        val offences = findings(getOperations(openapi), moved, EXPECTED_UNMAPPED, allKeys())
+        val offences = findings(getOperations(openapi), moved, DOMAINS, EXPECTED_UNMAPPED, allKeys())
         check(offences.any { it.contains("contract has GET") }) { "$offences" }
     }
 
     @Test
     fun `INV-AC-20321 a key one character off or absent from the generated map fails`() {
         val off = CatalogueReadPermissions.ENTRIES.map { it.copy(permissionKey = it.permissionKey + "s") }
-        val offences = findings(getOperations(openapi), off, EXPECTED_UNMAPPED, allKeys())
+        val offences = findings(getOperations(openapi), off, DOMAINS, EXPECTED_UNMAPPED, allKeys())
         check(offences.any { it.contains("exception.views") }) { "$offences" }
     }
 
@@ -127,7 +139,38 @@ class ReadPermissionContractTest {
         check("getPortfolio" !in EXPECTED_UNMAPPED) { "getPortfolio is still listed as unmapped" }
     }
 
+    @Test
+    fun `INV-AC-27035 the real table decides previewConfigurationPromotion by domain and the contract passes`() {
+        check("previewConfigurationPromotion" !in EXPECTED_UNMAPPED) { "still listed as unmapped" }
+        val e = DOMAINS.single { it.operationId == "previewConfigurationPromotion" }
+        check(e.method == "GET") { "method: ${e.method}" }
+        check(e.pathTemplate == "/bff/configuration-bundles/{bundleId}/promotion-diff") { "path: ${e.pathTemplate}" }
+        check(e.domainParameter == "domain") { "parameter: ${e.domainParameter}" }
+        check(
+            e.keysByDomain == mapOf("mapping-pack" to "mapping-pack.author", "identity-triple" to "entity-config.manage"),
+        ) { "keys: ${e.keysByDomain}" }
+        check(CatalogueReadPermissions.ENTRIES.none { it.operationId == e.operationId || it.pathTemplate == e.pathTemplate }) {
+            "the route is also in ENTRIES"
+        }
+        val offences = real()
+        check(offences.isEmpty()) { offences.joinToString("; ") }
+    }
+
+    @Test
+    fun `INV-AC-27035 a domain key one character off the generated map fails by naming that key`() {
+        val off =
+            DOMAINS.map { e ->
+                e.copy(keysByDomain = e.keysByDomain + ("identity-triple" to "entity-config.manages"))
+            }
+        val offences =
+            findings(getOperations(openapi), CatalogueReadPermissions.ENTRIES, off, EXPECTED_UNMAPPED, allKeys())
+        check(offences.any { it.contains("entity-config.manages") }) { "$offences" }
+        check(offences.size == 1) { "$offences" }
+    }
+
     private companion object {
+        val DOMAINS: List<CatalogueReadPermissions.DomainEntry> = CatalogueReadPermissions.DOMAIN_ENTRIES
+
         /** GET operations of the contract that have no permission decision yet (the filter refuses their routes). */
         val EXPECTED_UNMAPPED: Set<String> =
             setOf(
@@ -135,7 +178,6 @@ class ReadPermissionContractTest {
                 "getOverridePreview",
                 "searchDocuments",
                 "compareDocumentVersions",
-                "previewConfigurationPromotion",
             )
     }
 }

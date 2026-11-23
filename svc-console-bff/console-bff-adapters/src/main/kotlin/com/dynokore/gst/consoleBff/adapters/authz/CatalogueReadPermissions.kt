@@ -61,8 +61,20 @@ class CatalogueReadPermissions(
     ): Entry? = ENTRIES.firstOrNull { it.method == method && it.pathTemplate == pathTemplate }
 
     companion object {
-        /** The domain-keyed routes; empty until a route is added to the table. */
-        val DOMAIN_ENTRIES: List<DomainEntry> = emptyList()
+        /**
+         * The domain-keyed routes: previewConfigurationPromotion is decided by the direct-editing permission key of
+         * the requested domain (INV-REQ-1128), at tenant scope as the route names no entity.
+         */
+        val DOMAIN_ENTRIES: List<DomainEntry> =
+            listOf(
+                DomainEntry(
+                    "GET",
+                    "/bff/configuration-bundles/{bundleId}/promotion-diff",
+                    "previewConfigurationPromotion",
+                    "domain",
+                    mapOf("mapping-pack" to "mapping-pack.author", "identity-triple" to "entity-config.manage"),
+                ),
+            )
 
         /**
          * A template matches a path when both have the same number of `/`-separated segments and every segment is
