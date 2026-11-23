@@ -65,6 +65,7 @@ class RecordedDocumentsByKeyDbTest {
     private val d5 = UUID.randomUUID()
     private val d6 = UUID.randomUUID()
 
+    @Suppress("LongParameterList") // a test seed: one row set per call
     private fun record(
         tenant: UUID,
         entity: UUID,

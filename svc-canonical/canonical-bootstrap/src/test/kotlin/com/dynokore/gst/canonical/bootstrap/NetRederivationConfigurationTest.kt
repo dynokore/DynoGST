@@ -135,6 +135,7 @@ class NetRederivationConfigurationTest {
         val invoice: UUID,
         val note: UUID,
         val number: String,
+        val amount: String,
     )
 
     private fun canonical(
@@ -190,55 +191,67 @@ class NetRederivationConfigurationTest {
         version(canonical),
     )
 
-    /** A purchase invoice (version 1), a purchase credit note naming it, and the derived net version 2 of the invoice. */
+    private fun insertPeriod(
+        dsl: DSLContext,
+        tenant: UUID,
+        periodId: UUID,
+    ) {
+        dsl
+            .insertInto(PERIOD_SPAN)
+            .set(PERIOD_SPAN.TENANT_ID, tenant)
+            .set(PERIOD_SPAN.ENTITY_REF, "E-001")
+            .set(PERIOD_SPAN.PERIOD_REF, "2026-Q1")
+            .set(PERIOD_SPAN.PERIOD_START, LocalDate.of(2026, 1, 1))
+            .set(PERIOD_SPAN.PERIOD_END, LocalDate.of(2026, 3, 31))
+            .set(PERIOD_SPAN.PERIOD_ID, periodId)
+            .execute()
+    }
+
+    private fun insertInbound(
+        dsl: DSLContext,
+        d: Doc,
+        doc: UUID,
+        function: String,
+    ) {
+        dsl
+            .insertInto(INBOUND_EVENT)
+            .set(INBOUND_EVENT.TENANT_ID, d.tenant)
+            .set(INBOUND_EVENT.ENTITY_ID, d.entity)
+            .set(INBOUND_EVENT.DOC_UUID, doc)
+            .set(INBOUND_EVENT.VERSION, 1)
+            .set(INBOUND_EVENT.EVENT_KIND, "POSTING")
+            .set(INBOUND_EVENT.DOCUMENT_FUNCTION, function)
+            .execute()
+    }
+
+    private fun insertDocuments(
+        ctx: ApplicationContext,
+        d: Doc,
+    ) {
+        val dsl = ctx.getBean(DSLContext::class.java)
+        val store = ctx.getBean(DocumentStore::class.java)
+        val periodId = UUID.randomUUID()
+        insertPeriod(dsl, d.tenant, periodId)
+        val invoice = canonical(d.number, d.amount, "810.00", "9810.00")
+        store.insert(newDocument(d, d.invoice, d.number, invoice, periodId))
+        val noteNumber = "CN-" + d.note
+        val note = canonical(noteNumber, "1000.00", "90.00", "1090.00", d.number)
+        store.insert(newDocument(d, d.note, noteNumber, note, periodId))
+        insertInbound(dsl, d, d.invoice, "INVOICE")
+        insertInbound(dsl, d, d.note, "CREDIT_NOTE")
+    }
+
+    /** A purchase invoice, a credit note naming it, and the derived net version 2 of the invoice. */
     private fun seed(
         ctx: ApplicationContext,
         amount: String,
     ): Doc {
         val tenant = UUID.randomUUID()
-        val d = Doc(tenant, UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "INV-" + UUID.randomUUID())
-        val scope = ctx.getBean(TenantScope::class.java)
-        val runner = ctx.getBean(TransactionRunner::class.java)
-        val dsl = ctx.getBean(DSLContext::class.java)
-        val store = ctx.getBean(DocumentStore::class.java)
-        val periodId = UUID.randomUUID()
-        scope.bind(TenantId(tenant), actor) {
-            runner.inTransaction {
-                run {
-                    dsl
-                        .insertInto(PERIOD_SPAN)
-                        .set(PERIOD_SPAN.TENANT_ID, tenant)
-                        .set(PERIOD_SPAN.ENTITY_REF, "E-001")
-                        .set(PERIOD_SPAN.PERIOD_REF, "2026-Q1")
-                        .set(PERIOD_SPAN.PERIOD_START, LocalDate.of(2026, 1, 1))
-                        .set(PERIOD_SPAN.PERIOD_END, LocalDate.of(2026, 3, 31))
-                        .set(PERIOD_SPAN.PERIOD_ID, periodId)
-                        .execute()
-                }
-                store.insert(
-                    newDocument(d, d.invoice, d.number, canonical(d.number, amount, "810.00", "9810.00"), periodId),
-                )
-                val noteNumber = "CN-" + d.note
-                store.insert(
-                    newDocument(
-                        d,
-                        d.note,
-                        noteNumber,
-                        canonical(noteNumber, "1000.00", "90.00", "1090.00", d.number),
-                        periodId,
-                    ),
-                )
-                listOf(d.invoice to "INVOICE", d.note to "CREDIT_NOTE").forEach { (doc, function) ->
-                    dsl
-                        .insertInto(INBOUND_EVENT)
-                        .set(INBOUND_EVENT.TENANT_ID, tenant)
-                        .set(INBOUND_EVENT.ENTITY_ID, d.entity)
-                        .set(INBOUND_EVENT.DOC_UUID, doc)
-                        .set(INBOUND_EVENT.VERSION, 1)
-                        .set(INBOUND_EVENT.EVENT_KIND, "POSTING")
-                        .set(INBOUND_EVENT.DOCUMENT_FUNCTION, function)
-                        .execute()
-                }
+        val number = "INV-" + UUID.randomUUID()
+        val d = Doc(tenant, UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), number, amount)
+        ctx.getBean(TenantScope::class.java).bind(TenantId(tenant), actor) {
+            ctx.getBean(TransactionRunner::class.java).inTransaction {
+                insertDocuments(ctx, d)
                 // the system-derived net version 2 of the invoice, which makes the next ERP version re-derivable
                 ctx.getBean(InboundEventTrace::class.java).within(envelope(tenant)) {
                     ctx
@@ -250,57 +263,60 @@ class NetRederivationConfigurationTest {
         return d
     }
 
+    /** A new ERP version 3 of the invoice, then the re-derivation, in one transaction; [go] holds both threads. */
+    private fun reDerive(
+        ctx: ApplicationContext,
+        d: Doc,
+        ready: CountDownLatch,
+        go: CountDownLatch,
+    ) {
+        ctx.getBean(TenantScope::class.java).bind(TenantId(d.tenant), actor) {
+            ctx.getBean(TransactionRunner::class.java).inTransaction {
+                val erp = version(canonical(d.number, d.amount, "810.00", "9810.00"))
+                ctx.getBean(DocumentStore::class.java).createVersion(d.invoice, 2, erp)
+                ready.countDown()
+                go.await(10, TimeUnit.SECONDS)
+                ctx.getBean(InboundEventTrace::class.java).within(envelope(d.tenant)) {
+                    ctx.getBean(NetRederivation::class.java).afterErpVersion(d.invoice, 3, emptyList())
+                }
+            }
+        }
+    }
+
+    private fun assertOwnText(pair: List<Doc>) {
+        pair.forEach { d ->
+            val other = pair.first { candidate -> candidate !== d }
+            listOf(storedCanonical(d.invoice), stagedEvent(d.invoice)).forEach { text ->
+                text.contains(d.number) shouldBe true
+                text.contains(other.number) shouldBe false
+            }
+        }
+    }
+
     @Test
     fun `INV-AC-27994 T1 two threads re-derive two documents at the same time and each keeps its own text`(
         @TempDir dir: Path,
     ) {
         CanonicalContext.online(dir).run { ctx ->
-            val scope = ctx.getBean(TenantScope::class.java)
-            val runner = ctx.getBean(TransactionRunner::class.java)
-            val store = ctx.getBean(DocumentStore::class.java)
-            val rederivation = ctx.getBean(NetRederivation::class.java)
-            val trace = ctx.getBean(InboundEventTrace::class.java)
-            val rounds = 8
-            val docs = (1..rounds).map { listOf(seed(ctx, "9000.00"), seed(ctx, "5000.00")) }
             val pool = Executors.newFixedThreadPool(2)
             try {
-                docs.forEach { pair ->
+                repeat(ROUNDS) { _ ->
+                    val pair = listOf(seed(ctx, "9000.00"), seed(ctx, "5000.00"))
                     val ready = CountDownLatch(2)
                     val go = CountDownLatch(1)
-                    val futures =
-                        pair.mapIndexed { index, d ->
-                            pool.submit {
-                                val amount = if (index == 0) "9000.00" else "5000.00"
-                                scope.bind(TenantId(d.tenant), actor) {
-                                    runner.inTransaction {
-                                        store.createVersion(
-                                            d.invoice,
-                                            2,
-                                            version(canonical(d.number, amount, "810.00", "9810.00")),
-                                        )
-                                        ready.countDown()
-                                        go.await(10, TimeUnit.SECONDS)
-                                        trace.within(envelope(d.tenant)) {
-                                            rederivation.afterErpVersion(d.invoice, 3, emptyList())
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                    val futures = pair.map { d -> pool.submit { reDerive(ctx, d, ready, go) } }
                     ready.await(10, TimeUnit.SECONDS)
                     go.countDown()
                     futures.forEach { it.get(30, TimeUnit.SECONDS) }
-                    pair.forEach { d ->
-                        val other = pair.first { it !== d }
-                        listOf(storedCanonical(d.invoice), stagedEvent(d.invoice)).forEach { text ->
-                            text.contains(d.number) shouldBe true
-                            text.contains(other.number) shouldBe false
-                        }
-                    }
+                    assertOwnText(pair)
                 }
             } finally {
                 pool.shutdownNow()
             }
         }
+    }
+
+    private companion object {
+        const val ROUNDS = 8
     }
 }

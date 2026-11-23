@@ -40,7 +40,6 @@ class JooqRecordedDocumentsByKey(
                 .groupBy({ it[SOURCE_EVENT.SOURCE_KEY]!! }, { it[SOURCE_EVENT.DOC_UUID]!! })
                 .filterValues { it.size == 1 }
                 .mapValues { it.value.single() }
-        if (named.isEmpty()) return emptyMap()
         val docUuids = named.values.toSet()
         val entities =
             dsl
