@@ -81,7 +81,7 @@ object TenancyEventCatalogue {
                         contentTopic = false,
                     )
                 }
-        val consumedDomain = consumedDomainEvents()
+        val consumedDomain = consumedDomainEvents(triggerCoverageProducers())
         val known =
             ownTypes + consumed.map { it.eventType } + SHORT_CODE_USED_TYPE + PERIOD_FILING_STATUS_TYPE +
                 ConsumedCertificationEvents.IDENTITY_TRIPLE_CHANGED + ConsumedCertificationEvents.MARK_REQUESTED +
@@ -108,7 +108,7 @@ object TenancyEventCatalogue {
      * The events of other domains tenancy-svc consumes: ShortCodeUsed, PeriodFilingStatusChanged and
      * IdentityTripleChanged, and the internal CertificationMarkRequested.
      */
-    private fun consumedDomainEvents() =
+    private fun consumedDomainEvents(triggerCoverageProducers: Set<String>) =
         listOf(
             CatalogueEntry(SHORT_CODE_USED_TYPE, SHORT_CODE_USED_TOPIC, setOf("aggregation-svc"), contentTopic = false),
             CatalogueEntry(
@@ -141,7 +141,7 @@ object TenancyEventCatalogue {
             CatalogueEntry(
                 TRIGGER_COVERAGE_CHANGED_TYPE,
                 TRIGGER_COVERAGE_CHANGED_TOPIC,
-                setOf("ingestion-svc"),
+                triggerCoverageProducers,
                 contentTopic = false,
             ),
             CatalogueEntry(
@@ -223,6 +223,23 @@ object TenancyEventCatalogue {
                 CatalogueEntry(message["name"] as String, topic, setOf(SERVICE), contentTopic = false)
             }
     }
+}
+
+/**
+ * The producers the classpath topic file lists for the topic of TriggerCoverageChanged; a topic absent from the file
+ * or without a producer fails with the topic name (INV-AC-28054).
+ */
+internal fun triggerCoverageProducers(
+    topicsYaml: String = resourceText(TenancyEventCatalogue.TOPICS_RESOURCE),
+): Set<String> {
+    val topic = TenancyEventCatalogue.TRIGGER_COVERAGE_CHANGED_TOPIC
+    val entry =
+        TopicsYamlCatalogue.parse(topicsYaml).entries().firstOrNull {
+            it.topic == topic
+        }
+    requireNotNull(entry) { "topic $topic is not in ${TenancyEventCatalogue.TOPICS_RESOURCE}" }
+    require(entry.producers.isNotEmpty()) { "topic $topic has no producer" }
+    return entry.producers
 }
 
 private fun resourceText(name: String): String =

@@ -7,6 +7,7 @@ import com.dynokore.platform.productruntime.ProductEventTypes
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
+import java.io.File
 
 /** The emission guard accepts what tenancy-svc produces and rejects an uncatalogued type (TPL-05, API-43). */
 class TenancyEventCatalogueTest {
@@ -71,5 +72,45 @@ class TenancyEventCatalogueTest {
             )
         catalogue.find("com.dynokore.gst.submission.SubmissionDespatched.v2") shouldBe null
         catalogue.find("com.dynokore.gst.submission.SubmissionDespatch.v1") shouldBe null
+    }
+
+    @Test
+    fun `INV-AC-28054 the catalogue lists TriggerCoverageChanged as produced by the topic file producer`() {
+        val topicProducers = producersInTopicFile(TenancyEventCatalogue.TRIGGER_COVERAGE_CHANGED_TOPIC)
+        (topicProducers.isNotEmpty()) shouldBe true
+        catalogue.find(TenancyEventCatalogue.TRIGGER_COVERAGE_CHANGED_TYPE)?.producers shouldBe topicProducers
+        val source =
+            File("src/main/kotlin/com/dynokore/gst/tenancy/adapters/events/TenancyEventCatalogue.kt").readText()
+        source.contains("\"ingestion-svc\"") shouldBe false
+    }
+
+    @Test
+    fun `INV-AC-28054 a topic absent from the file or without a producer fails naming the topic`() {
+        val topic = TenancyEventCatalogue.TRIGGER_COVERAGE_CHANGED_TOPIC
+        val other =
+            "topics:\n  - topic: gst.other.thing.v1\n    event_type: x.Other.v1\n" +
+                "    producers:\n      - other-svc\n"
+        val absent = shouldThrow<IllegalArgumentException> { triggerCoverageProducers(other) }
+        absent.message!!.contains(topic) shouldBe true
+        val bare = "topics:\n  - topic: $topic\n    event_type: x.T.v1\n    producers:\n"
+        val none = shouldThrow<IllegalArgumentException> { triggerCoverageProducers(bare) }
+        none.message!!.contains(topic) shouldBe true
+        triggerCoverageProducers(other.replace("gst.other.thing.v1", topic)) shouldBe setOf("other-svc")
+    }
+
+    private fun producersInTopicFile(topic: String): Set<String> {
+        val lines =
+            checkNotNull(javaClass.classLoader.getResourceAsStream(TenancyEventCatalogue.TOPICS_RESOURCE))
+                .use { it.readBytes().toString(Charsets.UTF_8) }
+                .lines()
+        val start = lines.indexOfFirst { it.contains("topic: $topic") }
+        check(start >= 0) { "topic $topic is not in the topic file" }
+        val block = lines.drop(start + 1).takeWhile { !it.trimStart().startsWith("- topic:") }
+        return block
+            .dropWhile { !it.trimStart().startsWith("producers:") }
+            .drop(1)
+            .takeWhile { it.trimStart().startsWith("- ") }
+            .map { it.trim().removePrefix("- ").trim() }
+            .toSet()
     }
 }
