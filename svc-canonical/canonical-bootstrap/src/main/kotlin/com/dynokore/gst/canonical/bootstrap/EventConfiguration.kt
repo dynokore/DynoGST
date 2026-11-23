@@ -8,12 +8,14 @@ import org.springframework.context.annotation.Configuration
 /**
  * The events canonical-svc may emit (INV-REQ-815 behaviour 2): the six of model/architecture/events.yaml it produces
  * NetDerivationRefused (seven in all) and the platform event PackDryRunSampleRecorded, each on the topic its AsyncAPI
- * channel names. The emission guard of the outbox refuses any other type.
+ * channel names. The emission guard of the outbox refuses any other type. The catalogue bean also lists the events
+ * canonical-svc consumes ([CanonicalEvents.consumed], produced by another service), so a consumer of one of them starts
+ * only when its entry is catalogued (fail closed).
  */
 @Configuration(proxyBeanMethods = false)
 class EventConfiguration {
     @Bean
-    fun eventCatalogue(): EventCatalogue = EventCatalogue(CanonicalEvents.entries)
+    fun eventCatalogue(): EventCatalogue = EventCatalogue(CanonicalEvents.entries + CanonicalEvents.consumed)
 }
 
 object CanonicalEvents {
@@ -45,4 +47,22 @@ object CanonicalEvents {
         (topicByType + platformTopicByType).map { (type, topic) ->
             CatalogueEntry(type, topic, setOf(SERVICE), contentTopic = false, retainedWhileResolvable = false)
         }
+
+    /**
+     * The events canonical-svc consumes whose type the catalogue must list for the consumer to start (the row of
+     * `event-log/topics.yaml` of the pinned bundle). They are not emitted here: the producer is not canonical-svc.
+     */
+    val consumed: List<CatalogueEntry> =
+        listOf(
+            CatalogueEntry(
+                IDENTITY_TRIPLE_REPROCESSING_REQUESTED,
+                IDENTITY_TRIPLE_REPROCESSING_TOPIC,
+                setOf("submission-svc"),
+                contentTopic = false,
+            ),
+        )
+
+    const val IDENTITY_TRIPLE_REPROCESSING_REQUESTED =
+        "com.dynokore.gst.submission.IdentityTripleReprocessingRequested.v1"
+    const val IDENTITY_TRIPLE_REPROCESSING_TOPIC = "gst.submission.identity-triple-reprocessing-requested.v1"
 }
