@@ -44,7 +44,7 @@ class OperationsGateTest {
         OperationsGate.contractOperations(openapi) shouldContain "approveValidationOverride"
         OperationsGate.contractChannels(asyncapi).size shouldBe 4
         run(done = doneText).shouldBeEmpty()
-        doneText shouldBe "INV-T-10713\nINV-T-21139\n"
+        doneText shouldBe "INV-T-10713\nINV-T-21139\nINV-T-26310\n"
     }
 
     @Test
@@ -55,6 +55,7 @@ class OperationsGateTest {
                 "approveValidationOverride",
                 "getValidationOverrides",
                 "getLatestDocumentVersion",
+                "checkPreIssuance",
             )
         stubs shouldBe OperationsGate.contractOperations(openapi) - overridden
         stubs shouldContain "validateIssuance"
@@ -119,7 +120,7 @@ class OperationsGateTest {
     fun `INV-AC-17268 the three override operations name INV-T-10713, are done and answer no 501`() {
         val overridden = listOf("overrideValidation", "approveValidationOverride", "getValidationOverrides")
         overridden.forEach { tsv.lines() shouldContain "operation\t$it\tINV-T-10713" }
-        doneText shouldBe "INV-T-10713\nINV-T-21139\n"
+        doneText shouldBe "INV-T-10713\nINV-T-21139\nINV-T-26310\n"
         overridden.forEach { stubs shouldNotContain it }
         run(done = doneText).shouldBeEmpty()
         // one changed cell: a row cell that is no task key
