@@ -26,7 +26,9 @@ class SchematronConfiguration {
 
     @Bean
     fun stagedPackSource(rules: JooqRulePackReplica): StagedPackSource =
-        StagedSchematronSource { version -> rules.contentsOfVersion(RulePackEventsHandler.SCHEMATRON_PACK_TYPE, version) }
+        StagedSchematronSource { version ->
+            rules.contentsOfVersion(RulePackEventsHandler.SCHEMATRON_PACK_TYPE, version)
+        }
 
     /** The one cache bean; it is also the [com.dynokore.gst.payload.domain.SchematronValidator] port by its type. */
     @Bean
