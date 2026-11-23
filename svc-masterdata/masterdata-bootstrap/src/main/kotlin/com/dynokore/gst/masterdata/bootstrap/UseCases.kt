@@ -36,6 +36,7 @@ import java.time.Clock
  * TPL-18: the only place a use case is constructed. No DataSource bean here or anywhere in the service (owner ruling
  * INV-Q-4196): the one application pool is Spring Boot's `dataSource` from spring.datasource.* (TPL-16).
  */
+@Suppress("TooManyFunctions")
 @Configuration(proxyBeanMethods = false)
 @Suppress("TooManyFunctions") // one bean method per wired part (INV-Q-4629), as the sibling configurations do
 class UseCases {
