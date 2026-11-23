@@ -62,6 +62,12 @@ class PeriodDueDateEditRefusedTest {
                 }.map { it.name }
         assertThat(
             operations,
-        ).containsExactlyInAnyOrder("confirmPeriods", "getCalendarPackDelta", "listPeriodRecords", "recordExtension")
+        ).containsExactlyInAnyOrder(
+            "confirmPeriods",
+            "getCalendarPackDelta",
+            "listPeriodRecords",
+            "listRenditionAttestations",
+            "recordExtension",
+        )
     }
 }
