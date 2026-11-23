@@ -411,8 +411,10 @@ class AggregateReadyConsumerTest {
         doc["currency"]["value"].asString() shouldBe "SGD"
         doc["taxCurrencyCode"]["value"].asString() shouldBe "SGD"
         doc.has("exchangeRate") shouldBe false
-        doc["parties"]["value"]["buyer"].toString() shouldBe
-            """{"name":"POS","identifierValue":"POS","address":{"line1":"POS","postalCode":"POS"}}"""
+        doc["parties"]["value"]["buyer"] shouldBe
+            mapper.readTree(
+                """{"name":"POS","identifierValue":"POS","address":{"line1":"POS","postalCode":"POS"}}""",
+            )
         doc["parties"]["classification"].asString() shouldBe "IDENTIFYING"
     }
 
