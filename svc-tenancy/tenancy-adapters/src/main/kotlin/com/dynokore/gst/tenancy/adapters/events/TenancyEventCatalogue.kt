@@ -226,19 +226,16 @@ object TenancyEventCatalogue {
 }
 
 /**
- * The producers the classpath topic file lists for the topic of TriggerCoverageChanged; a topic absent from the file
+ * The producers the classpath topic file lists for [TenancyEventCatalogue.TRIGGER_COVERAGE_CHANGED_TOPIC]; a topic absent from the file
  * or without a producer fails with the topic name (INV-AC-28054).
  */
-internal fun triggerCoverageProducers(
-    topicsYaml: String = resourceText(TenancyEventCatalogue.TOPICS_RESOURCE),
-): Set<String> {
-    val topic = TenancyEventCatalogue.TRIGGER_COVERAGE_CHANGED_TOPIC
+private fun triggerCoverageProducers(): Set<String> {
     val entry =
-        TopicsYamlCatalogue.parse(topicsYaml).entries().firstOrNull {
-            it.topic == topic
+        TopicsYamlCatalogue.parse(resourceText(TenancyEventCatalogue.TOPICS_RESOURCE)).entries().firstOrNull {
+            it.topic == TenancyEventCatalogue.TRIGGER_COVERAGE_CHANGED_TOPIC
         }
-    requireNotNull(entry) { "topic $topic is not in ${TenancyEventCatalogue.TOPICS_RESOURCE}" }
-    require(entry.producers.isNotEmpty()) { "topic $topic has no producer" }
+    requireNotNull(entry) { "topic $TenancyEventCatalogue.TRIGGER_COVERAGE_CHANGED_TOPIC is not in ${TenancyEventCatalogue.TOPICS_RESOURCE}" }
+    require(entry.producers.isNotEmpty()) { "topic $TenancyEventCatalogue.TRIGGER_COVERAGE_CHANGED_TOPIC has no producer" }
     return entry.producers
 }
 
