@@ -155,4 +155,27 @@ class ReconciliationWorkPapersScopedDbTest {
         read(store, tenant = t2, asked = t1) shouldBe emptyList()
         store.reads shouldBe emptyList()
     }
+
+    /** A superuser connection bypasses row-level security, so only the SQL predicates scope the read. */
+    private fun readSeeingAllTenants(
+        store: Fake,
+        asked: UUID,
+    ) = EvidenceDb.superuser().use { c ->
+        JooqReconciliationWorkPapers(DSL.using(c, SQLDialect.POSTGRES), store, 1_000_000)
+            .candidates(TenantId(asked), "E1", "P1")
+    }
+
+    @Test
+    fun `INV-AC-28218 with a role that sees both tenants the item names are those of T1 E1 P1 only`() {
+        val store = fixture()
+        readSeeingAllTenants(store, t1).map { it.item.name } shouldBe listOf("A1-v1.json", "A2-v1.json")
+        store.reads.sorted() shouldBe listOf(a1, a2)
+    }
+
+    @Test
+    fun `INV-AC-28218 with a role that sees both tenants a read for T2 returns nothing of T1`() {
+        val store = fixture()
+        readSeeingAllTenants(store, t2).map { it.item.name } shouldBe listOf("D1-v1.json")
+        store.reads shouldBe listOf(foreign)
+    }
 }
