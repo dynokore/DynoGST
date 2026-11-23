@@ -54,25 +54,30 @@ class JooqDocumentIndexReads(
         cursor: String?,
     ): ResultQuery<DocumentIndexRecord>? {
         require(limit >= 1) { "limit must be at least 1" }
-        val docUuid = criteria.docUuid?.let { uuidOrNull(it) ?: return null }
-        if (entityRefs.isEmpty()) return null
+        val docUuid = criteria.docUuid?.let { uuidOrNull(it) }
+        val noMatch = entityRefs.isEmpty() || (criteria.docUuid != null && docUuid == null)
         val conditions =
             listOf(
                 DOCUMENT_INDEX.TENANT_ID.eq(UUID.fromString(tenantId)),
                 DOCUMENT_INDEX.ENTITY_REF.eq(DSL.any(*entityRefs.sorted().toTypedArray())),
-            ) + criteriaConditions(criteria, docUuid) + listOfNotNull(cursor?.let { after(Cursor.decode(it)) })
-        return dsl
-            .selectFrom(DOCUMENT_INDEX)
-            .where(conditions)
-            .orderBy(
-                DOCUMENT_INDEX.DOCUMENT_DATE.asc().nullsLast(),
-                DOCUMENT_INDEX.DOC_UUID.asc(),
-                DOCUMENT_INDEX.VERSION.asc(),
-            ).limit(limit + 1)
+            ) + identityConditions(criteria, docUuid) + rangeConditions(criteria) +
+                listOfNotNull(cursor?.let { after(Cursor.decode(it)) })
+        return if (noMatch) {
+            null
+        } else {
+            dsl
+                .selectFrom(DOCUMENT_INDEX)
+                .where(conditions)
+                .orderBy(
+                    DOCUMENT_INDEX.DOCUMENT_DATE.asc().nullsLast(),
+                    DOCUMENT_INDEX.DOC_UUID.asc(),
+                    DOCUMENT_INDEX.VERSION.asc(),
+                ).limit(limit + 1)
+        }
     }
 
     /** One bound-parameter condition per criterion given; no value is concatenated into the statement. */
-    private fun criteriaConditions(
+    private fun identityConditions(
         criteria: DocumentSearchCriteria,
         docUuid: UUID?,
     ): List<Condition> =
@@ -84,6 +89,10 @@ class JooqDocumentIndexReads(
             criteria.counterparty?.let {
                 DOCUMENT_INDEX.COUNTERPARTY_NAME.containsIgnoreCase(it).or(DOCUMENT_INDEX.COUNTERPARTY_UEN.eq(it))
             },
+        )
+
+    private fun rangeConditions(criteria: DocumentSearchCriteria): List<Condition> =
+        listOfNotNull(
             criteria.amountFrom?.let { DOCUMENT_INDEX.AMOUNT.ge(it) },
             criteria.amountTo?.let { DOCUMENT_INDEX.AMOUNT.le(it) },
             criteria.dateFrom?.let { DOCUMENT_INDEX.DOCUMENT_DATE.ge(it) },
