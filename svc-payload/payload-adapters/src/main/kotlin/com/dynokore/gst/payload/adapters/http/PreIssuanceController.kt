@@ -6,7 +6,6 @@ import com.dynokore.gst.payload.contract.api.PreIssuanceApi
 import com.dynokore.gst.payload.contract.model.DraftDocument
 import com.dynokore.gst.payload.contract.model.PreIssuanceVerdict
 import com.dynokore.gst.payload.contract.model.ReasonItem
-import com.dynokore.gst.payload.domain.PreIssuanceOutcome
 import com.dynokore.gst.payload.domain.PreIssuanceReason
 import com.dynokore.platform.serviceruntime.http.ClosedErrorCode
 import org.springframework.http.ResponseEntity
@@ -16,8 +15,10 @@ import org.springframework.web.bind.annotation.RestController
  * The pre-issuance operations of the payload contract (TPL-08). `checkPreIssuance` (INV-REQ-475) is stateless and
  * side-effect free (INV-REQ-325): no transaction, no store, no audit write. A draft that cannot be checked (a left-out
  * field, an amount that is not a decimal) is the API-20 envelope SRT-001 (the closed code CONTRACT_VIOLATION), decided
- * before any register lookup. The permission of the operation is decided per request by the platform operation map, not
- * here. Every other operation answers 501 until the task named for it in `operations.tsv` overrides its method.
+ * before any register lookup; a blank `supplierGstn`, `entityRef` or `currency` is refused here too, so the use case's
+ * precondition is never reached (OWASP ASVS V5, NIST SP 800-53 SI-10). This change adds no permission check and no 403
+ * case: no code of this repository decides a permission for this operation yet (a later slice, INV-T-27316, adds it).
+ * Every other operation answers 501 until the task named for it in `operations.tsv` overrides its method.
  */
 @RestController
 open class PreIssuanceController(
@@ -38,6 +39,10 @@ open class PreIssuanceController(
                     null
                 }
 
+                gstn.isBlank() || draftDocument.entityRef.isBlank() || draftDocument.currency.isBlank() -> {
+                    null
+                }
+
                 date == null || amount == null -> {
                     null
                 }
@@ -54,12 +59,12 @@ open class PreIssuanceController(
                 }
             }
         return when (result) {
-            is PreIssuanceCheck.Verdict -> ResponseEntity.ok(verdictOf(result.decided))
+            is PreIssuanceCheck.Verdict -> ResponseEntity.ok(verdictOf(result))
             else -> OverrideHttp.problem(ClosedErrorCode.CONTRACT_VIOLATION)
         }
     }
 
-    private fun verdictOf(decided: PreIssuanceOutcome.Decided): PreIssuanceVerdict {
+    private fun verdictOf(decided: PreIssuanceCheck.Verdict): PreIssuanceVerdict {
         val verdict = PreIssuanceVerdict.Verdict.valueOf(decided.verdict.name)
         return PreIssuanceVerdict(
             verdict,

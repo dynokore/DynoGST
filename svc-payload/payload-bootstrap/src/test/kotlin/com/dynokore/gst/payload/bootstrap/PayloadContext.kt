@@ -19,8 +19,19 @@ object PayloadContext {
     /** No connection is opened at start: the pool is lazy (TPL-16). */
     fun offline(mountRoot: Path): ApplicationContextRunner {
         secrets(mountRoot)
-        return base(mountRoot)
+        return base(mountRoot, MASTERDATA_URL)
     }
+
+    /** As [offline] with the masterdata-svc base URL given (INV-AC-26694); null leaves the property out. */
+    fun offlineWithMasterdataUrl(
+        mountRoot: Path,
+        masterdataUrl: String?,
+    ): ApplicationContextRunner {
+        secrets(mountRoot)
+        return base(mountRoot, masterdataUrl)
+    }
+
+    private const val MASTERDATA_URL = "http://localhost:9"
 
     /** The service over the Testcontainers database as a servlet context, for the tests that call the controllers. */
     fun web(mountRoot: Path): WebApplicationContextRunner {
@@ -31,8 +42,11 @@ object PayloadContext {
             .withPropertyValues(*properties(mountRoot).toTypedArray(), "spring.datasource.url=${PayloadDb.jdbcUrl}")
     }
 
-    private fun properties(mountRoot: Path): List<String> =
-        listOf(
+    private fun properties(
+        mountRoot: Path,
+        masterdataUrl: String? = MASTERDATA_URL,
+    ): List<String> =
+        listOfNotNull(
             "spring.datasource.username=payload_runtime",
             "service-runtime.workload-identity.audience=payload-svc",
             "gst.service=payload-svc",
@@ -44,19 +58,22 @@ object PayloadContext {
             "gst.bindings.secret-store.mount-root=$mountRoot",
             // the base URL of access-svc (INV-T-17184): the bean of the override wiring refuses to start without it
             "payload.access-svc-url=http://localhost:9",
-            "payload.masterdata-svc-url=http://localhost:9",
+            masterdataUrl?.let { "payload.masterdata-svc-url=$it" },
             "gst.bindings.telemetry-export=bundled-otel",
             "gst.bindings.telemetry-export-otlp-endpoint=http://telemetry-export.invalid:4318",
         )
 
-    private fun base(mountRoot: Path): ApplicationContextRunner =
+    private fun base(
+        mountRoot: Path,
+        masterdataUrl: String? = MASTERDATA_URL,
+    ): ApplicationContextRunner =
         ApplicationContextRunner()
             // the real application.yaml (TPL-16), then the overrides below
             .withInitializer(ConfigDataApplicationContextInitializer())
             .withUserConfiguration(PayloadApplication::class.java)
             .withPropertyValues(
                 "spring.datasource.url=jdbc:postgresql://localhost:5432/payload",
-                *properties(mountRoot).toTypedArray(),
+                *properties(mountRoot, masterdataUrl).toTypedArray(),
             )
 
     /** Over the Testcontainers database; the login password and the binding key come from a mounted secret store. */

@@ -123,4 +123,64 @@ class PreIssuanceControllerTest {
         json.readTree(textOf(response))["code"].asString() shouldBe "SRT-001"
         queries shouldBe emptyList()
     }
+
+    @Test
+    fun `INV-AC-26695 a Decided BLOCK is 200 with one reason equal to the outcome and no flags member`() {
+        val response = call(notRegistered)
+        response.statusCode.value() shouldBe 200
+        val body = checkNotNull(response.body as PreIssuanceVerdict)
+        body.verdict shouldBe PreIssuanceVerdict.Verdict.BLOCK
+        body.reasons.size shouldBe 1
+        val reason = body.reasons.single()
+        reason.code shouldBe "PAY-011"
+        reason.field shouldBe "supplierGstn"
+        reason.overridable shouldBe true
+        reason.severity shouldBe ReasonItem.Severity.BLOCK
+        body.flags shouldBe null
+        json.writeValueAsString(body).contains("flags") shouldBe false
+    }
+
+    @Test
+    fun `INV-AC-26695 a Decided WARN with the flag has flags REGISTER_UNAVAILABLE and reasons empty`() {
+        val body = checkNotNull(call(RegisterLookup.Unavailable).body as PreIssuanceVerdict)
+        body.verdict shouldBe PreIssuanceVerdict.Verdict.WARN
+        body.flags shouldBe listOf(PreIssuanceVerdict.Flags.REGISTER_UNAVAILABLE)
+        body.reasons shouldBe emptyList()
+    }
+
+    @Test
+    fun `INV-AC-26695 a Refused outcome is 400 SRT-001 with no verdict member`() {
+        val response = call(notRegistered, draft(gstn = null))
+        response.statusCode.value() shouldBe 400
+        val tree = json.readTree(textOf(response))
+        tree["code"].asString() shouldBe "SRT-001"
+        tree.has("verdict") shouldBe false
+        queries shouldBe emptyList()
+    }
+
+    @Test
+    fun `INV-AC-26695 a blank supplierGstn, entityRef or currency is 400 SRT-001 and the use case is never called`() {
+        listOf("", "   ").forEach { blank ->
+            listOf(
+                draft(gstn = blank),
+                draft().copy(entityRef = blank),
+                draft().copy(currency = blank),
+            ).forEach { blankDraft ->
+                val response = call(notRegistered, blankDraft)
+                response.statusCode.value() shouldBe 400
+                val tree = json.readTree(textOf(response))
+                tree["code"].asString() shouldBe "SRT-001"
+                tree.has("verdict") shouldBe false
+            }
+        }
+        queries shouldBe emptyList()
+    }
+
+    @Test
+    fun `INV-AC-26695 a supplierGstn with surrounding blanks but content reaches the use case unchanged`() {
+        val response = call(notRegistered, draft(gstn = " 27AAA "))
+        response.statusCode.value() shouldBe 200
+        queries.size shouldBe 1
+        queries.single().supplierGstn shouldBe " 27AAA "
+    }
 }

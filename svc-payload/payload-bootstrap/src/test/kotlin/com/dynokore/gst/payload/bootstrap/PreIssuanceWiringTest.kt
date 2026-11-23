@@ -1,13 +1,18 @@
 package com.dynokore.gst.payload.bootstrap
 
+import com.dynokore.gst.payload.adapters.clients.MasterdataRegisterStatusSource
+import com.dynokore.gst.payload.application.preissuance.CheckPreIssuance
+import com.dynokore.gst.payload.application.preissuance.RegisterStatusSource
 import com.sun.net.httpserver.HttpServer
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
+import java.nio.file.Path
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
@@ -184,6 +189,68 @@ class PreIssuanceWiringTest : OverrideWiringBase() {
             }
             md.requests.size shouldBe 0
             service.state() shouldBe rows
+        }
+    }
+
+    @Test
+    fun `INV-AC-26308 a blank supplierGstn, entityRef or currency is 400 SRT-001 with no lookup and never 500`() {
+        served { service, md ->
+            val rows = service.state()
+            listOf("supplierGstn", "entityRef", "currency").forEach { key ->
+                val body = draft().replace(Regex("\"$key\":\"[^\"]*\""), "\"$key\":\"\"")
+                val answer = service.check(body)
+                answer.status shouldBe 400
+                answer.body shouldContain "SRT-001"
+            }
+            md.requests.size shouldBe 0
+            service.state() shouldBe rows
+        }
+    }
+
+    private val property = "payload.masterdata-svc-url"
+
+    @Test
+    fun `INV-AC-26694 W1 with the property set the context holds exactly one CheckPreIssuance bean`(
+        @TempDir dir: Path,
+    ) {
+        PayloadContext.offlineWithMasterdataUrl(dir, "http://masterdata.invalid").run { ctx ->
+            ctx.startupFailure shouldBe null
+            ctx.getBeansOfType(CheckPreIssuance::class.java).size shouldBe 1
+        }
+    }
+
+    @Test
+    fun `INV-AC-26694 W2 the one RegisterStatusSource bean is the masterdata adapter`(
+        @TempDir dir: Path,
+    ) {
+        PayloadContext.offlineWithMasterdataUrl(dir, "http://masterdata.invalid").run { ctx ->
+            val beans = ctx.getBeansOfType(RegisterStatusSource::class.java)
+            beans.size shouldBe 1
+            beans.values
+                .single()
+                .javaClass.name shouldBe MasterdataRegisterStatusSource::class.java.name
+        }
+    }
+
+    @Test
+    fun `INV-AC-26694 W3 with the property missing the context fails to start and names it`(
+        @TempDir dir: Path,
+    ) {
+        PayloadContext.offlineWithMasterdataUrl(dir, null).run { ctx ->
+            val failure = checkNotNull(ctx.startupFailure)
+            generateSequence<Throwable>(failure) { it.cause }.any { it.message.orEmpty().contains(property) } shouldBe
+                true
+        }
+    }
+
+    @Test
+    fun `INV-AC-26694 W4 with the property empty or blank the context fails to start`(
+        @TempDir dir: Path,
+    ) {
+        listOf("", "   ").forEach { blank ->
+            PayloadContext.offlineWithMasterdataUrl(dir, blank).run { ctx ->
+                (ctx.startupFailure != null) shouldBe true
+            }
         }
     }
 }
