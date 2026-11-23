@@ -10,6 +10,7 @@ import com.dynokore.gst.submission.adapters.persistence.JooqAcknowledgementRecor
 import com.dynokore.gst.submission.adapters.persistence.JooqFailureCodes
 import com.dynokore.gst.submission.adapters.persistence.JooqInFlightStore
 import com.dynokore.gst.submission.adapters.persistence.JooqLatestAttempt
+import com.dynokore.gst.submission.adapters.persistence.JooqRegisterListFactsStore
 import com.dynokore.gst.submission.adapters.persistence.JooqSubmissionStore
 import com.dynokore.gst.submission.application.queue.AcknowledgementOutcomeRouter
 import com.dynokore.gst.submission.application.queue.AcknowledgementReceivedHandler
@@ -18,7 +19,9 @@ import com.dynokore.gst.submission.application.queue.LatestAttempt
 import com.dynokore.gst.submission.application.queue.NewReadySubmission
 import com.dynokore.gst.submission.application.queue.RejectedAcknowledgementHandler
 import com.dynokore.gst.submission.application.queue.SubmissionFailure
+import com.dynokore.gst.submission.domain.listing.Direction
 import com.dynokore.gst.submission.domain.listing.SubmissionKind
+import com.dynokore.gst.submission.domain.register.ListFacts
 import com.dynokore.platform.outboxandqueue.CausationId
 import com.dynokore.platform.outboxandqueue.ContractViolation
 import com.dynokore.platform.outboxandqueue.CorrelationId
@@ -31,6 +34,7 @@ import com.dynokore.platform.outboxandqueue.OutboundEvent
 import com.dynokore.platform.outboxandqueue.OutboxWriter
 import com.dynokore.platform.tenancykernel.TenantContext
 import com.dynokore.platform.tenancykernel.TenantId
+import com.dynokore.platform.tenancykernel.TransactionRunner
 import com.networknt.schema.InputFormat
 import com.networknt.schema.SchemaRegistry
 import com.networknt.schema.SchemaRegistryConfig
@@ -46,6 +50,7 @@ import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import tools.jackson.databind.ObjectMapper
 import java.io.File
+import java.math.BigDecimal
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
@@ -61,6 +66,14 @@ class RejectedAcknowledgementDbTest {
         SubmissionDb.connect(SubmissionDb.RUNTIME, SubmissionDb.RUNTIME_PASSWORD).also { it.autoCommit = false }
     private val dsl = DSL.using(connection, SQLDialect.POSTGRES)
     private val store = JooqSubmissionStore(dsl)
+    private val factsStore =
+        JooqRegisterListFactsStore(
+            dsl,
+            object : TransactionRunner {
+                // joins the handler's open transaction, as the production runner does inside the consumer
+                override fun <T> inTransaction(block: () -> T): T = block()
+            },
+        )
     private var bound: UUID = UUID.randomUUID()
     private val tenants =
         object : TenantContext {
@@ -126,7 +139,7 @@ class RejectedAcknowledgementDbTest {
             JooqInFlightStore(dsl),
             store,
             JooqAcknowledgementRecorder(dsl),
-            SubmissionAcknowledgedOutbox(outbox, tenants, store),
+            SubmissionAcknowledgedOutbox(outbox, tenants, store, factsStore),
             clock,
             { _, _ -> },
         )
@@ -150,6 +163,33 @@ class RejectedAcknowledgementDbTest {
         }
     }
 
+    /** The register entry with list facts: the acknowledgement event now carries the direction of the entry. */
+    private fun registerWithFacts(
+        tenant: UUID,
+        doc: String,
+    ) {
+        dsl.execute(
+            "insert into submission.obligation_register_entry (tenant_id, doc_uuid, entity_ref, period_ref, " +
+                "due_date, in_scope, kind) values (?, ?, 'E1', 'p1', date '2026-11-30', true, 'INVOICE')",
+            tenant,
+            doc,
+        )
+        factsStore.store(
+            TenantId(tenant),
+            doc,
+            ListFacts(
+                documentNumber = "INV-1",
+                documentTypeCode = "380",
+                direction = Direction.SALE,
+                counterpartyName = "Acme Pte Ltd",
+                counterpartyUen = "201912345A",
+                taxableAmount = BigDecimal("100.00"),
+                gstAmount = BigDecimal("9.00"),
+                categoryCodes = setOf("SR"),
+            ),
+        )
+    }
+
     private fun seed(
         tenant: UUID,
         doc: String,
@@ -161,6 +201,7 @@ class RejectedAcknowledgementDbTest {
             NewReadySubmission(doc, 1, "E1", null, byteArrayOf(1), "sha-$doc", SubmissionKind.TYPE_1A),
         )
         dsl.execute("update submission.submission set state = ? where doc_uuid = ? and version = 1", state, doc)
+        registerWithFacts(tenant, doc)
         (1..attempts).forEach { n ->
             dsl.execute(
                 "insert into submission.submission_attempt (tenant_id, doc_uuid, version, attempt_number, " +

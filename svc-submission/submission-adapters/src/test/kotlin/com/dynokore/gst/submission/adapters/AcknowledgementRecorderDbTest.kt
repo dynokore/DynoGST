@@ -4,10 +4,13 @@ import com.dynokore.gst.submission.adapters.events.JacksonAcknowledgementReceive
 import com.dynokore.gst.submission.adapters.events.SubmissionAcknowledgedOutbox
 import com.dynokore.gst.submission.adapters.persistence.JooqAcknowledgementRecorder
 import com.dynokore.gst.submission.adapters.persistence.JooqInFlightStore
+import com.dynokore.gst.submission.adapters.persistence.JooqRegisterListFactsStore
 import com.dynokore.gst.submission.adapters.persistence.JooqSubmissionStore
 import com.dynokore.gst.submission.application.queue.AcknowledgementReceivedHandler
 import com.dynokore.gst.submission.application.queue.NewReadySubmission
+import com.dynokore.gst.submission.domain.listing.Direction
 import com.dynokore.gst.submission.domain.listing.SubmissionKind
+import com.dynokore.gst.submission.domain.register.ListFacts
 import com.dynokore.platform.outboxandqueue.CausationId
 import com.dynokore.platform.outboxandqueue.CorrelationId
 import com.dynokore.platform.outboxandqueue.EntityRef
@@ -19,6 +22,7 @@ import com.dynokore.platform.outboxandqueue.OutboundEvent
 import com.dynokore.platform.outboxandqueue.OutboxWriter
 import com.dynokore.platform.tenancykernel.TenantContext
 import com.dynokore.platform.tenancykernel.TenantId
+import com.dynokore.platform.tenancykernel.TransactionRunner
 import com.networknt.schema.InputFormat
 import com.networknt.schema.SchemaRegistry
 import com.networknt.schema.SchemaRegistryConfig
@@ -34,7 +38,9 @@ import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import tools.jackson.databind.ObjectMapper
 import java.io.File
+import java.math.BigDecimal
 import java.time.Instant
+import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.util.UUID
 
@@ -48,6 +54,14 @@ class AcknowledgementRecorderDbTest {
         SubmissionDb.connect(SubmissionDb.RUNTIME, SubmissionDb.RUNTIME_PASSWORD).also { it.autoCommit = false }
     private val dsl = DSL.using(connection, SQLDialect.POSTGRES)
     private val store = JooqSubmissionStore(dsl)
+    private val factsStore =
+        JooqRegisterListFactsStore(
+            dsl,
+            object : TransactionRunner {
+                // joins the handler's open transaction, as the production runner does inside the consumer
+                override fun <T> inTransaction(block: () -> T): T = block()
+            },
+        )
     private var bound: UUID = UUID.randomUUID()
     private val tenants =
         object : TenantContext {
@@ -93,7 +107,7 @@ class AcknowledgementRecorderDbTest {
             JooqInFlightStore(dsl),
             store,
             recorder,
-            SubmissionAcknowledgedOutbox(outbox, tenants, store),
+            SubmissionAcknowledgedOutbox(outbox, tenants, store, factsStore),
             clock,
             { _, _ -> },
         )
@@ -112,12 +126,14 @@ class AcknowledgementRecorderDbTest {
         return block().also { connection.commit() }
     }
 
+    @Suppress("LongParameterList") // fixture: the register direction joins the existing seed arguments
     private fun seed(
         tenant: UUID,
         doc: String,
         version: Int,
         state: String,
         ackId: String? = null,
+        direction: Direction? = Direction.SALE,
     ) = asTenant(tenant) {
         store.insertReady(
             TenantId(tenant),
@@ -133,6 +149,42 @@ class AcknowledgementRecorderDbTest {
             doc,
             version,
         )
+    }.also { register(tenant, doc, direction) }
+
+    /** The register entry of the document, with list facts of the given direction unless [direction] is null. */
+    private fun register(
+        tenant: UUID,
+        doc: String,
+        direction: Direction?,
+    ) = asTenant(tenant) {
+        dsl.execute(
+            "insert into submission.obligation_register_entry " +
+                "(tenant_id, doc_uuid, entity_ref, period_ref, due_date, in_scope, kind) " +
+                "values (?, ?, ?, ?, ?, ?, ?) on conflict do nothing",
+            tenant,
+            doc,
+            "E1",
+            "p1",
+            LocalDate.of(2026, 11, 30),
+            true,
+            "INVOICE",
+        )
+        if (direction != null) {
+            factsStore.store(
+                TenantId(tenant),
+                doc,
+                ListFacts(
+                    documentNumber = "INV-1",
+                    documentTypeCode = "380",
+                    direction = direction,
+                    counterpartyName = "Acme Pte Ltd",
+                    counterpartyUen = "201912345A",
+                    taxableAmount = BigDecimal("100.00"),
+                    gstAmount = BigDecimal("9.00"),
+                    categoryCodes = setOf("SR"),
+                ),
+            )
+        }
     }
 
     private fun row(
@@ -363,5 +415,75 @@ class AcknowledgementRecorderDbTest {
                 }
             }
         }
+    }
+
+    private fun stagedData(): tools.jackson.databind.JsonNode = ObjectMapper().readTree(staged.single().first.dataJson)
+
+    @Test
+    fun `INV-AC-27280 the data of a PURCHASE document holds entityRef E1 and direction PURCHASE`() {
+        val t = UUID.randomUUID()
+        val doc = UUID.randomUUID().toString()
+        seed(t, doc, 1, "SENT", direction = Direction.PURCHASE)
+        deliver(t, doc, 1, "ACK-1") shouldBe HandleOutcome.APPLIED
+        val tree = stagedData()
+        tree.get("entityRef").asString() shouldBe "E1"
+        tree.get("direction").asString() shouldBe "PURCHASE"
+        tree.get("docUuid").asString() shouldBe doc
+        tree.get("version").asInt() shouldBe 1
+        tree.get("acknowledgementId").asString() shouldBe "ACK-1"
+        tree.get("timestamp").asString() shouldBe "2026-03-05T09:30:00Z"
+        schemaErrors(staged.single().first.dataJson).shouldBeEmpty()
+    }
+
+    @Test
+    fun `INV-AC-27280 the data of a SALE document holds direction SALE`() {
+        val t = UUID.randomUUID()
+        val doc = UUID.randomUUID().toString()
+        seed(t, doc, 1, "SENT", direction = Direction.SALE)
+        deliver(t, doc, 1, "ACK-1") shouldBe HandleOutcome.APPLIED
+        val tree = stagedData()
+        tree.get("direction").asString() shouldBe "SALE"
+        tree.get("entityRef").asString() shouldBe "E1"
+        schemaErrors(staged.single().first.dataJson).shouldBeEmpty()
+    }
+
+    @Test
+    fun `INV-AC-27280 a register entry without list facts throws IllegalStateException and stages nothing`() {
+        val t = UUID.randomUUID()
+        val doc = UUID.randomUUID().toString()
+        seed(t, doc, 1, "SENT", direction = null)
+        val thrown = shouldThrow<IllegalStateException> { deliver(t, doc, 1, "ACK-1") }
+        thrown.message!!.contains(doc) shouldBe true
+        staged.shouldBeEmpty()
+        connection.rollback()
+    }
+
+    @Test
+    fun `INV-AC-27280 the pinned schema declares entityRef and direction and the staged data validates`() {
+        val file =
+            File(
+                "../submission-contract/build/contracts-repo/.bundle/submission/schemas/" +
+                    "submission-acknowledged-payload.schema.json",
+            )
+        check(file.isFile) { "the pinned payload schema is missing: $file" }
+        val properties = ObjectMapper().readTree(file.readText()).get("properties")
+        properties.has("entityRef") shouldBe true
+        properties.has("direction") shouldBe true
+        val t = UUID.randomUUID()
+        val doc = UUID.randomUUID().toString()
+        seed(t, doc, 1, "SENT", direction = Direction.PURCHASE)
+        deliver(t, doc, 1, "ACK-1") shouldBe HandleOutcome.APPLIED
+        schemaErrors(staged.single().first.dataJson).shouldBeEmpty()
+    }
+
+    @Test
+    fun `INV-AC-27280 the same data with direction sale in lower case does not validate against the pinned schema`() {
+        val t = UUID.randomUUID()
+        val doc = UUID.randomUUID().toString()
+        seed(t, doc, 1, "SENT", direction = Direction.SALE)
+        deliver(t, doc, 1, "ACK-1") shouldBe HandleOutcome.APPLIED
+        val data = staged.single().first.dataJson
+        schemaErrors(data).shouldBeEmpty()
+        schemaErrors(data.replace("\"SALE\"", "\"sale\"")).isEmpty() shouldBe false
     }
 }

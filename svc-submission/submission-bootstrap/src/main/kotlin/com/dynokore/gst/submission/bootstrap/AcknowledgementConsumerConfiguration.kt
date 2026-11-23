@@ -21,6 +21,7 @@ import com.dynokore.gst.submission.application.queue.LatestAttempt
 import com.dynokore.gst.submission.application.queue.RejectedAcknowledgementHandler
 import com.dynokore.gst.submission.application.queue.RejectedAcknowledgementReader
 import com.dynokore.gst.submission.application.queue.SubmissionStore
+import com.dynokore.gst.submission.application.register.RegisterListFactsStore
 import com.dynokore.platform.outboxandqueue.ConsumerSubscription
 import com.dynokore.platform.outboxandqueue.EventCatalogue
 import com.dynokore.platform.outboxandqueue.EventHandler
@@ -58,7 +59,8 @@ class AcknowledgementConsumerConfiguration {
         outbox: OutboxWriter,
         tenants: TenantContext,
         store: SubmissionStore,
-    ): AcknowledgedPublisher = SubmissionAcknowledgedOutbox(outbox, tenants, store)
+        registerFacts: RegisterListFactsStore,
+    ): AcknowledgedPublisher = SubmissionAcknowledgedOutbox(outbox, tenants, store, registerFacts)
 
     @Bean
     @Suppress("LongParameterList") // composition root: the handler takes eight collaborators

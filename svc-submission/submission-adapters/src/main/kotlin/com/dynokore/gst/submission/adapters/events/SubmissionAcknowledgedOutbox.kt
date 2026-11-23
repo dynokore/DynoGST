@@ -3,6 +3,7 @@ package com.dynokore.gst.submission.adapters.events
 import com.dynokore.gst.submission.application.queue.AcknowledgedFact
 import com.dynokore.gst.submission.application.queue.AcknowledgedPublisher
 import com.dynokore.gst.submission.application.queue.SubmissionStore
+import com.dynokore.gst.submission.application.register.RegisterListFactsStore
 import com.dynokore.platform.outboxandqueue.CausationId
 import com.dynokore.platform.outboxandqueue.CorrelationId
 import com.dynokore.platform.outboxandqueue.DocUuid
@@ -19,12 +20,15 @@ import java.util.UUID
 /**
  * [AcknowledgedPublisher] over the transactional outbox (INV-ADR-283): `SubmissionAcknowledged` is appended in the
  * open transaction of the handler, so a rollback leaves no event. The entity and transaction date come from the
- * locked aggregate row; the payload is docUuid, version, acknowledgementId and timestamp (date-time, UTC).
+ * locked aggregate row; the payload is docUuid, version, acknowledgementId, timestamp (date-time, UTC), entityRef
+ * (of the locked row) and direction (of the document's register entry). A document whose register entry holds no list
+ * facts cannot be attributed: the publisher throws before any append (fail closed, OWASP ASVS V5).
  */
 class SubmissionAcknowledgedOutbox(
     private val outbox: OutboxWriter,
     private val tenants: TenantContext,
     private val store: SubmissionStore,
+    private val registerFacts: RegisterListFactsStore,
 ) : AcknowledgedPublisher {
     override fun stage(fact: AcknowledgedFact) {
         val tenant = tenants.current()
@@ -32,8 +36,12 @@ class SubmissionAcknowledgedOutbox(
             checkNotNull(store.lockForUpdate(tenant, fact.docUuid, fact.version)) {
                 "submission ${fact.docUuid} version ${fact.version} does not exist"
             }
+        val direction =
+            checkNotNull(registerFacts.facts(tenant, fact.docUuid)) {
+                "document ${fact.docUuid} has no register list facts, so its direction is unknown"
+            }.direction.name
         outbox.append(
-            listOf(OutboundEvent(EVENT_TYPE, payload(fact))),
+            listOf(OutboundEvent(EVENT_TYPE, payload(fact, row.entityRef, direction))),
             EventContext(
                 tenant = tenant,
                 entity = EntityRef(row.entityRef),
@@ -47,13 +55,19 @@ class SubmissionAcknowledgedOutbox(
         )
     }
 
-    private fun payload(fact: AcknowledgedFact): String =
+    private fun payload(
+        fact: AcknowledgedFact,
+        entityRef: String,
+        direction: String,
+    ): String =
         MAPPER.writeValueAsString(
             linkedMapOf(
                 "docUuid" to fact.docUuid,
                 "version" to fact.version,
                 "acknowledgementId" to fact.acknowledgementId,
                 "timestamp" to DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(fact.timestamp.atOffset(ZoneOffset.UTC)),
+                "entityRef" to entityRef,
+                "direction" to direction,
             ),
         )
 
