@@ -58,7 +58,7 @@ class OperatorSessionTest {
 
     private fun user(name: String) = "user:$name-$run"
 
-    private class Collector : AutoCloseable {
+    internal class Collector : AutoCloseable {
         class Received(
             val path: String,
             val body: String,
@@ -93,7 +93,7 @@ class OperatorSessionTest {
         }
     }
 
-    private inner class Env(
+    internal inner class Env(
         val context: AssertableWebApplicationContext,
         val operatorKey: ECKey,
         val mount: Path,
@@ -104,6 +104,7 @@ class OperatorSessionTest {
         val api = context.getBean(ElevationController::class.java)
         val clock = context.getBean(Clock::class.java) as MovableClock
         val support = user("support")
+        val support2 = user("support2")
         val engineer = user("engineer")
         val operator = user("operator")
         val officer = user("officer")
@@ -111,6 +112,7 @@ class OperatorSessionTest {
 
         init {
             platformRow(support, "platform.support")
+            platformRow(support2, "platform.support")
             platformRow(engineer, "platform.engineer")
             platformRow(operator, "deployment.operator")
             Seeds.grant(context, a, SeedSpec(officer, Role.SECURITY_OFFICER))
@@ -243,7 +245,7 @@ class OperatorSessionTest {
             .take(8)
             .joinToString("") { "%02x".format(java.util.Locale.ROOT, it) }
 
-    private fun run(
+    internal fun run(
         form: String = "SAAS",
         operatorKey: ECKey? = TestSecrets.newSigningKey(),
         next: ECKey? = null,
@@ -402,7 +404,7 @@ class OperatorSessionTest {
             assertThat(env.open(env.support).contentMode).isEqualTo(OperatorSessionResponse.ContentMode.MASKED)
         }
 
-    private class OutboxRow(
+    internal class OutboxRow(
         val tenant: String,
         val entity: String,
         val subject: String,
@@ -411,7 +413,7 @@ class OperatorSessionTest {
         val data: tools.jackson.databind.JsonNode,
     )
 
-    private fun outboxRows(
+    internal fun outboxRows(
         where: String,
         vararg args: String,
     ): List<OutboxRow> =
@@ -441,7 +443,7 @@ class OperatorSessionTest {
                 }
         }
 
-    private fun accessRecords(
+    internal fun accessRecords(
         env: Env,
         operator: String,
     ) = outboxRows(

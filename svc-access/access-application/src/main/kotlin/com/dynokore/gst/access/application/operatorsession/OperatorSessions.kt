@@ -16,6 +16,7 @@ import com.dynokore.gst.access.domain.grant.TenantRef
 import com.dynokore.gst.access.domain.revocation.KeyUse
 import com.dynokore.gst.access.domain.revocation.VerificationKey
 import com.dynokore.gst.access.domain.role.Allowance
+import com.dynokore.gst.access.domain.role.Permission
 import com.dynokore.gst.access.domain.role.PermissionMatrix
 import com.dynokore.gst.access.domain.role.Role
 import com.dynokore.platform.tenancykernel.TenantId
@@ -287,7 +288,7 @@ class OpenOperatorSessionUseCase(
         val allowed =
             OperatorSessionAccess.allows(
                 { matrix.allowance(ready.role, it) },
-                OperatorAccess.OPENED_BY_ELEVATION.single(),
+                CONTENT_KEY,
                 record != null,
             )
         return record.takeIf { allowed }
@@ -296,5 +297,8 @@ class OpenOperatorSessionUseCase(
     companion object {
         /** The audit action: the operation name, which `gst.security-events.mapping` maps to class `elevation`. */
         const val ACTION = "openOperatorSession"
+
+        /** The key the session's content mode is defined by: the elevation record is carried when it is allowed. */
+        private val CONTENT_KEY = Permission("doc.view.content")
     }
 }
