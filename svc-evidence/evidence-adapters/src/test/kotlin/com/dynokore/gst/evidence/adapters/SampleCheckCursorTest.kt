@@ -92,7 +92,7 @@ class SampleCheckCursorTest {
     }
 
     @Test
-    fun `INV-AC-27602 an expired cursor with issue time rewritten to now or moved by 1 ms is refused`() {
+    fun `INV-AC-27602 an expired cursor with its issue time rewritten to now, or moved by one millisecond, is refused`() {
         val now = at.plus(Duration.ofHours(24)).plusSeconds(1)
         val token = issued()
         val parts = token.split('.')
