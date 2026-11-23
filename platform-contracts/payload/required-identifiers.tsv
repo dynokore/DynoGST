@@ -120,3 +120,5 @@ RenditionSampleCheckMetadata.checkId	schema_property	openapi.yaml	INV-REQ-1033
 RenditionSampleCheckMetadata.sampleSha256	schema_property	openapi.yaml	INV-REQ-1033
 RenditionSampleCheckMetadata.checkedBy	schema_property	openapi.yaml	INV-REQ-1033
 RenditionSampleCheckMetadataRead.standing	schema_property	openapi.yaml	INV-REQ-1033
+getRenditionSampleCheck.SRT-005	operation_error_code	openapi.yaml	INV-REQ-1033
+getRenditionSampleCheckMetadata.SRT-005	operation_error_code	openapi.yaml	INV-REQ-1033
