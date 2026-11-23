@@ -251,13 +251,14 @@ class RecordConsumersTest {
         tenant: TenantId,
         eventId: String,
         data: String = """{"docUuid":"$doc","version":1,"decisions":[{"code":"PAY-002","outcome":"rejected"}]}""",
+        docSequence: Long? = null,
     ) = envelope(
         tenant,
         eventId,
         "com.dynokore.gst.payload.PayloadRejected.v1",
         "/gst/payload-svc",
         EventEntityRef(entity),
-        null,
+        docSequence,
         data,
         DocUuid(doc),
     )
@@ -404,12 +405,19 @@ class RecordConsumersTest {
         locatorLog.add(locator(tenant, "ev-1"))
         locatorConsumer.pollOnce().applied shouldBe 1
         partition(tenant, RecordKind.DECISION_TRACE, entity, "2026-Q1")
-        payloadLog.add(payloadRejected(tenant, "pr-1"))
-        payloadConsumer.pollOnce() shouldBe result(1, 0, 0)
-        val appended = traces(tenant).single()
-        String(appended.content) shouldBe """{"decisions":[{"code":"PAY-002","outcome":"rejected"}]}"""
-        appended.index.docUuid shouldBe doc
-        appended.index.version shouldBe 1
+        // the second event has an older docsequence: a record topic takes no docsequence check, so it is not dropped
+        payloadLog.add(payloadRejected(tenant, "pr-1", docSequence = 5))
+        payloadLog.add(
+            payloadRejected(tenant, "pr-2", """{"docUuid":"$doc","version":1,"decisions":[{"code":"PAY-009"}]}""", 2),
+        )
+        payloadConsumer.pollOnce() shouldBe result(2, 0, 0)
+        val appended = traces(tenant)
+        appended.map { String(it.content) } shouldBe
+            listOf("""{"decisions":[{"code":"PAY-002","outcome":"rejected"}]}""", """{"decisions":[{"code":"PAY-009"}]}""")
+        appended.forEach {
+            it.index.docUuid shouldBe doc
+            it.index.version shouldBe 1
+        }
         applied(tenant, "pr-1").single().kind shouldBe "decision_trace"
     }
 
@@ -457,6 +465,20 @@ class RecordConsumersTest {
         payloadLog.add(payloadRejected(tenant, "pr-1"))
         consumer.pollOnce().applied shouldBe 1
         written shouldBe listOf(RecordConsumerConfiguration.PAYLOAD_REJECTED_TOPIC to 1L)
+    }
+
+    @Test
+    fun `INV-AC-27154 the payload topic is catalogued as a content and record topic of payload-svc`(
+        @TempDir dir: Path,
+    ) {
+        EvidenceContext.offline(dir).run { context ->
+            val entry = context.getBean(EventCatalogue::class.java).topic(RecordConsumerConfiguration.PAYLOAD_REJECTED_TOPIC)
+            entry?.eventType shouldBe "com.dynokore.gst.payload.PayloadRejected.v1"
+            entry?.producers shouldBe setOf("payload-svc")
+            entry?.contentTopic shouldBe true
+            entry?.recordTopic shouldBe true
+            entry?.retainedWhileResolvable shouldBe false
+        }
     }
 
     @ParameterizedTest(name = "{displayName} [{0}]")
