@@ -1,7 +1,7 @@
 package com.dynokore.gst.masterdata.bootstrap
 
-import com.dynokore.gst.masterdata.adapters.persistence.JooqBulkResolveOperations
 import com.dynokore.gst.masterdata.adapters.http.CounterpartyCorrectionAudit
+import com.dynokore.gst.masterdata.adapters.persistence.JooqBulkResolveOperations
 import com.dynokore.gst.masterdata.adapters.persistence.JooqCounterpartyRepository
 import com.dynokore.gst.masterdata.adapters.persistence.JooqPendingChangeRepository
 import com.dynokore.gst.masterdata.adapters.persistence.JooqStructureNodeRepository
@@ -25,9 +25,13 @@ import com.dynokore.gst.masterdata.application.identity.ProposeIdentityTripleCha
 import com.dynokore.gst.masterdata.application.identity.ResolveIdentityTriple
 import com.dynokore.gst.masterdata.application.identity.TripleRepository
 import com.dynokore.platform.auditlog.AuditWriter
+import com.dynokore.platform.serviceruntime.http.IdempotencyStore
+import com.dynokore.platform.serviceruntime.identity.EndUserPrincipalResolver
 import com.dynokore.platform.tenancykernel.TenantContext
 import com.dynokore.platform.tenancykernel.TransactionRunner
 import org.jooq.DSLContext
+import org.springframework.beans.factory.ObjectProvider
+import org.springframework.beans.factory.SmartInitializingSingleton
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import java.time.Clock
@@ -36,7 +40,6 @@ import java.time.Clock
  * TPL-18: the only place a use case is constructed. No DataSource bean here or anywhere in the service (owner ruling
  * INV-Q-4196): the one application pool is Spring Boot's `dataSource` from spring.datasource.* (TPL-16).
  */
-@Suppress("TooManyFunctions")
 @Configuration(proxyBeanMethods = false)
 @Suppress("TooManyFunctions") // one bean method per wired part (INV-Q-4629), as the sibling configurations do
 class UseCases {
@@ -137,4 +140,19 @@ class UseCases {
         tx: TransactionRunner,
         nodes: StructureNodeRepository,
     ) = ApplyStructureNode(tx, nodes)
+
+    /**
+     * Fail-fast (12-factor): the correction route resolves [IdempotencyStore] lazily, so a context that has the
+     * platform's end-user resolver (the condition under which platform-libs creates the store) but no store must fail
+     * at startup, not answer 500 at the first call.
+     */
+    @Bean
+    fun idempotencyStoreStartupCheck(
+        resolver: ObjectProvider<EndUserPrincipalResolver>,
+        store: ObjectProvider<IdempotencyStore>,
+    ) = SmartInitializingSingleton {
+        check(resolver.getIfAvailable() == null || store.getIfAvailable() != null) {
+            "IdempotencyStore bean is missing although an EndUserPrincipalResolver exists"
+        }
+    }
 }
