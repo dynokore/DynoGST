@@ -14,6 +14,8 @@ import com.dynokore.gst.payload.application.MdePackSource
 import com.dynokore.gst.payload.application.build.BuildInputsReader
 import com.dynokore.gst.payload.application.build.BuildOutcomes
 import com.dynokore.gst.payload.application.build.BuildPayload
+import com.dynokore.gst.payload.application.build.LayerOneCheck
+import com.dynokore.gst.payload.application.build.NOT_WIRED
 import com.dynokore.gst.payload.application.build.PayloadProjector
 import com.dynokore.gst.payload.application.build.PayloadRejectedPublisher
 import com.dynokore.gst.payload.application.build.SpecificationFamilySource
@@ -105,7 +107,18 @@ class BuildPayloadConfiguration {
         ready: PublishPayloadReady,
         rejected: PayloadRejectedPublisher,
         outcomes: BuildOutcomes,
-    ): BuildPayload = BuildPayload(inputs, decisions, projector, families, ready, rejected, outcomes)
+        layerOne: ObjectProvider<LayerOneCheck>,
+    ): BuildPayload =
+        BuildPayload(
+            inputs,
+            decisions,
+            projector,
+            families,
+            ready,
+            rejected,
+            outcomes,
+            layerOne.getIfAvailable { NOT_WIRED },
+        )
 
     @Bean
     fun buildPayloadJobHandler(

@@ -2,7 +2,10 @@ package com.dynokore.gst.payload.application.build
 
 import com.dynokore.gst.payload.application.payload.PayloadReadyFacts
 import com.dynokore.gst.payload.application.payload.PublishPayloadReady
+import com.dynokore.gst.payload.domain.ClassifiedFinding
+import com.dynokore.gst.payload.domain.MdeResult
 import com.dynokore.gst.payload.domain.PayloadSizeCheck
+import com.dynokore.gst.payload.domain.ValidationVerdict
 import java.security.MessageDigest
 import java.time.LocalDate
 import java.util.HexFormat
@@ -155,6 +158,24 @@ fun interface BuildOutcomes {
     ): Boolean
 }
 
+/** The result of the layer-one check: the classified findings, the decision entries and the packs it ran under. */
+data class LayerOneResult(
+    val findings: List<ClassifiedFinding>,
+    val decisions: List<RejectionDecision>,
+    val packVersions: List<PackVersionFact>,
+)
+
+/** Runs layer one (the Schematron pack) on the built [bytes] of the given [specificationVersion]. */
+fun interface LayerOneCheck {
+    fun check(
+        bytes: ByteArray,
+        specificationVersion: String,
+    ): LayerOneResult
+}
+
+/** The check of a service without a layer-one adapter: no finding, no decision, no pack. */
+val NOT_WIRED: LayerOneCheck = LayerOneCheck { _, _ -> LayerOneResult(emptyList(), emptyList(), emptyList()) }
+
 /** The input or the type decision is not stored yet; the job is retried and nothing is staged. */
 class BuildNotReady(
     message: String,
@@ -181,7 +202,7 @@ enum class SubmissionType(
  * Builds the payload of one version and stages `PayloadReady` or `PayloadRejected`. It opens no transaction: the
  * claimed job runs it in one.
  */
-@Suppress("LongParameterList") // the seven ports of the build
+@Suppress("LongParameterList") // the eight ports of the build
 class BuildPayload(
     private val inputs: BuildInputsReader,
     private val decisions: TypeDecisionReader,
@@ -190,6 +211,7 @@ class BuildPayload(
     private val ready: PublishPayloadReady,
     private val rejected: PayloadRejectedPublisher,
     private val outcomes: BuildOutcomes,
+    private val layerOne: LayerOneCheck,
 ) {
     fun run(
         docUuid: UUID,
@@ -212,11 +234,39 @@ class BuildPayload(
             }
 
             is Projection.Built -> {
-                if (PayloadSizeCheck.check(projection.bytes.size.toLong(), 0).blocked) {
-                    reject(input, docUuid, version, PayloadSizeCheck.PAY_010, null)
-                } else {
-                    publish(input, docUuid, version, decision, projection.bytes)
-                }
+                built(input, docUuid, version, decision, projection.bytes)
+            }
+        }
+    }
+
+    private fun built(
+        input: BuildInput,
+        docUuid: UUID,
+        version: Int,
+        decision: String,
+        bytes: ByteArray,
+    ) {
+        if (PayloadSizeCheck.check(bytes.size.toLong(), 0).blocked) {
+            reject(input, docUuid, version, PayloadSizeCheck.PAY_010, null)
+            return
+        }
+        val family = families.familyOf(input.familyRequest())
+        val result = layerOne.check(bytes, family)
+        when (val verdict = ValidationVerdict.of(result.findings, MdeResult.Complete)) {
+            is ValidationVerdict.Passed -> {
+                publish(input, docUuid, version, decision, bytes, family)
+            }
+
+            is ValidationVerdict.Blocked -> {
+                reject(
+                    input,
+                    docUuid,
+                    version,
+                    verdict.codes().first(),
+                    null,
+                    result.packVersions.ifEmpty { null },
+                    result.decisions.ifEmpty { null },
+                )
             }
         }
     }
@@ -228,7 +278,10 @@ class BuildPayload(
         code: String?,
         trace: String?,
         packVersions: List<PackVersionFact>? = null,
-    ) = rejected.stage(PayloadRejectedFacts(input.entityRef, docUuid, version, code, trace, packVersions))
+        decisions: List<RejectionDecision>? = null,
+    ) = rejected.stage(
+        PayloadRejectedFacts(input.entityRef, docUuid, version, code, trace, packVersions, decisions),
+    )
 
     private fun publish(
         input: BuildInput,
@@ -236,13 +289,14 @@ class BuildPayload(
         version: Int,
         decision: String,
         bytes: ByteArray,
+        family: String,
     ) = ready.publish(
         PayloadReadyFacts(
             entityRef = input.entityRef,
             docUuid = docUuid,
             version = version,
             submissionType = SubmissionType.fromDecision(decision).payloadSpelling,
-            specificationVersion = families.familyOf(input.familyRequest()),
+            specificationVersion = family,
             payloadBytes = bytes,
             payloadSha256 = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)),
             aggregateId = input.aggregateId,

@@ -51,6 +51,7 @@ class BuildPayloadTest {
             ready = PublishPayloadReady { ready += it },
             rejected = { rejected += it },
             outcomes = { doc, v -> !firstTimeCheck || seen.add(doc to v) },
+            layerOne = NOT_WIRED,
         )
     }
 
