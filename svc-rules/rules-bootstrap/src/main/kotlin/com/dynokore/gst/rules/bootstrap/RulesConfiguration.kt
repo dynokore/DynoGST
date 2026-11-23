@@ -49,11 +49,13 @@ import com.dynokore.gst.rules.adapters.web.BackgroundSamplePort
 import com.dynokore.gst.rules.adapters.web.CompileObserver
 import com.dynokore.gst.rules.adapters.web.CompiledPackHold
 import com.dynokore.gst.rules.adapters.web.CompilingArmingStore
+import com.dynokore.gst.rules.adapters.web.DeltaAcknowledgementReader
 import com.dynokore.gst.rules.adapters.web.DryRunCalls
 import com.dynokore.gst.rules.adapters.web.MappingSpreadsheetImporter
 import com.dynokore.gst.rules.adapters.web.MappingSpreadsheetImports
 import com.dynokore.gst.rules.adapters.web.RegistryNamedPackVersions
 import com.dynokore.gst.rules.adapters.web.ReviewPolicyValues
+import com.dynokore.gst.rules.adapters.web.StoredPackDeltaAcknowledgements
 import com.dynokore.gst.rules.adapters.web.unavailable
 import com.dynokore.gst.rules.application.AcknowledgePackDelta
 import com.dynokore.gst.rules.application.AcknowledgementPermissionPort
@@ -825,6 +827,30 @@ class RulesConfiguration {
                 ) = transactions.inTransaction { store.find(tenantId, packType, version) }
             }
         return AcknowledgePackDelta(permission, store, deltas, policies, acknowledgements, clock)
+    }
+
+    /** The read of the stored acknowledgement (INV-T-27762): each tenant-bound read in its own transaction, no write. */
+    @Bean
+    fun storedPackDeltaAcknowledgements(
+        permission: AcknowledgementPermissionPort,
+        store: JooqPackArmingStore,
+        transactions: TransactionRunner,
+        policies: TenantReviewPolicyReader,
+        clock: Clock,
+    ): StoredPackDeltaAcknowledgements {
+        val deltas =
+            object : CompleteDeltaReader by store {
+                override fun completedAt(
+                    tenantId: String,
+                    packType: String,
+                    version: String,
+                ) = transactions.inTransaction { store.completedAt(tenantId, packType, version) }
+            }
+        val acknowledgements =
+            DeltaAcknowledgementReader { tenantId, packType, version ->
+                transactions.inTransaction { store.find(tenantId, packType, version) }
+            }
+        return StoredPackDeltaAcknowledgements(permission, acknowledgements, store, deltas, policies, clock)
     }
 
     // ---- the signed pack import and DEP-001 pack currency (INV-T-4976; INV-REQ-1078, INV-REQ-2468) ----

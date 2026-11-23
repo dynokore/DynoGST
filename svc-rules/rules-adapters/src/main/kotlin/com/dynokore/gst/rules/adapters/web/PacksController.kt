@@ -17,12 +17,15 @@ import com.dynokore.gst.rules.adapters.web.MappingPackMapping.statusOf
 import com.dynokore.gst.rules.application.AcceptEntryCommand
 import com.dynokore.gst.rules.application.AcknowledgePackDelta
 import com.dynokore.gst.rules.application.AcknowledgePackDeltaResult
+import com.dynokore.gst.rules.application.AcknowledgementPermissionPort
 import com.dynokore.gst.rules.application.ActivateCommand
 import com.dynokore.gst.rules.application.ActivePacksOutcome
 import com.dynokore.gst.rules.application.ApproveRegulatoryPack
 import com.dynokore.gst.rules.application.ArmRegulatoryPack
 import com.dynokore.gst.rules.application.ArmRegulatoryPackResult
 import com.dynokore.gst.rules.application.CodeCataloguePort
+import com.dynokore.gst.rules.application.CompleteDeltaReader
+import com.dynokore.gst.rules.application.DeltaAcknowledgement
 import com.dynokore.gst.rules.application.DraftCommand
 import com.dynokore.gst.rules.application.ImportRegulatoryPack
 import com.dynokore.gst.rules.application.ImportStatusAnswer
@@ -38,11 +41,13 @@ import com.dynokore.gst.rules.application.PackActionCommand
 import com.dynokore.gst.rules.application.PackCorrectionPermissionPort
 import com.dynokore.gst.rules.application.PackCurrencyMonitor
 import com.dynokore.gst.rules.application.RefusalReason
+import com.dynokore.gst.rules.application.RegistryRowReader
 import com.dynokore.gst.rules.application.ReprocessPopulation
 import com.dynokore.gst.rules.application.ReprocessPopulationResult
 import com.dynokore.gst.rules.application.ReprocessingRunState
 import com.dynokore.gst.rules.application.RollbackPack
 import com.dynokore.gst.rules.application.RollbackPackResult
+import com.dynokore.gst.rules.application.TenantReviewPolicyReader
 import com.dynokore.gst.rules.contract.api.MappingPacksApi
 import com.dynokore.gst.rules.contract.api.RegulatoryPacksApi
 import com.dynokore.gst.rules.contract.model.AcceptSourceClassEntryRequest
@@ -62,8 +67,11 @@ import com.dynokore.gst.rules.contract.model.MappingImportRecordRejectedRowsInne
 import com.dynokore.gst.rules.contract.model.MappingPack
 import com.dynokore.gst.rules.contract.model.MappingPackBundlePart
 import com.dynokore.gst.rules.contract.model.MappingPackDiff
+import com.dynokore.gst.rules.contract.model.PackDeltaAcknowledgement
 import com.dynokore.gst.rules.contract.model.RegulatoryPack
 import com.dynokore.gst.rules.contract.model.ReprocessingRun
+import com.dynokore.gst.rules.domain.pack.GraceEnd
+import com.dynokore.gst.rules.domain.pack.GraceWindow
 import com.dynokore.gst.rules.domain.pack.PackLayers.MAPPING_PACK_TYPE
 import com.dynokore.gst.rules.domain.pack.PackStatus
 import com.dynokore.gst.rules.domain.pack.SourceClass
@@ -120,6 +128,7 @@ open class PacksController(
     private val bundleDiff: MappingPackBundleDiff,
     private val armedPacks: ArmedPackLookup,
     private val permissions: PackCorrectionPermissionPort,
+    private val storedAcknowledgements: StoredPackDeltaAcknowledgements,
 ) : MappingPacksApi,
     RegulatoryPacksApi {
     /** The armed regulatory packs of the platform layer for the installer; the caller check is the generated one. */
@@ -337,6 +346,44 @@ open class PacksController(
         val acknowledged = result as AcknowledgePackDeltaResult.Acknowledged
         return ResponseEntity.ok(RegulatoryPackArmingMapping.acknowledged(packType, version, acknowledged))
     }
+
+    /**
+     * The calling tenant's stored acknowledgement of one pack (INV-T-27762; INV-REQ-1008). A read: it never writes. The
+     * tenant is the tenant of the call, never one taken from the path; no row is 404 NOT_FOUND, a missing permission
+     * is 403 SRT-004 and reads nothing.
+     */
+    override fun getPackDeltaAcknowledgement(
+        packType: String,
+        version: String,
+    ): ResponseEntity<PackDeltaAcknowledgement> =
+        when (val found = storedAcknowledgements.read(tenants.current().toString(), packType, version, actor())) {
+            StoredPackDeltaAcknowledgement.Denied -> {
+                throw ClosedErrorCode.ACCESS_DENIED.let {
+                    MappingRefusal(
+                        it.httpStatus,
+                        it.code,
+                        it.title,
+                        DENIED_READ,
+                    )
+                }
+            }
+
+            StoredPackDeltaAcknowledgement.NotFound -> {
+                throw ClosedErrorCode.NOT_FOUND.let { MappingRefusal(it.httpStatus, it.code, it.title, null) }
+            }
+
+            is StoredPackDeltaAcknowledgement.Found -> {
+                ResponseEntity.ok(
+                    PackDeltaAcknowledgement(
+                        packType = found.row.packType,
+                        version = found.row.version,
+                        acknowledgedBy = found.row.acknowledgedBy,
+                        acknowledgedAt = found.row.acknowledgedAt.atOffset(ZoneOffset.UTC),
+                        graceWindowEnd = found.graceWindowEnd,
+                    ),
+                )
+            }
+        }
 
     /**
      * Arms an APPROVED regulatory pack behind the two-phase fence (INV-T-4977; INV-REQ-1166). No transaction is opened
@@ -827,3 +874,71 @@ private const val LINEAGE_KEY = "pack_registry_lineage_key"
 
 private fun statusOf(state: ReprocessingRunState): ReprocessingRun.Status =
     if (state == ReprocessingRunState.COMPLETE) ReprocessingRun.Status.COMPLETE else ReprocessingRun.Status.RUNNING
+
+private const val DENIED_READ = "the operation is not permitted"
+
+/** The answer of the stored-acknowledgement read; a refusal reads or writes nothing further. */
+sealed interface StoredPackDeltaAcknowledgement {
+    data object Denied : StoredPackDeltaAcknowledgement
+
+    data object NotFound : StoredPackDeltaAcknowledgement
+
+    data class Found(
+        val row: DeltaAcknowledgement,
+        val graceWindowEnd: LocalDate?,
+    ) : StoredPackDeltaAcknowledgement
+}
+
+/** The read side of the delta acknowledgement store: no write is reachable through it (CQS). */
+fun interface DeltaAcknowledgementReader {
+    fun find(
+        tenantId: String,
+        packType: String,
+        version: String,
+    ): DeltaAcknowledgement?
+}
+
+/**
+ * The tenant's stored acknowledgement of a pack (INV-T-27762). The permission is the one of `acknowledgePackDelta`,
+ * decided per request; `graceWindowEnd` comes from the same `GraceWindow.endsOn` inputs as `AcknowledgePackDelta`
+ * and is absent when no end exists.
+ */
+class StoredPackDeltaAcknowledgements(
+    private val permission: AcknowledgementPermissionPort,
+    private val acknowledgements: DeltaAcknowledgementReader,
+    private val registry: RegistryRowReader,
+    private val deltas: CompleteDeltaReader,
+    private val policies: TenantReviewPolicyReader,
+    private val clock: Clock,
+) {
+    fun read(
+        tenantId: String,
+        packType: String,
+        version: String,
+        actor: String,
+    ): StoredPackDeltaAcknowledgement {
+        if (!permission.mayAcknowledge(actor)) return StoredPackDeltaAcknowledgement.Denied
+        val row =
+            acknowledgements.find(tenantId, packType, version) ?: return StoredPackDeltaAcknowledgement.NotFound
+        return StoredPackDeltaAcknowledgement.Found(row, graceWindowEnd(tenantId, packType, version))
+    }
+
+    private fun graceWindowEnd(
+        tenantId: String,
+        packType: String,
+        version: String,
+    ): LocalDate? {
+        val registryRow = registry.find(packType, version) ?: return null
+        val completedAt = deltas.completedAt(tenantId, packType, version) ?: return null
+        val p = policies.read(tenantId)
+        val end =
+            GraceWindow.endsOn(
+                p.form,
+                completedAt.atZone(clock.zone).toLocalDate(),
+                registryRow.effectiveFrom,
+                p.stored,
+                p.maximum,
+            )
+        return (end as? GraceEnd.Ends)?.on
+    }
+}
