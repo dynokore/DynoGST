@@ -7,6 +7,8 @@ import com.dynokore.gst.access.domain.role.Role
 import com.dynokore.platform.serviceruntime.replica.StructureNodeKind
 import com.dynokore.platform.tenancykernel.TenantId
 import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.AfterAll
+import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import java.time.Duration
 import java.util.UUID
@@ -119,4 +121,15 @@ class OperatorSessionElevationTest {
             assertRecord(env, env.support, present = false)
             assertRecord(env, env.support2, present = true)
         }
+
+    companion object {
+        @BeforeAll
+        @JvmStatic
+        fun baselineBegin() = OperatorSessionTest.baselineBegin()
+
+        /** The platform rows the fixture inserts are removed exactly as `OperatorSessionTest` does. */
+        @AfterAll
+        @JvmStatic
+        fun removePlatformRows() = OperatorSessionTest.removePlatformRows()
+    }
 }
