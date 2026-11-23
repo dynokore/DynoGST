@@ -149,6 +149,8 @@ class Tpl16ServiceCompositionTest {
                 "outbox_claim_v",
                 "outbox_sequence",
                 "period_due_date",
+                "portfolio_period",
+                "portfolio_readiness",
                 "work_queue",
                 "write_installation_setting",
             )
