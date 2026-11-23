@@ -133,6 +133,7 @@ class Tpl16ServiceCompositionTest {
                 "config_setting",
                 "console_session",
                 "deferral",
+                "document_index",
                 "consumer_offset",
                 "consumer_replay",
                 "consumer_replay_marker",
