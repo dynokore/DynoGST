@@ -98,78 +98,96 @@ class FakeSmtpServer(
     }
 
     private fun serve(plain: Socket) {
+        val session = Dialogue(plain)
+        session.ch.say(greeting)
+        var open = greeting.startsWith("220")
+        while (open) {
+            val line = session.ch.reader.readLine()
+            open = line != null && session.handle(line)
+        }
+    }
+
+    /** One client connection; every verb handler answers true to keep the connection open. */
+    private inner class Dialogue(
+        private val plain: Socket,
+    ) {
         var ch = Channel(plain)
-        var tls = false
-        val rcpts = mutableListOf<String>()
-        ch.say(greeting)
-        if (!greeting.startsWith("220")) return
-        while (true) {
-            val line = ch.reader.readLine() ?: return
-            when (line.substringBefore(' ').uppercase()) {
-                "EHLO", "HELO" -> {
-                    val caps = mutableListOf("localhost")
-                    if (offerStartTls && !tls) caps += "STARTTLS"
-                    if (tls) caps += "AUTH PLAIN"
-                    caps.forEachIndexed { i, c -> ch.say((if (i < caps.lastIndex) "250-" else "250 ") + c) }
-                }
+        private var tls = false
+        private val rcpts = mutableListOf<String>()
+        private val verbs: Map<String, (String) -> Boolean> =
+            mapOf(
+                "EHLO" to { hello() },
+                "HELO" to { hello() },
+                "STARTTLS" to { startTls() },
+                "AUTH" to ::auth,
+                "MAIL" to { mail() },
+                "RCPT" to ::rcpt,
+                "DATA" to { data() },
+                "RSET" to { ok() },
+                "NOOP" to { ok() },
+                "QUIT" to { ch.say("221 bye").let { false } },
+            )
 
-                "STARTTLS" -> {
-                    ch.say("220 2.0.0 ready")
-                    val ssl = serverFactory.createSocket(plain, null, plain.port, true) as SSLSocket
-                    ssl.useClientMode = false
-                    ssl.startHandshake()
-                    ch = Channel(ssl)
-                    tls = true
-                }
+        fun handle(line: String): Boolean = verbs[line.substringBefore(' ').uppercase()]?.invoke(line) ?: unknown()
 
-                "AUTH" -> {
-                    var initial = line.substringAfter("PLAIN", "").trim()
-                    if (initial.isEmpty()) {
-                        ch.say("334 ")
-                        initial = ch.reader.readLine() ?: return
-                    }
-                    val parts = String(Base64.getDecoder().decode(initial), Charsets.UTF_8).split('\u0000')
-                    val ok = parts.size == 3 && parts[1] == user && parts[2] == password
-                    ch.say(if (ok) authReply else "535 5.7.8 authentication failed")
-                }
+        private fun unknown(): Boolean = ch.say("502 not implemented").let { true }
 
-                "MAIL" -> {
-                    mailCommands.incrementAndGet()
-                    rcpts.clear()
-                    ch.say("250 2.1.0 ok")
-                }
+        private fun ok(): Boolean = ch.say("250 ok").let { true }
 
-                "RCPT" -> {
-                    if (rcptReply.startsWith("250")) rcpts += line.substringAfter('<').substringBefore('>')
-                    ch.say(rcptReply)
-                    if (rcptReply.startsWith("421")) return
-                }
+        private fun hello(): Boolean {
+            val caps = mutableListOf("localhost")
+            if (offerStartTls && !tls) caps += "STARTTLS"
+            if (tls) caps += "AUTH PLAIN"
+            caps.forEachIndexed { i, c -> ch.say((if (i < caps.lastIndex) "250-" else "250 ") + c) }
+            return true
+        }
 
-                "DATA" -> {
-                    ch.say("354 go ahead")
-                    val data = StringBuilder()
-                    while (true) {
-                        val l = ch.reader.readLine() ?: return
-                        if (l == ".") break
-                        data.append(if (l.startsWith("..")) l.substring(1) else l).append("\r\n")
-                    }
-                    messages += Received(rcpts.toList(), data.toString())
-                    ch.say("250 2.0.0 queued")
-                }
+        private fun startTls(): Boolean {
+            ch.say("220 2.0.0 ready")
+            val ssl = serverFactory.createSocket(plain, null, plain.port, true) as SSLSocket
+            ssl.useClientMode = false
+            ssl.startHandshake()
+            ch = Channel(ssl)
+            tls = true
+            return true
+        }
 
-                "RSET", "NOOP" -> {
-                    ch.say("250 ok")
-                }
-
-                "QUIT" -> {
-                    ch.say("221 bye")
-                    return
-                }
-
-                else -> {
-                    ch.say("502 not implemented")
-                }
+        private fun auth(line: String): Boolean {
+            var initial = line.substringAfter("PLAIN", "").trim()
+            if (initial.isEmpty()) {
+                ch.say("334 ")
+                initial = ch.reader.readLine() ?: return false
             }
+            val parts = String(Base64.getDecoder().decode(initial), Charsets.UTF_8).split('\u0000')
+            val accepted = parts.size == 3 && parts[1] == user && parts[2] == password
+            ch.say(if (accepted) authReply else "535 5.7.8 authentication failed")
+            return true
+        }
+
+        private fun mail(): Boolean {
+            mailCommands.incrementAndGet()
+            rcpts.clear()
+            ch.say("250 2.1.0 ok")
+            return true
+        }
+
+        private fun rcpt(line: String): Boolean {
+            if (rcptReply.startsWith("250")) rcpts += line.substringAfter('<').substringBefore('>')
+            ch.say(rcptReply)
+            return !rcptReply.startsWith("421")
+        }
+
+        private fun data(): Boolean {
+            ch.say("354 go ahead")
+            val text = StringBuilder()
+            while (true) {
+                val l = ch.reader.readLine() ?: return false
+                if (l == ".") break
+                text.append(if (l.startsWith("..")) l.substring(1) else l).append("\r\n")
+            }
+            messages += Received(rcpts.toList(), text.toString())
+            ch.say("250 2.0.0 queued")
+            return true
         }
     }
 

@@ -17,7 +17,7 @@ data class SmtpDeliveryProperties(
 ) {
     init {
         require(host.isNotBlank()) { "$HOST must not be blank" }
-        require(port in 1..65535) { "$PORT must be a port number" }
+        require(port in 1..MAX_PORT) { "$PORT must be a port number" }
         require(fromAddress.isNotBlank()) { "$FROM_ADDRESS must not be blank" }
         require(credentialSecretRef.isNotBlank()) { "$CREDENTIAL_SECRET_REF must not be blank" }
         require(connectTimeoutMs > 0) { "$CONNECT_TIMEOUT_MS must be positive" }
@@ -27,6 +27,8 @@ data class SmtpDeliveryProperties(
     }
 
     companion object {
+        private const val MAX_PORT = 65535
+
         const val HOST = "gst.message-delivery.email.smtp.host"
         const val PORT = "gst.message-delivery.email.smtp.port"
         const val FROM_ADDRESS = "gst.message-delivery.email.smtp.from-address"

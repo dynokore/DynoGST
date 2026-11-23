@@ -58,13 +58,24 @@ class SmtpMessageDelivery(
             try {
                 transmit(message, id)
                 DeliveryStatus(id, DeliveryState.SENT)
-            } catch (e: Exception) {
-                val reason = classify(e)
-                LOG.warn("smtp send failed, reason={}", reason)
-                DeliveryStatus(id, DeliveryState.FAILED, reason)
+            } catch (e: MessagingException) {
+                failed(id, e)
+            } catch (e: NoSuchElementException) {
+                failed(id, e)
+            } catch (e: IllegalStateException) {
+                failed(id, e)
             }
         synchronized(table) { table[id] = status }
         return DeliveryReceipt(id)
+    }
+
+    private fun failed(
+        id: String,
+        cause: Exception,
+    ): DeliveryStatus {
+        val reason = classify(cause)
+        LOG.warn("smtp send failed, reason={}", reason)
+        return DeliveryStatus(id, DeliveryState.FAILED, reason)
     }
 
     override fun status(deliveryId: String): DeliveryStatus =

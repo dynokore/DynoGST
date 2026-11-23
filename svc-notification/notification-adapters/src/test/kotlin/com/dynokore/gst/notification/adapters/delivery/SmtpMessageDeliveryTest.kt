@@ -239,7 +239,7 @@ class SmtpMessageDeliveryTest {
         val any = adapter(servers.first().port, servers.first().clientSocketFactory)
         val sms = OutboundMessage(MessageChannel.SMS, to, "access-passcode", "v1", PasscodeContent(sealedPasscode))
         texts += runCatching { any.send(sms) }.exceptionOrNull()!!.message.orEmpty()
-        texts += logback.list.map { it.formattedMessage + (it.throwableProxy?.message ?: "") }
+        texts += logback.list.map { it.formattedMessage + (it.throwableProxy?.message.orEmpty()) }
         texts += logged
         (texts.size > 6) shouldBe true
         for (text in texts) {
