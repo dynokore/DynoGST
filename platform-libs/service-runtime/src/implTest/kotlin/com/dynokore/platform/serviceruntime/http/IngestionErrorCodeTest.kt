@@ -47,8 +47,8 @@ class IngestionErrorCodeTest {
     @Test
     fun `the snapshot holds exactly one ING-006 row and the enum exactly one entry`() {
         rows.size shouldBe 1
-        IngestionErrorCode.entries.size shouldBe 5
-        IngestionErrorCode.Owner.entries.size shouldBe 2
+        IngestionErrorCode.entries.size shouldBe 8
+        IngestionErrorCode.Owner.entries.size shouldBe 3
     }
 
     @Test
@@ -83,9 +83,9 @@ class IngestionErrorCodeTest {
     }
 
     @Test
-    fun `the entries are ING-006, ING-002, ING-022, ING-018 and ING-014 in this order`() {
+    fun `the entries are ING-006, ING-002, ING-022, ING-018, ING-014, ING-025, ING-023 and ING-026 in this order`() {
         IngestionErrorCode.entries.map { it.code } shouldBe
-            listOf("ING-006", "ING-002", "ING-022", "ING-018", "ING-014")
+            listOf("ING-006", "ING-002", "ING-022", "ING-018", "ING-014", "ING-025", "ING-023", "ING-026")
     }
 
     @Test
@@ -146,6 +146,51 @@ class IngestionErrorCodeTest {
         IngestionErrorCode.entries.filter { it != IngestionErrorCode.RECEIPT_REPLACED_AFTER_TRANSMISSION }.forEach {
             it.disposition shouldBe rowsOf(it.code).single().disposition
             it.disposition shouldBe "TERMINAL"
+        }
+    }
+
+    @Test
+    @Suppress("ktlint:standard:max-line-length")
+    fun `INV-AC-27203 ING-025, ING-023 and ING-026 are the rows' code, title, disposition and owner with the declared 422, 503 and 503`() {
+        listOf("ING-025", "ING-023", "ING-026").forEach { rowsOf(it).size shouldBe 1 }
+        listOf(
+            Triple(IngestionErrorCode.BACKFILL_OUT_OF_SCOPE, "ING-025", 422),
+            Triple(IngestionErrorCode.CANONICAL_UNAVAILABLE, "ING-023", 503),
+            Triple(IngestionErrorCode.TENANCY_UNAVAILABLE, "ING-026", 503),
+        ).forEach { (entry, code, status) ->
+            val row = rowsOf(code).single()
+            assertEntry(entry, code, status)
+            entry.disposition shouldBe row.disposition
+            entry.disposition shouldBe "TERMINAL"
+            row.severity shouldBe "BLOCK"
+        }
+        IngestionErrorCode.BACKFILL_OUT_OF_SCOPE.owner.text shouldBe "Integration"
+        IngestionErrorCode.CANONICAL_UNAVAILABLE.owner.text shouldBe "Platform"
+        IngestionErrorCode.TENANCY_UNAVAILABLE.owner.text shouldBe "Platform"
+    }
+
+    @Test
+    @Suppress("ktlint:standard:max-line-length")
+    fun `INV-AC-27203 renderIngestion gives a 422 envelope for ING-025 and a 503 envelope for ING-023 and ING-026 that validates`() {
+        listOf(
+            Triple(IngestionErrorCode.BACKFILL_OUT_OF_SCOPE, "ING-025", 422),
+            Triple(IngestionErrorCode.CANONICAL_UNAVAILABLE, "ING-023", 503),
+            Triple(IngestionErrorCode.TENANCY_UNAVAILABLE, "ING-026", 503),
+        ).forEach { (entry, code, status) ->
+            val row = rowsOf(code).single()
+            val response = Problems.renderIngestion(entry, "corr-1", "what went wrong")
+            response.status shouldBe status
+            response.headers shouldBe mapOf("Content-Type" to "application/problem+json")
+            val body = mapper.readTree(response.body)
+            contracts.schemaErrors("service-runtime/schemas/error-envelope.schema.json", body).shouldBeEmpty()
+            body.get("code").asString() shouldBe row.code
+            body.get("title").asString() shouldBe row.condition
+            body.get("status").asInt() shouldBe status
+            body.get("severity").asString() shouldBe row.severity
+            body.get("disposition").asString() shouldBe row.disposition
+            body.get("remediationOwner").asString() shouldBe row.owner
+            body.get("correlationId").asString() shouldBe "corr-1"
+            body.get("detail").asString() shouldBe "what went wrong"
         }
     }
 

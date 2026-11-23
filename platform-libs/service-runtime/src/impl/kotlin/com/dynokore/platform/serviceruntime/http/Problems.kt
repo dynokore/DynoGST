@@ -67,6 +67,9 @@ enum class ClosedErrorCode(
      * `submittedCount` extension member of the row is not rendered by this task.
      */
     BULK_ACTION_REFUSED("SRT-015", HttpStatusCodes.CONFLICT, "Bulk action refused as a whole", "TERMINAL"),
+
+    /** The override of an exception is not offered (HTTP 409; catalogue row SRT-016, INV-REQ-943, INV-REQ-1023). */
+    OVERRIDE_NOT_OFFERED("SRT-016", HttpStatusCodes.CONFLICT, "Override not offered for this error", "TERMINAL"),
     ;
 
     /** Every SRT code is remediated by the platform (error-codes.yaml `owner`). */

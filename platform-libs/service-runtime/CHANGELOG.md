@@ -6,6 +6,10 @@ train is its own (README.md: "own version and changelog").
 
 ## [Unreleased]
 
+## [13.29.0] - 2026-11-23
+### Added
+- `IngestionErrorCode` gains `BACKFILL_OUT_OF_SCOPE` (ING-025, 422, owner Integration), `CANONICAL_UNAVAILABLE` (ING-023, 503, owner Platform) and `TENANCY_UNAVAILABLE` (ING-026, 503, owner Platform), all TERMINAL, rendered by `Problems.renderIngestion`; `IngestionErrorCode.Owner` gains `PLATFORM`. Coordinator ruling of breakdown req-breakdown-157 section 49 option A: the unanswered tenancy read is the new code ING-026 and the published ING-023 stays unchanged (stable, immutable error codes). `TenancyErrorCode` gains `ILLEGAL_LIFECYCLE_TRANSITION` (TNC-015, 409, owner entity.admin) and `ClosedErrorCode` gains `OVERRIDE_NOT_OFFERED` (SRT-016, 409, TERMINAL), forced by the re-vendored rows (INV-AC-25954). The vendored catalogue snapshot is re-vendored at invoice-docs 13e08937 (INV-T-27204, INV-AC-27203).
+
 ## [13.28.0] - 2026-11-23
 ### Added
 - `RequestTooLargeAdvice` (registered by `BindingFailureAutoConfiguration` when `jakarta.validation` is on the classpath): a bean-validation failure is 400 SRT-001, except that an operation listed in `META-INF/gst/request-too-large-operations.tsv` whose violations are all `Size` violations on a `Collection` above `max` is 413 SRT-014; no list resource means never 413. `jakarta.validation-api` is compileOnly and `hibernate-validator` test-only, both managed by the Spring Boot BOM (coordinator ruling, INV-T-27821, INV-AC-27818; consumer INV-T-26433).

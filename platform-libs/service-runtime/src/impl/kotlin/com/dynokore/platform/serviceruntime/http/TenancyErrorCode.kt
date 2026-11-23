@@ -33,6 +33,12 @@ enum class TenancyErrorCode(
     TENANT_NOT_OPENABLE("TNC-012", HttpStatusCodes.CONFLICT, "Tenant open refused", Owner.PLATFORM),
     ELECTION_CHANGE_PENDING("TNC-013", HttpStatusCodes.CONFLICT, "Election change refused", Owner.ENTITY_ADMIN),
     TENANT_NOT_CLOSABLE("TNC-014", HttpStatusCodes.CONFLICT, "Tenant close refused", Owner.PLATFORM),
+    ILLEGAL_LIFECYCLE_TRANSITION(
+        "TNC-015",
+        HttpStatusCodes.CONFLICT,
+        "Lifecycle change refused",
+        Owner.ENTITY_ADMIN,
+    ),
     ;
 
     /** The catalogue `owner` text of the row (error-codes.yaml). */

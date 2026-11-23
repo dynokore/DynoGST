@@ -40,8 +40,8 @@ class TenancyErrorCodeTest {
         }.filter { it.code.startsWith("TNC-") }
 
     @Test
-    fun `the codes equal the 14 TNC rows of the pinned catalogue snapshot, in order`() {
-        rows.size shouldBe 14
+    fun `the codes equal the 15 TNC rows of the pinned catalogue snapshot, in order`() {
+        rows.size shouldBe 15
         TenancyErrorCode.entries.map { it.code } shouldBe rows.map { it.code }
     }
 
@@ -169,5 +169,27 @@ class TenancyErrorCodeTest {
         contracts.schemaErrors("service-runtime/schemas/error-envelope.schema.json", body).shouldBeEmpty()
         body.get("code").asString() shouldBe "TNC-014"
         body.get("type").asString() shouldBe "https://errors.invoice.internal/TNC-014"
+    }
+
+    @Test
+    fun `INV-AC-25954 ILLEGAL_LIFECYCLE_TRANSITION is the catalogue row TNC-015 and renders as a 409 envelope`() {
+        val row = rows.single { it.code == "TNC-015" }
+        row.severity shouldBe "BLOCK"
+        row.disposition shouldBe "TERMINAL"
+        row.owner shouldBe "entity.admin"
+        row.condition.contains("HTTP 409") shouldBe true
+        val entry = TenancyErrorCode.ILLEGAL_LIFECYCLE_TRANSITION
+        entry.code shouldBe "TNC-015"
+        entry.httpStatus shouldBe 409
+        entry.title shouldBe "Lifecycle change refused"
+        entry.title shouldBe row.condition.substringBefore(": ")
+        entry.owner shouldBe TenancyErrorCode.Owner.ENTITY_ADMIN
+        entry.owner.text shouldBe row.owner
+        val response = Problems.renderTenancy(entry, "corr-1")
+        response.status shouldBe 409
+        val body = mapper.readTree(response.body)
+        contracts.schemaErrors("service-runtime/schemas/error-envelope.schema.json", body).shouldBeEmpty()
+        body.get("code").asString() shouldBe "TNC-015"
+        body.get("type").asString() shouldBe "https://errors.invoice.internal/TNC-015"
     }
 }
