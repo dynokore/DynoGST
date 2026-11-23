@@ -1,6 +1,7 @@
 package com.dynokore.gst.masterdata.bootstrap
 
 import com.dynokore.gst.masterdata.adapters.persistence.JooqBulkResolveOperations
+import com.dynokore.gst.masterdata.adapters.http.CounterpartyCorrectionAudit
 import com.dynokore.gst.masterdata.adapters.persistence.JooqCounterpartyRepository
 import com.dynokore.gst.masterdata.adapters.persistence.JooqPendingChangeRepository
 import com.dynokore.gst.masterdata.adapters.persistence.JooqStructureNodeRepository
@@ -8,6 +9,7 @@ import com.dynokore.gst.masterdata.adapters.persistence.JooqTripleRepository
 import com.dynokore.gst.masterdata.application.counterparty.ApplyStructureNode
 import com.dynokore.gst.masterdata.application.counterparty.BulkResolve
 import com.dynokore.gst.masterdata.application.counterparty.BulkResolveOperations
+import com.dynokore.gst.masterdata.application.counterparty.CorrectCounterpartyData
 import com.dynokore.gst.masterdata.application.counterparty.CounterpartyRepository
 import com.dynokore.gst.masterdata.application.counterparty.MasterDataResolvedPublisher
 import com.dynokore.gst.masterdata.application.counterparty.ReadCounterpartyHistory
@@ -22,6 +24,8 @@ import com.dynokore.gst.masterdata.application.identity.PendingChangeRepository
 import com.dynokore.gst.masterdata.application.identity.ProposeIdentityTripleChange
 import com.dynokore.gst.masterdata.application.identity.ResolveIdentityTriple
 import com.dynokore.gst.masterdata.application.identity.TripleRepository
+import com.dynokore.platform.auditlog.AuditWriter
+import com.dynokore.platform.tenancykernel.TenantContext
 import com.dynokore.platform.tenancykernel.TransactionRunner
 import org.jooq.DSLContext
 import org.springframework.context.annotation.Bean
@@ -32,6 +36,8 @@ import java.time.Clock
  * TPL-18: the only place a use case is constructed. No DataSource bean here or anywhere in the service (owner ruling
  * INV-Q-4196): the one application pool is Spring Boot's `dataSource` from spring.datasource.* (TPL-16).
  */
+// one @Bean function per use case and repository of the composition root (TPL-18)
+@Suppress("TooManyFunctions")
 @Configuration(proxyBeanMethods = false)
 @Suppress("TooManyFunctions") // one bean method per wired part (INV-Q-4629), as the sibling configurations do
 class UseCases {
@@ -107,6 +113,19 @@ class UseCases {
         record: RecordCounterparty,
         operations: BulkResolveOperations,
     ) = BulkResolve(tx, record, operations)
+
+    @Bean
+    fun correctCounterpartyData(
+        tx: TransactionRunner,
+        parties: CounterpartyRepository,
+        record: RecordCounterparty,
+    ) = CorrectCounterpartyData(tx, parties, record)
+
+    @Bean
+    fun counterpartyCorrectionAudit(
+        writer: AuditWriter,
+        tenants: TenantContext,
+    ) = CounterpartyCorrectionAudit(writer, tenants)
 
     @Bean
     fun readCounterpartyHistory(

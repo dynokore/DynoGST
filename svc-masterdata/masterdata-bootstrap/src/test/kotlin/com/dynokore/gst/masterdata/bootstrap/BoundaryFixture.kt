@@ -1,5 +1,6 @@
 package com.dynokore.gst.masterdata.bootstrap
 
+import com.dynokore.gst.masterdata.adapters.http.ResolutionController
 import com.dynokore.gst.masterdata.adapters.permission.OperationPermissionKeys
 import com.dynokore.gst.masterdata.application.imports.ImportEvidence
 import com.dynokore.gst.masterdata.application.permission.MasterdataPermissions
@@ -76,6 +77,7 @@ object TestPermissions {
             OperationPermissionKeys.CONNECTION_HEALTH_VIEW,
             OperationPermissionKeys.CONNECTION_CREDENTIAL_ROTATE,
             OperationPermissionKeys.COUNTERPARTY_REQUEST_SEND,
+            ResolutionController.PRIVACY_REQUEST_HANDLE,
         )
 
     /** A second person holding the same keys, for the criteria that compare a starter with another principal. */
@@ -87,8 +89,12 @@ object TestPermissions {
     /** The look-alike of [OPERATOR] with a trailing space; same keys, so only the actor equality differs. */
     const val LOOKALIKE_OPERATOR = "IDN-OPERATOR "
 
+    /** A person holding the look-alike key `privacy-request.handel` and the key of another operation only. */
+    const val LOOKALIKE_PRIVACY = "IDN-LOOKALIKE-PRIVACY"
+
     fun keysOf(person: String): Set<String> =
         when (person) {
+            LOOKALIKE_PRIVACY -> setOf("privacy-request.handel", OperationPermissionKeys.COUNTERPARTY_REQUEST_SEND)
             OPERATOR, OTHER_OPERATOR, LOOKALIKE_OPERATOR -> all
             LOOKALIKE_IMPORTER -> setOf("exchange-rate.imports")
             else -> emptySet()

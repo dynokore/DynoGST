@@ -1,5 +1,9 @@
 package com.dynokore.gst.masterdata.adapters.http
 
+import com.dynokore.gst.masterdata.application.counterparty.CorrectCounterpartyData
+import com.dynokore.gst.masterdata.application.counterparty.CorrectableField
+import com.dynokore.gst.masterdata.application.counterparty.CorrectionCommand
+import com.dynokore.gst.masterdata.application.counterparty.CorrectionResult
 import com.dynokore.gst.masterdata.application.counterparty.PartyAnswer
 import com.dynokore.gst.masterdata.application.counterparty.PartyKey
 import com.dynokore.gst.masterdata.application.counterparty.PartyQuestion
@@ -9,8 +13,11 @@ import com.dynokore.gst.masterdata.application.counterparty.RecordCounterparty
 import com.dynokore.gst.masterdata.application.counterparty.ResolveCounterparty
 import com.dynokore.gst.masterdata.application.identity.ResolveCommand
 import com.dynokore.gst.masterdata.application.identity.ResolveIdentityTriple
+import com.dynokore.gst.masterdata.application.permission.TenantPermission
 import com.dynokore.gst.masterdata.application.registry.ResolveReachability
+import com.dynokore.gst.masterdata.contract.api.PrivacyApi
 import com.dynokore.gst.masterdata.contract.api.ResolutionApi
+import com.dynokore.gst.masterdata.contract.model.CorrectCounterpartyDataRequest
 import com.dynokore.gst.masterdata.contract.model.Counterparty
 import com.dynokore.gst.masterdata.contract.model.CounterpartyHistory
 import com.dynokore.gst.masterdata.contract.model.CounterpartyVersion
@@ -26,6 +33,8 @@ import com.dynokore.gst.masterdata.domain.identity.Resolution
 import com.dynokore.platform.partyregistry.IdentifierScheme
 import com.dynokore.platform.serviceruntime.http.ClosedErrorCode
 import com.dynokore.platform.serviceruntime.http.MasterdataErrorCode
+import com.dynokore.platform.tenancykernel.TenantContext
+import com.dynokore.platform.tenancykernel.TransactionRunner
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.RestController
 import java.time.LocalDate
@@ -40,6 +49,7 @@ import java.util.UUID
  * one counterparty in write order (INV-Q-8425 A).
  */
 @RestController
+@Suppress("LongParameterList")
 // open: the generated API interface is @Validated, so Spring proxies the controller (no kotlin-spring plugin in the
 // template)
 open class ResolutionController(
@@ -48,7 +58,13 @@ open class ResolutionController(
     private val history: ReadCounterpartyHistory,
     private val record: RecordCounterparty,
     private val reachability: ResolveReachability,
-) : ResolutionApi {
+    private val correct: CorrectCounterpartyData,
+    private val correctionAudit: CounterpartyCorrectionAudit,
+    private val permission: TenantPermission,
+    private val tenants: TenantContext,
+    private val tx: TransactionRunner,
+) : ResolutionApi,
+    PrivacyApi {
     override fun resolveCounterparty(
         entityRef: String,
         constitution: String,
@@ -229,5 +245,79 @@ open class ResolutionController(
         return ResponseEntity.ok(CounterpartyMapping.counterparty(version, version.content.schemes))
     }
 
+    /**
+     * `correctCounterpartyData` (INV-T-27119, INV-REQ-886): the entity outside the principal's set is refused 403
+     * SRT-004 by the runtime's gate and the Idempotency-Key (same key and body: the first answer; same key, other body:
+     * 422) is handled by the runtime's idempotency filter, both before this method, as for `sendCounterpartyRequest`.
+     * The permission `privacy-request.handle` is decided per request through the replica (INV-Q-10027): a caller
+     * without it gets 403 and nothing is written. The use case appends the version and the audit entry is written in
+     * the same transaction. evidence-svc is never called.
+     */
+    override fun correctCounterpartyData(
+        counterpartyRef: String,
+        idempotencyKey: UUID,
+        correctCounterpartyDataRequest: CorrectCounterpartyDataRequest,
+    ): ResponseEntity<CounterpartyVersion> {
+        val request = correctCounterpartyDataRequest
+        val caller = permitted()
+        val party = runCatching { PartyRef(counterpartyRef) }.getOrElse { invalid("counterpartyRef is invalid") }
+        val entity = request.entityRef.trim().takeIf { it.isNotEmpty() } ?: invalid("entityRef must not be blank")
+        val field = correctableField(request.field.value)
+        val command = CorrectionCommand(entity, party, request.caseId, field, request.correctedValue, caller)
+        val result =
+            tx.inTransaction {
+                val done = correct.handle(command)
+                if (done is CorrectionResult.Applied) {
+                    correctionAudit.corrected(caller, entity, party.value, request.caseId, field)
+                }
+                done
+            }
+        return when (result) {
+            is CorrectionResult.Applied -> {
+                val version = result.version
+                ResponseEntity.ok(
+                    CounterpartyVersion(
+                        version = version.version.toInt(),
+                        recordedAt = version.recordedAt.atOffset(ZoneOffset.UTC),
+                        current = true,
+                        counterparty = CounterpartyMapping.counterparty(version, version.content.schemes),
+                    ),
+                )
+            }
+
+            CorrectionResult.UnknownCounterparty -> {
+                throw ApiRefusal(ClosedErrorCode.NOT_FOUND)
+            }
+
+            is CorrectionResult.Refused -> {
+                invalid(result.reason)
+            }
+        }
+    }
+
+    /** The acting user ID, once `privacy-request.handle` is decided for it through the replica (INV-Q-10027). */
+    private fun permitted(): String {
+        val caller = tenants.currentActor()?.takeIf { it.isNotBlank() }
+        if (caller == null || !permission.holds(caller, PRIVACY_REQUEST_HANDLE)) {
+            throw ApiRefusal(ClosedErrorCode.ACCESS_DENIED)
+        }
+        return caller
+    }
+
+    /** The contract `field` value to the correctable field, by equality; any other value is refused. */
+    private fun correctableField(value: String): CorrectableField =
+        when (value) {
+            "legalName" -> CorrectableField.LEGAL_NAME
+            "addressLine1" -> CorrectableField.ADDRESS_LINE_1
+            "addressLine2" -> CorrectableField.ADDRESS_LINE_2
+            "postalCode" -> CorrectableField.POSTAL_CODE
+            else -> invalid("field is not correctable")
+        }
+
     private fun invalid(message: String): Nothing = throw ApiRefusal(ClosedErrorCode.CONTRACT_VIOLATION, message)
+
+    companion object {
+        /** `x-operation.permission` of `correctCounterpartyData` (INV-REQ-886), decided per request by the replica. */
+        const val PRIVACY_REQUEST_HANDLE = "privacy-request.handle"
+    }
 }
