@@ -3,6 +3,8 @@ package com.dynokore.gst.access.bootstrap
 import com.dynokore.gst.access.adapters.http.ApiRefusal
 import com.dynokore.gst.access.adapters.http.BreakGlassController
 import com.dynokore.gst.access.adapters.http.GrantsController
+import com.dynokore.gst.access.application.grant.GrantAudit
+import com.dynokore.gst.access.application.grant.GrantAuditEntry
 import com.dynokore.gst.access.contract.model.BreakGlassActionRequest
 import com.dynokore.gst.access.contract.model.BreakGlassResponse
 import com.dynokore.gst.access.contract.model.GrantRequest
@@ -252,6 +254,27 @@ class SecurityEventMappingTest {
                 }
             }.hasMessageContaining("outer rollback")
             assertThat(env.auditRows("unlockBreakGlass")).isEmpty()
+            assertThat(collector.await(1)).isEmpty()
+        }
+
+    @Test
+    fun `INV-AC-24872 an unlockBreakGlass still yields only break_glass`() =
+        run { env, collector ->
+            env.unlock(ADMIN, APPROVER)
+            assertThat(collector.await(1).map { attributes(it)["gst.security.class"] }).containsExactly("break_glass")
+        }
+
+    @Test
+    fun `INV-AC-24872 the look-alike keys of signInBreakGlass write their entry and yield no record`() =
+        run { env, collector ->
+            val audit = env.context.getBean(GrantAudit::class.java)
+            val lookAlikes = listOf("SignInBreakGlass", "signInBreakGlassX", " signInBreakGlass")
+            lookAlikes.forEach { action ->
+                env.tenants.bind(env.tenant, ADMIN) {
+                    env.tx.inTransaction { audit.record(GrantAuditEntry(ADMIN, action, "break-glass:BG-L", null, null)) }
+                }
+                assertThat(env.auditRows(action)).hasSize(1)
+            }
             assertThat(collector.await(1)).isEmpty()
         }
 
