@@ -1,6 +1,7 @@
 package com.dynokore.gst.evidence.adapters.persistence
 
 import com.dynokore.gst.evidence.adapters.persistence.jooq.tables.DocumentLocator.Companion.DOCUMENT_LOCATOR
+import com.dynokore.gst.evidence.application.export.AuditPackClassSource
 import com.dynokore.gst.evidence.application.export.ExportClassSource
 import com.dynokore.platform.evidencestore.EntityRef
 import com.dynokore.platform.evidencestore.PeriodRef
@@ -8,6 +9,7 @@ import com.dynokore.platform.evidencestore.exportpackage.PackageCandidate
 import com.dynokore.platform.evidencestore.exportpackage.PackageContentClass
 import com.dynokore.platform.evidencestore.exportpackage.PackageItem
 import com.dynokore.platform.tenancykernel.TenantId
+import org.jooq.Condition
 import org.jooq.DSLContext
 import org.jooq.impl.DSL
 import tools.jackson.databind.json.JsonMapper
@@ -24,20 +26,45 @@ import tools.jackson.databind.json.JsonMapper
 class JooqSourceDocumentReferences(
     private val dsl: DSLContext,
     private val maxBytes: Long,
-) : ExportClassSource {
+) : ExportClassSource,
+    AuditPackClassSource {
     init {
         require(maxBytes > 0) { "maxBytes must be positive" }
     }
 
-    override fun candidates(tenant: TenantId): List<PackageCandidate> {
-        if (referenceBytes(tenant) > maxBytes) throw PackageSizeRefusal(CLASS, maxBytes)
+    override fun candidates(tenant: TenantId): List<PackageCandidate> = read(tenant, null)
+
+    /**
+     * The references of one entity and period of the tenant (INV-AC-25917): the tenant, entity and period predicates
+     * are in the WHERE clause of the sum and of the read, so the byte limit counts the scoped rows only.
+     */
+    override fun candidates(
+        tenant: TenantId,
+        entityRef: String,
+        periodRef: String,
+    ): List<PackageCandidate> = read(tenant, entityRef to periodRef)
+
+    private fun predicate(
+        tenant: TenantId,
+        scope: Pair<String, String>?,
+    ): Condition {
+        val l = DOCUMENT_LOCATOR
+        val base = DSL.and(l.TENANT_ID.eq(tenant.value), l.SOURCE_DOCUMENT_REF.isNotNull)
+        return if (scope == null) base else DSL.and(base, l.ENTITY_REF.eq(scope.first), l.PERIOD_REF.eq(scope.second))
+    }
+
+    private fun read(
+        tenant: TenantId,
+        scope: Pair<String, String>?,
+    ): List<PackageCandidate> {
+        if (referenceBytes(tenant, scope) > maxBytes) throw PackageSizeRefusal(CLASS, maxBytes)
         val candidates = mutableListOf<PackageCandidate>()
         var total = 0L
         val l = DOCUMENT_LOCATOR
         dsl
             .select(l.DOC_UUID, l.VERSION, l.ENTITY_REF, l.PERIOD_REF, l.DOCUMENT_NUMBER, l.SOURCE_DOCUMENT_REF)
             .from(l)
-            .where(l.TENANT_ID.eq(tenant.value), l.SOURCE_DOCUMENT_REF.isNotNull)
+            .where(predicate(tenant, scope))
             .orderBy(l.ENTITY_REF, l.PERIOD_REF, l.DOC_UUID, l.VERSION)
             .fetchSize(FETCH_SIZE)
             .fetchLazy()
@@ -68,13 +95,16 @@ class JooqSourceDocumentReferences(
     }
 
     /** The reference bytes of the tenant; a null sum (no rows) counts as zero. */
-    private fun referenceBytes(tenant: TenantId): Long {
+    private fun referenceBytes(
+        tenant: TenantId,
+        scope: Pair<String, String>?,
+    ): Long {
         val l = DOCUMENT_LOCATOR
         val bytes =
             dsl
                 .select(DSL.sum(DSL.octetLength(l.SOURCE_DOCUMENT_REF)))
                 .from(l)
-                .where(l.TENANT_ID.eq(tenant.value), l.SOURCE_DOCUMENT_REF.isNotNull)
+                .where(predicate(tenant, scope))
                 .fetchOne()
                 ?.value1()
         return bytes?.toLong() ?: 0L

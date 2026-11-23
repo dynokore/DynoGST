@@ -4,6 +4,7 @@ import com.dynokore.gst.evidence.adapters.persistence.jooq.tables.Acknowledgemen
 import com.dynokore.gst.evidence.adapters.persistence.jooq.tables.AuditLog.Companion.AUDIT_LOG
 import com.dynokore.gst.evidence.adapters.persistence.jooq.tables.DecisionTrace.Companion.DECISION_TRACE
 import com.dynokore.gst.evidence.adapters.persistence.jooq.tables.EvidencePayload.Companion.EVIDENCE_PAYLOAD
+import com.dynokore.gst.evidence.application.export.AuditPackClassSource
 import com.dynokore.gst.evidence.application.export.ExportClassSource
 import com.dynokore.platform.evidencestore.EntityRef
 import com.dynokore.platform.evidencestore.PeriodRef
@@ -11,6 +12,7 @@ import com.dynokore.platform.evidencestore.exportpackage.PackageCandidate
 import com.dynokore.platform.evidencestore.exportpackage.PackageContentClass
 import com.dynokore.platform.evidencestore.exportpackage.PackageItem
 import com.dynokore.platform.tenancykernel.TenantId
+import org.jooq.Condition
 import org.jooq.DSLContext
 import org.jooq.Field
 import org.jooq.Table
@@ -108,18 +110,51 @@ class JooqTenantPackageCandidates(
     fun sources(): Map<PackageContentClass, ExportClassSource> =
         chains.associate { chain -> chain.contentClass to ExportClassSource { tenant -> read(chain, tenant) } }
 
+    /**
+     * One source per sourced class for one entity and period of a tenant (INV-AC-25917). The tenant, entity and period
+     * predicates are in the WHERE clause of the sum and of the read, so the byte limit counts the scoped rows only.
+     */
+    fun scopedSources(): Map<PackageContentClass, AuditPackClassSource> =
+        chains.associate { chain ->
+            chain.contentClass to
+                AuditPackClassSource {
+                    tenant,
+                    entityRef,
+                    periodRef,
+                    ->
+                    read(chain, tenant, Scope(entityRef, periodRef))
+                }
+        }
+
+    private class Scope(
+        val entity: String,
+        val period: String,
+    )
+
+    private fun predicate(
+        c: Columns,
+        tenant: TenantId,
+        scope: Scope?,
+    ): Condition =
+        if (scope == null) {
+            c.tenant.eq(tenant.value)
+        } else {
+            DSL.and(c.tenant.eq(tenant.value), c.entity.eq(scope.entity), c.period.eq(scope.period))
+        }
+
     private fun read(
         chain: Chain,
         tenant: TenantId,
+        scope: Scope? = null,
     ): List<PackageCandidate> {
-        if (tenantBytes(tenant) > maxBytes) throw PackageSizeRefusal(chain.contentClass, maxBytes)
+        if (tenantBytes(tenant, scope) > maxBytes) throw PackageSizeRefusal(chain.contentClass, maxBytes)
         val candidates = mutableListOf<PackageCandidate>()
         var total = 0L
         val c = chain.columns
         dsl
             .select(c.entity, c.period, c.seq, c.content)
             .from(chain.table)
-            .where(c.tenant.eq(tenant.value))
+            .where(predicate(c, tenant, scope))
             .orderBy(c.entity, c.period, c.seq)
             .fetchSize(FETCH_SIZE)
             .fetchLazy()
@@ -144,14 +179,17 @@ class JooqTenantPackageCandidates(
     }
 
     /** The content bytes of the tenant over all four sourced tables; null sums (no rows) count as zero. */
-    private fun tenantBytes(tenant: TenantId): Long =
+    private fun tenantBytes(
+        tenant: TenantId,
+        scope: Scope?,
+    ): Long =
         chains.fold(0L) { sum, chain ->
             val c = chain.columns
             val bytes =
                 dsl
                     .select(DSL.sum(DSL.octetLength(c.content.coerce(String::class.java))))
                     .from(chain.table)
-                    .where(c.tenant.eq(tenant.value))
+                    .where(predicate(c, tenant, scope))
                     .fetchOne()
                     ?.value1()
             sum + (bytes?.toLong() ?: 0L)
