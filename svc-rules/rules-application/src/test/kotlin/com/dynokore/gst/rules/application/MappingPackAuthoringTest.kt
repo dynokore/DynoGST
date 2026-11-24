@@ -62,6 +62,7 @@ private data class StoreState(
     val activations: Map<String, MappingActivation>,
     val withdrawals: List<AcceptanceWithdrawal> = emptyList(),
     val audits: List<AcceptanceWithdrawalAudit> = emptyList(),
+    val notes: Map<String, String> = emptyMap(),
 )
 
 private class FakeStore : MappingPackStore {
@@ -73,6 +74,7 @@ private class FakeStore : MappingPackStore {
     val withdrawals = mutableListOf<AcceptanceWithdrawal>()
     val audits = mutableListOf<AcceptanceWithdrawalAudit>()
     var withdrawalAnswer = WithdrawalOutcome.RECORDED
+    val notes = linkedMapOf<String, String>()
 
     fun state() =
         StoreState(
@@ -83,6 +85,7 @@ private class FakeStore : MappingPackStore {
             acts.toMap(),
             withdrawals.toList(),
             audits.toList(),
+            notes.toMap(),
         )
 
     override fun draft(pack: MappingPackDraft) {
@@ -139,6 +142,14 @@ private class FakeStore : MappingPackStore {
     ) {
         apps.getOrPut(packId) { mutableListOf() } += approval
         setStatus(packId, resultingStatus)
+    }
+
+    override fun submit(
+        packId: String,
+        clientNote: String?,
+    ) {
+        setStatus(packId, PackStatus.SUBMITTED)
+        if (clientNote != null) notes[packId] = clientNote
     }
 
     override fun setStatus(
@@ -250,7 +261,10 @@ private class Env {
         tag: String?,
     ) = authoring.mapTaxCode(MapTaxCodeCommand("author-1", "E-001", "P1", code, iras, SourceClass.PRIMARY, tag))
 
-    fun submit(id: String = "P1") = authoring.submit(PackActionCommand("author-1", "E-001", id))
+    fun submit(
+        id: String = "P1",
+        note: String? = null,
+    ) = authoring.submit(PackActionCommand("author-1", "E-001", id, note))
 
     fun approve(
         actor: String = "approver-1",
@@ -1043,5 +1057,70 @@ class MappingPackWithdrawalTest {
         e.withdraw("B") shouldBe
             Refused(RefusalReason.DECISION_UNAVAILABLE, names = listOf("acceptance-withdrawal"))
         e.store.state() shouldBe before
+    }
+}
+
+/** INV-REQ-997: the optional client note held with the submitted pack. */
+class MappingPackClientNoteTest {
+    private fun submittable(): Env {
+        val e = Env()
+        e.draft()
+        e.map("A", "SR")
+        return e
+    }
+
+    @Test
+    fun `INV-AC-28434 a note of 1 and one of 1000 characters is held as given`() {
+        for (note in listOf("a", "b".repeat(1000))) {
+            val e = submittable()
+            e.submit(note = note) shouldBe Done(PackStatus.SUBMITTED)
+            e.store.notes shouldBe mapOf("P1" to note)
+        }
+    }
+
+    @Test
+    fun `INV-AC-28434 no note leaves the note absent`() {
+        val e = submittable()
+        e.submit() shouldBe Done(PackStatus.SUBMITTED)
+        e.store.notes shouldBe emptyMap()
+    }
+
+    @Test
+    fun `INV-AC-28434 a 1001-character, blank or control-character note is refused, store equal`() {
+        val e = submittable()
+        val before = e.store.state()
+        for (note in listOf("c".repeat(1001), "", "   ", "a\u0000b", "a\nb", "a\u007Fb")) {
+            e.submit(note = note) shouldBe Refused(RefusalReason.INPUT_INVALID)
+            e.store.state() shouldBe before
+        }
+        e.store.packs
+            .getValue("P1")
+            .status shouldBe PackStatus.DRAFT
+    }
+
+    @Test
+    fun `INV-AC-28434 a note of 1000 times U+1F600 is held as given`() {
+        val note = "\uD83D\uDE00".repeat(1000)
+        val e = submittable()
+        e.submit(note = note) shouldBe Done(PackStatus.SUBMITTED)
+        e.store.notes shouldBe mapOf("P1" to note)
+    }
+
+    @Test
+    fun `INV-AC-28434 a note of 1001 times U+1F600 is refused, store equal`() {
+        val e = submittable()
+        val before = e.store.state()
+        e.submit(note = "\uD83D\uDE00".repeat(1001)) shouldBe Refused(RefusalReason.INPUT_INVALID)
+        e.store.state() shouldBe before
+    }
+
+    @Test
+    fun `INV-AC-28434 a repeat with another note leaves the first note`() {
+        val e = submittable()
+        e.submit(note = "first") shouldBe Done(PackStatus.SUBMITTED)
+        val before = e.store.state()
+        e.submit(note = "second") shouldBe Refused(RefusalReason.LIFECYCLE, status = PackStatus.SUBMITTED)
+        e.store.state() shouldBe before
+        e.store.notes shouldBe mapOf("P1" to "first")
     }
 }

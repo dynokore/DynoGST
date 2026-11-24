@@ -70,8 +70,28 @@ data class AcceptanceWithdrawalAudit(
 /** What the store answers to a withdrawal: recorded, or not available (the use case then refuses: fail closed). */
 enum class WithdrawalOutcome { RECORDED, UNAVAILABLE }
 
+/** The status writes of the draft store; each is atomic in the adapter. */
+interface MappingPackStatusStore {
+    fun setStatus(
+        packId: String,
+        status: PackStatus,
+    )
+
+    /**
+     * Sets SUBMITTED and holds [clientNote] (null = absent) in one transaction. The default holds no note, so it
+     * refuses a note rather than drop it; the store adapter overrides it.
+     */
+    fun submit(
+        packId: String,
+        clientNote: String?,
+    ) {
+        check(clientNote == null) { "this store does not hold a client note" }
+        setStatus(packId, PackStatus.SUBMITTED)
+    }
+}
+
 /** The draft store. A call that throws or refuses leaves nothing behind; each write is atomic in the adapter. */
-interface MappingPackStore {
+interface MappingPackStore : MappingPackStatusStore {
     fun draft(pack: MappingPackDraft)
 
     fun find(packId: String): MappingPackDraft?
@@ -114,11 +134,6 @@ interface MappingPackStore {
         packId: String,
         approval: MappingApproval,
         resultingStatus: PackStatus,
-    )
-
-    fun setStatus(
-        packId: String,
-        status: PackStatus,
     )
 
     /** Records the activation and sets ARMED in one transaction. */

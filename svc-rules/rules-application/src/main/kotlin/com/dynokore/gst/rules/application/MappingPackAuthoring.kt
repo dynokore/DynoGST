@@ -99,6 +99,8 @@ data class PackActionCommand(
     val actor: String,
     val entityRef: String,
     val packId: String,
+    /** Optional plain-language note of the submitting agent, used by `submit` only (INV-REQ-997, owner UI-4 A). */
+    val clientNote: String? = null,
 )
 
 data class ActivateCommand(
@@ -298,8 +300,10 @@ class MappingPackAuthoring(
             needs(command.actor, command.entityRef, MappingPackPermissions.AUTHOR)
             val pack = packOf(command.packId, command.entityRef)
             lifecycle(pack, MappingCommand.SUBMIT)
+            val note = command.clientNote
+            if (note != null && !clientNoteValid(note)) stopRefused(RefusalReason.INPUT_INVALID)
             ports.deltas.qualifying(PACK_TYPE, pack.label) ?: stopRefused(RefusalReason.NO_DRY_RUN_DELTA)
-            store.setStatus(command.packId, PackStatus.SUBMITTED)
+            store.submit(command.packId, note)
             MappingPackResult.Done(PackStatus.SUBMITTED)
         }
 
@@ -418,6 +422,16 @@ class MappingPackAuthoring(
         private const val MAX_LABEL = 200
         private const val MAX_ENTITY_REF = 64
         private const val MAX_ENTRY_ID = 40
+        const val MAX_CLIENT_NOTE = 1000
+
+        /**
+         * 1 to 1000 Unicode code points (the unit of JSON Schema `maxLength`), not blank, no control character
+         * (OWASP ASVS V5).
+         */
+        fun clientNoteValid(note: String): Boolean =
+            note.isNotBlank() &&
+                note.codePointCount(0, note.length) <= MAX_CLIENT_NOTE &&
+                note.none { Character.isISOControl(it) }
     }
 }
 
