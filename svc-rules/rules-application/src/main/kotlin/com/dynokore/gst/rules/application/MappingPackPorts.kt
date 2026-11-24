@@ -47,6 +47,29 @@ data class MappingActivation(
     val noDistinctApprover: Boolean,
 )
 
+/** One withdrawal of an acceptance before the pack is approved (INV-REQ-729 behaviour 4, owner ruling UI-14 A). */
+data class AcceptanceWithdrawal(
+    val packId: String,
+    val entryId: String,
+    /** The user ID that accepted the entry, as stored in the acceptance. */
+    val acceptedBy: String,
+    /** The acting user ID (INV-Q-10647); never a role. */
+    val withdrawnBy: String,
+    val at: Instant,
+)
+
+/** The audit entry of a withdrawal; it holds the acting user ID (INV-Q-10647, NIST SP 800-92). */
+data class AcceptanceWithdrawalAudit(
+    val action: String,
+    val actorUserId: String,
+    val packId: String,
+    val entryId: String,
+    val at: Instant,
+)
+
+/** What the store answers to a withdrawal: recorded, or not available (the use case then refuses: fail closed). */
+enum class WithdrawalOutcome { RECORDED, UNAVAILABLE }
+
 /** The draft store. A call that throws or refuses leaves nothing behind; each write is atomic in the adapter. */
 interface MappingPackStore {
     fun draft(pack: MappingPackDraft)
@@ -71,7 +94,17 @@ interface MappingPackStore {
         acceptance: MappingAcceptanceRecord,
     )
 
+    /** The acceptances in force: a withdrawn acceptance is no longer listed. */
     fun acceptances(packId: String): List<MappingAcceptanceRecord>
+
+    /**
+     * Records the withdrawal, drops the acceptance of that entry from [acceptances] and stores [audit], in one unit of
+     * work. The default refuses (fail closed) until the adapter slice implements it.
+     */
+    fun withdrawAcceptance(
+        withdrawal: AcceptanceWithdrawal,
+        audit: AcceptanceWithdrawalAudit,
+    ): WithdrawalOutcome = WithdrawalOutcome.UNAVAILABLE
 
     fun approvals(packId: String): List<MappingApproval>
 

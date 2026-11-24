@@ -88,6 +88,13 @@ data class AcceptEntryCommand(
     val expiresOn: LocalDate,
 )
 
+data class WithdrawAcceptanceCommand(
+    val actor: String,
+    val entityRef: String,
+    val packId: String,
+    val entryId: String,
+)
+
 data class PackActionCommand(
     val actor: String,
     val entityRef: String,
@@ -248,6 +255,43 @@ class MappingPackAuthoring(
             MappingPackResult.Done(pack.status)
         }
 
+    /**
+     * The accepting user withdraws the acceptance of one entry before the pack is approved (INV-REQ-729 behaviour 4,
+     * owner ruling UI-14 A). No acceptance in force is a no-op answer; another user is refused (OWASP ASVS V4).
+     */
+    fun withdrawAcceptance(command: WithdrawAcceptanceCommand): MappingPackResult =
+        guarded {
+            needs(command.actor, command.entityRef, MappingPackPermissions.APPROVE)
+            val pack = packOf(command.packId, command.entityRef)
+            if (!MappingPackLifecycle.acceptanceMayBeRecorded(pack.status)) {
+                stop(MappingPackResult.Refused(RefusalReason.LIFECYCLE, status = pack.status))
+            }
+            if (command.entryId.isBlank() || command.entryId.length > MAX_ENTRY_ID) {
+                stopRefused(RefusalReason.INPUT_INVALID)
+            }
+            val entry =
+                entriesOf(store, command.packId).firstOrNull { it.entryId == command.entryId }
+                    ?: stopRefused(RefusalReason.UNKNOWN_ENTRY, names = listOf(command.entryId))
+            val asOf = today()
+            val inForce =
+                store
+                    .acceptances(command.packId)
+                    .filter { it.entryId == entry.entryId }
+                    .lastOrNull { MappingAcceptance.acceptedEntryIds(listOf(entry), listOf(it), asOf).isNotEmpty() }
+                    ?: return@guarded MappingPackResult.Done(pack.status)
+            if (inForce.acceptedBy != command.actor) {
+                stop(MappingPackResult.Forbidden(ErrorCode.SRT_004, "the action is not permitted"))
+            }
+            val at = clock.instant()
+            val withdrawal = AcceptanceWithdrawal(command.packId, entry.entryId, inForce.acceptedBy, command.actor, at)
+            val audit =
+                AcceptanceWithdrawalAudit(ACCEPTANCE_WITHDRAWN, command.actor, command.packId, entry.entryId, at)
+            if (store.withdrawAcceptance(withdrawal, audit) != WithdrawalOutcome.RECORDED) {
+                stopRefused(RefusalReason.DECISION_UNAVAILABLE, names = listOf("acceptance-withdrawal"))
+            }
+            MappingPackResult.Done(pack.status)
+        }
+
     fun submit(command: PackActionCommand): MappingPackResult =
         guarded {
             needs(command.actor, command.entityRef, MappingPackPermissions.AUTHOR)
@@ -367,6 +411,7 @@ class MappingPackAuthoring(
 
     companion object {
         const val PACK_TYPE = "MAPPING"
+        const val ACCEPTANCE_WITHDRAWN = "MAPPING_ACCEPTANCE_WITHDRAWN"
         const val CLIENT_APPROVAL = "CLIENT_APPROVAL"
         const val CLIENT_ACKNOWLEDGEMENT = "CLIENT_ACKNOWLEDGEMENT"
         private const val MAX_LABEL = 200

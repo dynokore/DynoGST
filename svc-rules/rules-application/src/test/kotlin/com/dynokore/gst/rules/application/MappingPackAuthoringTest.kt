@@ -13,6 +13,7 @@ import com.dynokore.gst.rules.domain.coding.SchemeTagSide
 import com.dynokore.gst.rules.domain.coding.SelfBillingAssignment
 import com.dynokore.gst.rules.domain.coding.Side
 import com.dynokore.gst.rules.domain.coding.SubmissionType
+import com.dynokore.gst.rules.domain.pack.MappingAcceptance
 import com.dynokore.gst.rules.domain.pack.MappingAcceptanceRecord
 import com.dynokore.gst.rules.domain.pack.MappingDraftEntry
 import com.dynokore.gst.rules.domain.pack.PackStatus
@@ -59,6 +60,8 @@ private data class StoreState(
     val acceptances: Map<String, List<MappingAcceptanceRecord>>,
     val approvals: Map<String, List<MappingApproval>>,
     val activations: Map<String, MappingActivation>,
+    val withdrawals: List<AcceptanceWithdrawal> = emptyList(),
+    val audits: List<AcceptanceWithdrawalAudit> = emptyList(),
 )
 
 private class FakeStore : MappingPackStore {
@@ -67,6 +70,8 @@ private class FakeStore : MappingPackStore {
     val accs = linkedMapOf<String, MutableList<MappingAcceptanceRecord>>()
     val apps = linkedMapOf<String, MutableList<MappingApproval>>()
     val acts = linkedMapOf<String, MappingActivation>()
+    val withdrawals = mutableListOf<AcceptanceWithdrawal>()
+    val audits = mutableListOf<AcceptanceWithdrawalAudit>()
 
     fun state() =
         StoreState(
@@ -75,6 +80,8 @@ private class FakeStore : MappingPackStore {
             accs.mapValues { it.value.toList() },
             apps.mapValues { it.value.toList() },
             acts.toMap(),
+            withdrawals.toList(),
+            audits.toList(),
         )
 
     override fun draft(pack: MappingPackDraft) {
@@ -110,6 +117,16 @@ private class FakeStore : MappingPackStore {
     }
 
     override fun acceptances(packId: String) = accs[packId].orEmpty().toList()
+
+    override fun withdrawAcceptance(
+        withdrawal: AcceptanceWithdrawal,
+        audit: AcceptanceWithdrawalAudit,
+    ): WithdrawalOutcome {
+        withdrawals += withdrawal
+        audits += audit
+        accs[withdrawal.packId]?.removeAll { it.entryId == withdrawal.entryId }
+        return WithdrawalOutcome.RECORDED
+    }
 
     override fun approvals(packId: String) = apps[packId].orEmpty().toList()
 
@@ -245,6 +262,12 @@ private class Env {
         expires: LocalDate = TODAY.plusDays(30),
         id: String = "P1",
     ) = authoring.acceptEntry(AcceptEntryCommand("approver-1", "E-001", id, entry, rationale, expires))
+
+    fun withdraw(
+        entry: String,
+        actor: String = "approver-1",
+        id: String = "P1",
+    ) = authoring.withdrawAcceptance(WithdrawAcceptanceCommand(actor, "E-001", id, entry))
 
     /** A submitted pack with entries A (PRIMARY, SR) and B (SECONDARY, ZR). */
     fun submitted(id: String = "P1"): Env {
@@ -929,5 +952,82 @@ class MappingPackSchemeTagTest {
         val command = MapTaxCodeCommand("author-1", "E-001", "P9", "Z", "ZP", SourceClass.PRIMARY, "SWS")
         e.authoring.mapTaxCode(command) shouldBe Refused(RefusalReason.LIFECYCLE, status = PackStatus.SUBMITTED)
         e.calls.contains("scenario") shouldBe false
+    }
+
+    @Test
+    fun `INV-AC-28435 the accepting user withdraws before approval and the entry blocks sign-off again`() {
+        val e = Env().submitted()
+        e.submitted("P2")
+        e.approve(id = "P2") shouldBe Done(PackStatus.APPROVED)
+        e.withdraw("B", actor = "approver-2") shouldBe Forbidden(ErrorCode.SRT_004, "the action is not permitted")
+        e.store.withdrawals shouldBe emptyList()
+        e.store.audits shouldBe emptyList()
+        e.store.accs.getValue("P1").map { it.entryId } shouldBe listOf("B")
+
+        e.withdraw("B") shouldBe Done(PackStatus.SUBMITTED)
+        e.store.withdrawals shouldBe
+            listOf(AcceptanceWithdrawal("P1", "B", "approver-1", "approver-1", CLOCK.instant()))
+        e.store.audits shouldBe
+            listOf(
+                AcceptanceWithdrawalAudit(
+                    MappingPackAuthoring.ACCEPTANCE_WITHDRAWN,
+                    "approver-1",
+                    "P1",
+                    "B",
+                    CLOCK.instant(),
+                ),
+            )
+        e.store.acceptances("P1") shouldBe emptyList()
+        e.approve() shouldBe Refused(RefusalReason.SIGN_OFF_BLOCKED, ErrorCode.RUL_007, listOf("B"))
+
+        // the repeat has no acceptance in force: 200 and nothing more is recorded
+        e.withdraw("B") shouldBe Done(PackStatus.SUBMITTED)
+        e.store.withdrawals.size shouldBe 1
+        e.store.audits.size shouldBe 1
+
+        // an APPROVED pack is refused and changes nothing
+        val before = e.store.state()
+        e.withdraw("B", id = "P2") shouldBe Refused(RefusalReason.LIFECYCLE, status = PackStatus.APPROVED)
+        e.store.state() shouldBe before
+
+        // the entry accepted again is in the accepted set again
+        e.accept("B")
+        e.approve() shouldBe Done(PackStatus.APPROVED)
+    }
+
+    @Test
+    fun `INV-AC-28435 the accepted set no longer holds the entry after the withdrawal and holds it after a new acceptance`() {
+        val e = Env().submitted()
+        val entries = e.store.listEntries("P1", null, 100)
+        MappingAcceptance.acceptedEntryIds(entries, e.store.acceptances("P1"), TODAY) shouldBe setOf("B")
+        e.withdraw("B")
+        MappingAcceptance.acceptedEntryIds(entries, e.store.acceptances("P1"), TODAY) shouldBe emptySet()
+        e.accept("B")
+        MappingAcceptance.acceptedEntryIds(entries, e.store.acceptances("P1"), TODAY) shouldBe setOf("B")
+    }
+
+    @Test
+    fun `INV-AC-28435 an entry with no acceptance is 200 and records nothing, an unknown pack or entry is refused`() {
+        val e = Env().submitted()
+        val before = e.store.state()
+        e.withdraw("A") shouldBe Done(PackStatus.SUBMITTED)
+        e.withdraw("ZZ") shouldBe Refused(RefusalReason.UNKNOWN_ENTRY, names = listOf("ZZ"))
+        e.withdraw("B", id = "NOPE") shouldBe MappingPackResult.NotFound
+        e.store.state() shouldBe before
+    }
+
+    @Test
+    fun `INV-AC-28435 a DENY or an unavailable permission answer is a refusal and changes nothing`() {
+        val e = Env().submitted()
+        val before = e.store.state()
+        e.denyAll = true
+        e.withdraw("B").shouldBeInstanceOf<Forbidden>()
+        e.denyAll = false
+        e.heldOnly = MappingPackPermissions.AUTHOR
+        e.withdraw("B").shouldBeInstanceOf<Forbidden>()
+        e.heldOnly = null
+        e.allowedEntity = "E-002"
+        e.withdraw("B").shouldBeInstanceOf<Forbidden>()
+        e.store.state() shouldBe before
     }
 }
