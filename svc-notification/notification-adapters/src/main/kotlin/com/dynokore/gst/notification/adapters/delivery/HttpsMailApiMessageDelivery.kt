@@ -65,35 +65,37 @@ class HttpsMailApiMessageDelivery(
     private fun outcome(
         id: String,
         message: OutboundMessage,
-    ): DeliveryStatus {
-        val code =
-            try {
-                post(id, message)
-            } catch (e: IOException) {
-                return unavailable(id, e)
-            } catch (e: InterruptedException) {
-                Thread.currentThread().interrupt()
-                return unavailable(id, e)
-            } catch (e: NoSuchElementException) {
-                return unavailable(id, e)
-            } catch (e: IllegalStateException) {
-                return unavailable(id, e)
-            }
-        return when (code) {
+    ): DeliveryStatus =
+        when (attempt(id, message)) {
+            null -> failed(id, API_UNAVAILABLE)
             in OK -> DeliveryStatus(id, DeliveryState.SENT)
             in AUTH_CODES -> failed(id, API_AUTH_FAILED)
             TOO_MANY_REQUESTS, in SERVER_ERRORS -> failed(id, API_UNAVAILABLE)
             else -> failed(id, API_REJECTED)
         }
-    }
+
+    /** The HTTP status, or null when the call itself failed (transport, TLS, timeout, secret). */
+    private fun attempt(
+        id: String,
+        message: OutboundMessage,
+    ): Int? =
+        try {
+            post(id, message)
+        } catch (e: IOException) {
+            logTransport(e)
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            logTransport(e)
+        } catch (e: NoSuchElementException) {
+            logTransport(e)
+        } catch (e: IllegalStateException) {
+            logTransport(e)
+        }
 
     /** The cause is classified by its type only: its message is never kept or logged. */
-    private fun unavailable(
-        id: String,
-        cause: Exception,
-    ): DeliveryStatus {
+    private fun logTransport(cause: Exception): Int? {
         LOG.debug("mail api transport failure, type={}", cause.javaClass.simpleName)
-        return failed(id, API_UNAVAILABLE)
+        return null
     }
 
     private fun failed(
