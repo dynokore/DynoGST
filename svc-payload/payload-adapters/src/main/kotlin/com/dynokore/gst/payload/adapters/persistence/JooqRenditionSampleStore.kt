@@ -11,6 +11,7 @@ import com.dynokore.gst.payload.domain.SubmissionType
 import org.jooq.DSLContext
 import org.jooq.JSONB
 import org.jooq.Record
+import org.jooq.ResultQuery
 import org.jooq.impl.DSL
 import org.jooq.impl.SQLDataType
 import tools.jackson.databind.ObjectMapper
@@ -23,6 +24,7 @@ import java.util.UUID
  */
 class JooqRenditionSampleStore(
     private val dsl: DSLContext,
+    internal val metadataQueryOf: ((String, String) -> ResultQuery<out Record>)? = null,
     private val boundTenant: () -> UUID,
 ) : RenditionSampleStore,
     RenditionSampleReader {
@@ -135,28 +137,29 @@ class JooqRenditionSampleStore(
     internal fun metadataQuery(
         entityRef: String,
         checkId: String,
-    ) = dsl
-        .select(
-            table.CHECK_ID,
-            table.ENTITY_REF,
-            table.SCENARIO,
-            table.SUBMISSION_TYPE,
-            table.SAMPLE_SHA256,
-            table.RESULT,
-            table.MISSING_WORDING,
-            table.TEXT_FOUND,
-            table.CHECKED_AT,
-            table.CHECKED_BY,
-        ).from(table)
-        .where(table.ENTITY_REF.eq(entityRef).and(table.CHECK_ID.eq(checkId)))
+    ): ResultQuery<out Record> =
+        dsl
+            .select(
+                table.CHECK_ID,
+                table.ENTITY_REF,
+                table.SCENARIO,
+                table.SUBMISSION_TYPE,
+                table.SAMPLE_SHA256,
+                table.RESULT,
+                table.MISSING_WORDING,
+                table.TEXT_FOUND,
+                table.CHECKED_AT,
+                table.CHECKED_BY,
+            ).from(table)
+            .where(table.ENTITY_REF.eq(entityRef).and(table.CHECK_ID.eq(checkId)))
 
     override fun findMetadata(
         entityRef: String,
         checkId: String,
     ): StoredSampleMetadata? =
-        metadataQuery(entityRef, checkId)
+        (metadataQueryOf ?: ::metadataQuery)(entityRef, checkId)
             .fetchOne()
-            ?.let { r: Record ->
+            ?.let { r ->
                 StoredSampleMetadata(
                     checkId = checkNotNull(r.get(table.CHECK_ID)),
                     entityRef = checkNotNull(r.get(table.ENTITY_REF)),

@@ -1,6 +1,7 @@
 package com.dynokore.gst.payload.adapters
 
 import com.dynokore.gst.payload.adapters.persistence.JooqRenditionSampleStore
+import com.dynokore.gst.payload.adapters.persistence.jooq.tables.RenditionSampleCheck
 import com.dynokore.gst.payload.application.rendition.StoredSampleCheck
 import com.dynokore.gst.payload.domain.SampleCheckResult
 import com.dynokore.gst.payload.domain.SampleResult
@@ -8,6 +9,9 @@ import com.dynokore.gst.payload.domain.SubmissionType
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldNotContain
+import org.jooq.DSLContext
+import org.jooq.Record
+import org.jooq.ResultQuery
 import org.jooq.SQLDialect
 import org.jooq.exception.DataAccessException
 import org.jooq.impl.DSL
@@ -59,13 +63,16 @@ class JooqRenditionSampleStoreTest {
 
     private fun <T> bound(
         tenant: UUID,
+        queryOf: ((DSLContext, JooqRenditionSampleStore) -> (String, String) -> ResultQuery<out Record>)? = null,
         block: (JooqRenditionSampleStore) -> T,
     ): T =
         PayloadDb.connect(PayloadDb.RUNTIME, PayloadDb.RUNTIME_PASSWORD).use { c ->
             c.autoCommit = false
             SignedBindings.bind(c, tenant)
             try {
-                block(JooqRenditionSampleStore(DSL.using(c, SQLDialect.POSTGRES)) { tenant })
+                val dsl = DSL.using(c, SQLDialect.POSTGRES)
+                val base = JooqRenditionSampleStore(dsl) { tenant }
+                block(if (queryOf == null) base else JooqRenditionSampleStore(dsl, queryOf(dsl, base)) { tenant })
             } finally {
                 c.commit()
             }
@@ -232,16 +239,47 @@ class JooqRenditionSampleStoreTest {
         bound(t2) { it.findMetadata(entity, "chk-0001") } shouldBe null
     }
 
-    @Test
-    fun `INV-AC-27769 the SQL findMetadata executes names neither byte column and is not select star`() {
-        save(t1, vector())
-        // findMetadata fetches exactly the query metadataQuery returns, so its rendered text is the executed text
-        val text = bound(t1) { it.metadataQuery(entity, "chk-0001").sql }.lowercase()
-        Regex("(?<![a-z0-9_])sample_content(?![a-z0-9_])").containsMatchIn(text) shouldBe false
-        Regex("(?<![a-z0-9_])artefact_bytes(?![a-z0-9_])").containsMatchIn(text) shouldBe false
+    private val whole = { name: String -> Regex("(?<![a-z0-9_])$name(?![a-z0-9_])") }
+
+    private fun assertColumnRule(sql: String) {
+        val text = sql.lowercase()
+        whole("sample_content").containsMatchIn(text) shouldBe false
+        whole("artefact_bytes").containsMatchIn(text) shouldBe false
         text shouldNotContain "*"
-        // the probe: the full read names both columns, so the same pattern can fail
-        val full = bound(t1) { it.find(entity, "chk-0001") }!!
-        full.sampleContent.size shouldBe 9
+    }
+
+    @Test
+    fun `INV-AC-27769 the query findMetadata executes names neither byte column and selects no star`() {
+        save(t1, vector())
+        assertColumnRule(bound(t1) { it.metadataQuery(entity, "chk-0001").sql })
+    }
+
+    @Test
+    fun `INV-AC-27769 findMetadata calls the query function once and executes the object it returned`() {
+        save(t1, vector())
+        val calls = ArrayList<ResultQuery<out Record>>()
+        val read =
+            bound(t1, { _, base ->
+                { e, c -> base.metadataQuery(e, c).also { calls += it } }
+            }) { it.findMetadata(entity, "chk-0001") }
+        calls.size shouldBe 1
+        assertColumnRule(calls.single().sql)
+        read!!.result shouldBe SampleResult.FAILED
+    }
+
+    @Test
+    fun `INV-AC-27769 findMetadata maps the injected query only a query without result gives no result`() {
+        save(t1, vector())
+        val table = RenditionSampleCheck.RENDITION_SAMPLE_CHECK
+        shouldThrow<RuntimeException> {
+            bound(t1, { dsl, _ ->
+                { e, c ->
+                    dsl
+                        .select(table.CHECK_ID, table.ENTITY_REF, table.SCENARIO, table.SUBMISSION_TYPE)
+                        .from(table)
+                        .where(table.ENTITY_REF.eq(e).and(table.CHECK_ID.eq(c)))
+                }
+            }) { it.findMetadata(entity, "chk-0001") }
+        }
     }
 }
