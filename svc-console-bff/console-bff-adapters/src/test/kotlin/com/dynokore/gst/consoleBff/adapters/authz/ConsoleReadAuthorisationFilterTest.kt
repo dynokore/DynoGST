@@ -576,10 +576,61 @@ class ConsoleReadAuthorisationEntityPathTest {
     }
 
     @Test
-    fun `INV-AC-27619 a denied decision and a replica beyond its lag bound give 403`() {
+    fun `INV-AC-27619 a denied decision on the templated route gives 403`() {
+        evidenceReplica.onSnapshotComplete(1)
         refused(evidence("/bff/entities/E1/rendition-evidence"))
         evidenceGrant("E9")
         refused(evidence("/bff/entities/E1/rendition-evidence"))
+    }
+
+    @Test
+    fun `INV-AC-27619 a DEGRADED decision on the templated route gives 403 even with a grant for the entity`() {
+        // never caught up: the replica is beyond its lag bound, so decide returns a degraded, non-allowing decision
+        evidenceReplica.accept(
+            AuthorityChanged(
+                tenant,
+                "p1",
+                2,
+                AuthorityRecord.RoleGrantRecord(
+                    "g-E1",
+                    RoleGrantState.ACTIVE,
+                    RoleGrant(FIXTURE_ROLE, GrantScope.ENTITY, "E1", clock.instant().minusSeconds(60)),
+                ),
+            ),
+        )
+        refused(evidence("/bff/entities/E1/rendition-evidence"))
+    }
+
+    @Test
+    fun `INV-AC-27619 a null decision (no entity ref for a matched variable) gives 403 and no replica call`() {
+        evidenceGrant("E1")
+        evidenceAsked.clear()
+        val noRef =
+            object : ReadPermissions {
+                override fun keyFor(
+                    method: String,
+                    pathTemplate: String,
+                ): String? = "key.evidence"
+
+                override fun entityPathVariableFor(
+                    method: String,
+                    pathTemplate: String,
+                ): String? = "entityRef"
+
+                override fun entityRefFor(
+                    method: String,
+                    path: String,
+                ): String? = null
+            }
+        val uri = "/bff/entities/E1/rendition-evidence"
+        val request = MockHttpServletRequest("GET", uri).apply { requestURI = uri }
+        request.setAttribute(ConsoleSessionFilter.PRINCIPAL_ATTRIBUTE, "p1")
+        request.setAttribute(ConsoleSessionFilter.TENANT_ATTRIBUTE, tenant.toString())
+        val response = MockHttpServletResponse()
+        val chain = MockFilterChain()
+        ConsoleReadAuthorisationFilter(noRef, evidenceReplica, clock).doFilter(request, response, chain)
+        refused(Outcome(response, chain))
+        evidenceAsked shouldBe emptyList()
     }
 
     @Test
