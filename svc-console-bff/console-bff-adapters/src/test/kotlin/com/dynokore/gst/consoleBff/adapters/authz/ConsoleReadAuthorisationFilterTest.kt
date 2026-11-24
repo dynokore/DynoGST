@@ -478,6 +478,39 @@ class ConsoleReadAuthorisationFilterTest {
         for (d in listOf("mapping-pack", "identity-triple")) refused(promo("p-viewer", "domain" to d))
     }
 
+    private companion object {
+        const val FIXTURE_ROLE = "fixture-holder"
+        const val AUTHOR_ROLE = "fixture-author"
+        const val MANAGER_ROLE = "fixture-manager"
+    }
+}
+
+/** INV-AC-27619: a route template with one path variable is matched by segment equality and decided per entity. */
+class ConsoleReadAuthorisationEntityPathTest {
+    private class FixedClock : Clock() {
+        override fun getZone(): ZoneId = ZoneOffset.UTC
+
+        override fun withZone(zone: ZoneId): Clock = this
+
+        override fun instant(): Instant = Instant.parse("2026-11-10T10:00:00Z")
+    }
+
+    private class Outcome(
+        val response: MockHttpServletResponse,
+        val chain: MockFilterChain,
+    ) {
+        val called get() = chain.request != null
+    }
+
+    private val clock = FixedClock()
+    private val tenant = TenantId.of("11111111-1111-1111-1111-111111111111")
+
+    private fun refused(out: Outcome) {
+        out.response.status shouldBe 403
+        out.response.contentAsString shouldContain "SRT-004"
+        out.called shouldBe false
+    }
+
     private val evidenceAsked = mutableListOf<String>()
     private val evidenceReplica =
         AuthorityReplica(
@@ -532,7 +565,7 @@ class ConsoleReadAuthorisationFilterTest {
     }
 
     @Test
-    fun `INV-AC-27619 the templated route is decided at entity scope with the ref of the segment and passes when allowed`() {
+    fun `INV-AC-27619 the templated route is decided at entity scope with the segment ref and passes if allowed`() {
         evidenceGrant("E1")
         val out = evidence("/bff/entities/E1/rendition-evidence")
         out.response.status shouldBe 200
@@ -587,7 +620,5 @@ class ConsoleReadAuthorisationFilterTest {
 
     private companion object {
         const val FIXTURE_ROLE = "fixture-holder"
-        const val AUTHOR_ROLE = "fixture-author"
-        const val MANAGER_ROLE = "fixture-manager"
     }
 }
