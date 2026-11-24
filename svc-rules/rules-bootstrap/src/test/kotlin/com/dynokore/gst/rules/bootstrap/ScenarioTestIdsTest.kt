@@ -66,6 +66,11 @@ class ScenarioTestIdsTest {
                 "INV-AC-536,a,new,pack,version,passes,the,dry,run,and,the,approval,and," +
                     "no,service,image,or,context,changes",
             ),
+            Tuple(
+                listOf("INV-AC-1235"),
+                "com.dynokore.gst.rules.bootstrap.RegulatoryPackArmingAbortBoundaryTest",
+                "INV-AC-1235,one,unacknowledged,instance,aborts,RUL-005,,arms,none,,keeps,the,previous,version",
+            ),
         )
 
     private val testAnnotations =
@@ -187,6 +192,16 @@ class ScenarioTestIdsTest {
         assertEquals(
             listOf("$cls#$good carries no $noTest"),
             violations(listOf(goodKey), cls, good, mapOf(good to false)),
+        )
+    }
+
+    @Test
+    fun `INV-AC-28282,the,INV-AC-1235,method,is,not,declared,by,the,sibling,class,of,the,same,file`() {
+        val sibling = "com.dynokore.gst.rules.bootstrap.RegulatoryPackArmingBoundaryTest"
+        val method = "INV-AC-1235,one,unacknowledged,instance,aborts,RUL-005,,arms,none,,keeps,the,previous,version"
+        assertEquals(
+            listOf("$sibling declares no method named '$method'"),
+            violations(listOf("INV-AC-1235"), sibling, method, declaredOf(sibling)),
         )
     }
 }
