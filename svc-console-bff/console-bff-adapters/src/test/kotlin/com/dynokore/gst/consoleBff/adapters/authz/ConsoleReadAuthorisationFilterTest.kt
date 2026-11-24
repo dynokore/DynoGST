@@ -642,6 +642,29 @@ class ConsoleReadAuthorisationEntityPathTest {
     }
 
     @Test
+    fun `INV-AC-27619 the table itself maps no key for a blank or empty entity segment`() {
+        val table =
+            CatalogueReadPermissions(
+                entries =
+                    listOf(
+                        CatalogueReadPermissions.Entry(
+                            "GET",
+                            "/bff/entities/{entityRef}/rendition-evidence",
+                            "getEntityRenditionEvidence",
+                            "key.evidence",
+                            entityPathVariable = "entityRef",
+                        ),
+                    ),
+            )
+        table.keyFor("GET", "/bff/entities/E1/rendition-evidence") shouldBe "key.evidence"
+        table.entityRefFor("GET", "/bff/entities/E1/rendition-evidence") shouldBe "E1"
+        for (segment in listOf("", " ", "\t")) {
+            table.keyFor("GET", "/bff/entities/$segment/rendition-evidence") shouldBe null
+            table.entityRefFor("GET", "/bff/entities/$segment/rendition-evidence") shouldBe null
+        }
+    }
+
+    @Test
     fun `INV-AC-27619 the five look-alike paths and a prefix or case variant are refused without a replica call`() {
         evidenceGrant("E1")
         evidenceAsked.clear()
