@@ -1,13 +1,18 @@
 package com.dynokore.gst.tenancy.bootstrap
 
+import com.dynokore.gst.tenancy.adapters.http.RenditionAttestationCursor
 import com.dynokore.gst.tenancy.adapters.persistence.JooqRenditionStore
 import com.dynokore.gst.tenancy.adapters.rendition.ConsumedRenditionEvents
 import com.dynokore.gst.tenancy.adapters.rendition.RenditionFindingChangedHandler
+import com.dynokore.gst.tenancy.application.period.PeriodAccess
 import com.dynokore.gst.tenancy.application.rendition.ApplyRenditionFinding
+import com.dynokore.gst.tenancy.application.rendition.ListRenditionAttestations
 import com.dynokore.gst.tenancy.application.rendition.RecordRenditionResponsibility
+import com.dynokore.gst.tenancy.application.rendition.RenditionAttestationHistory
 import com.dynokore.gst.tenancy.application.rendition.RenditionAttestationStore
 import com.dynokore.gst.tenancy.application.rendition.RenditionEntities
 import com.dynokore.platform.outboxandqueue.InboxConsumer
+import com.dynokore.platform.serviceruntime.binding.SecretStore
 import com.dynokore.platform.tenancykernel.TenantContext
 import com.dynokore.platform.tenancykernel.TransactionRunner
 import org.jooq.DSLContext
@@ -42,6 +47,17 @@ class RenditionUseCases {
         entities: RenditionEntities,
         store: RenditionAttestationStore,
     ): RecordRenditionResponsibility = RecordRenditionResponsibility(tx, entities, store)
+
+    @Bean
+    fun listRenditionAttestations(
+        tx: TransactionRunner,
+        access: PeriodAccess,
+        entities: RenditionEntities,
+        history: RenditionAttestationHistory,
+    ): ListRenditionAttestations = ListRenditionAttestations(tx, access, entities, history)
+
+    @Bean
+    fun renditionAttestationCursor(secrets: SecretStore): RenditionAttestationCursor = RenditionAttestationCursor(secrets)
 
     @Bean
     fun applyRenditionFinding(

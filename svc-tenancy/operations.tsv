@@ -58,4 +58,4 @@ PeriodRecordsChanged	channel	INV-T-16564	done
 CertificationStatusChanged	channel	INV-T-16409	done
 getCalendarPackDelta	operation	INV-T-16829	done
 OffboardingExportRequested	channel	INV-T-22966	done
-listRenditionAttestations	operation	INV-T-27611	pending
+listRenditionAttestations	operation	INV-T-27611	done

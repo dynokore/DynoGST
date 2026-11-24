@@ -8,6 +8,9 @@ import com.dynokore.gst.tenancy.application.period.PagePosition
 import com.dynokore.gst.tenancy.application.period.PeriodAccess
 import com.dynokore.gst.tenancy.application.period.RecordExtension
 import com.dynokore.gst.tenancy.application.period.SINGAPORE
+import com.dynokore.gst.tenancy.application.rendition.ListRenditionAttestations
+import com.dynokore.gst.tenancy.application.rendition.ListRenditionOutcome
+import com.dynokore.gst.tenancy.application.rendition.RenditionPermissions
 import com.dynokore.gst.tenancy.contract.api.PeriodsApi
 import com.dynokore.gst.tenancy.contract.model.CalendarPackDeltaResponse
 import com.dynokore.gst.tenancy.contract.model.ConfirmPeriodRequest
@@ -15,6 +18,8 @@ import com.dynokore.gst.tenancy.contract.model.PeriodExtensionRequest
 import com.dynokore.gst.tenancy.contract.model.PeriodExtensionResponse
 import com.dynokore.gst.tenancy.contract.model.PeriodRecordListResponse
 import com.dynokore.gst.tenancy.contract.model.PeriodResponse
+import com.dynokore.gst.tenancy.contract.model.RenditionAttestationRecord
+import com.dynokore.gst.tenancy.contract.model.RenditionAttestationRecordList
 import com.dynokore.gst.tenancy.domain.PeriodPermissions
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.http.HttpStatus
@@ -22,6 +27,7 @@ import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.RestController
 import java.time.Clock
 import java.time.LocalDate
+import java.time.ZoneOffset
 import java.util.UUID
 
 /**
@@ -42,6 +48,8 @@ open class PeriodsController(
     private val access: PeriodAccess,
     private val packDelta: PackDeltaPreview,
     private val packCursors: PackDeltaCursor,
+    private val listRenditionAttestations: ListRenditionAttestations,
+    private val renditionCursors: RenditionAttestationCursor,
 ) : PeriodsApi {
     override fun confirmPeriods(
         entityRef: String,
@@ -105,6 +113,40 @@ open class PeriodsController(
                 packCursors.issue(scope, last, now)
             },
         )
+    }
+
+    override fun listRenditionAttestations(
+        entityRef: String,
+        limit: Int,
+        cursor: String?,
+    ): ResponseEntity<RenditionAttestationRecordList> {
+        // the key is decided before the cursor is opened, so a non-holder learns nothing about the cursor (the use
+        // case decides it again before any read)
+        access.denial(entityRef, RenditionPermissions.EVIDENCE_VIEW)?.let { forbidden(it) }
+        val now = clock.getIfAvailable(Clock::systemUTC).instant()
+        val user = caller.actor()
+        val after = cursor?.let { renditionCursors.open(it, entityRef, user, now) }
+        return when (val outcome = listRenditionAttestations.list(entityRef, limit, after)) {
+            is ListRenditionOutcome.Forbidden -> forbidden(outcome.reason)
+            is ListRenditionOutcome.Invalid -> invalid(outcome.reason)
+            ListRenditionOutcome.NotFound -> notFound()
+            is ListRenditionOutcome.Page ->
+                ResponseEntity.ok(
+                    RenditionAttestationRecordList(
+                        items =
+                            outcome.page.entries.map {
+                                RenditionAttestationRecord(
+                                    documentClass = it.documentClass,
+                                    renderer = RenditionAttestationRecord.Renderer.valueOf(it.renderer.name),
+                                    attestedBy = it.attestedBy,
+                                    attestedAt = it.attestedAt.atOffset(ZoneOffset.UTC),
+                                    sequence = it.seq,
+                                )
+                            },
+                        nextCursor = outcome.page.last?.let { renditionCursors.issue(entityRef, user, it, now) },
+                    ),
+                )
+        }
     }
 
     private companion object {

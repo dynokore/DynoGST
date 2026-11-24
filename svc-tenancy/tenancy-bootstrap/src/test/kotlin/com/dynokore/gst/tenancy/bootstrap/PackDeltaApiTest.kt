@@ -10,6 +10,7 @@ import com.dynokore.gst.tenancy.adapters.http.ApiRefusal
 import com.dynokore.gst.tenancy.adapters.http.PackDeltaCursor
 import com.dynokore.gst.tenancy.adapters.http.PeriodListCursor
 import com.dynokore.gst.tenancy.adapters.http.PeriodsController
+import com.dynokore.gst.tenancy.adapters.http.RenditionAttestationCursor
 import com.dynokore.gst.tenancy.application.election.CallerSource
 import com.dynokore.gst.tenancy.application.period.CalendarPackReplica
 import com.dynokore.gst.tenancy.application.period.ConfirmPeriods
@@ -18,6 +19,7 @@ import com.dynokore.gst.tenancy.application.period.PackActivationRecompute
 import com.dynokore.gst.tenancy.application.period.PackDeltaPreview
 import com.dynokore.gst.tenancy.application.period.PeriodAccess
 import com.dynokore.gst.tenancy.application.period.RecordExtension
+import com.dynokore.gst.tenancy.application.rendition.ListRenditionAttestations
 import com.dynokore.gst.tenancy.contract.model.CalendarPackDeltaResponse
 import com.dynokore.gst.tenancy.contract.model.EntityResponse
 import com.dynokore.gst.tenancy.domain.PeriodPermissions
@@ -150,6 +152,8 @@ class PackDeltaApiTest {
             c.getBean(PeriodAccess::class.java),
             c.getBean(PackDeltaPreview::class.java),
             c.getBean(PackDeltaCursor::class.java),
+            c.getBean(ListRenditionAttestations::class.java),
+            c.getBean(RenditionAttestationCursor::class.java),
         )
     }
 
