@@ -100,8 +100,7 @@ class OperationsGateTest {
                 .map { it[1] }
                 .toSet()
         assigned shouldContain "getMaxEvidenceRetention"
-        // listRenditionSampleChecks is assigned (INV-T-27618) but stays a stub until the controller slice wires it
-        stubs shouldBe OperationsGate.contractOperations(openapi) - assigned + "listRenditionSampleChecks"
+        stubs shouldBe OperationsGate.contractOperations(openapi) - assigned
     }
 
     @Test
