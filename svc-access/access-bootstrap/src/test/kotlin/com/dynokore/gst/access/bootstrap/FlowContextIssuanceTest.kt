@@ -189,7 +189,7 @@ class FlowContextIssuanceTest {
         }
 
     @Test
-    fun `INV-AC-24990 tenant other than the token tenant is refused 403 SRT-004 and nothing is signed`() =
+    fun `INV-AC-24990 tenant different from the propagated token tenant is refused 403 SRT-004 and nothing is signed`() =
         withFlowEnv { env ->
             refusedWith(env, env.call(env.body(), bound = FlowEnv.Bound.OTHER), 403, "SRT-004")
             assertThat(env.lines().single()).containsEntry("result", "TENANT_MISMATCH")
@@ -204,7 +204,7 @@ class FlowContextIssuanceTest {
         }
 
     @Test
-    fun `INV-AC-24990 tenant look-alikes - last digit 403, leading space and platform tenant 400`() =
+    fun `INV-AC-24990 tenant look-alikes - last digit is 403, leading space and platform tenant are 400, nothing is signed`() =
         withFlowEnv { env ->
             val lastDigit = env.tenant.dropLast(1) + (if (env.tenant.last() == 'f') '0' else 'f')
             refusedWith(env, env.call(env.body(tenantText = lastDigit)), 403, "SRT-004")
@@ -220,11 +220,7 @@ class FlowContextIssuanceTest {
             val mismatch = env.call(env.body(), bound = FlowEnv.Bound.OTHER)
             val outside = env.call(env.body(), "submission-svc", bound = FlowEnv.Bound.OTHER)
             refusedWith(env, outside, 403, "SRT-004")
-            // the bodies are equal except for the per-request correlation id
-            val withoutId = { r: MockHttpServletResponse ->
-                r.contentAsString.replace(Regex("\"correlationId\":\"[^\"]*\""), "")
-            }
-            assertThat(withoutId(outside)).isEqualTo(withoutId(mismatch))
+            assertThat(outside.contentAsString).isEqualTo(mismatch.contentAsString)
             assertThat(env.lines().map { it["result"] }).containsExactly("TENANT_MISMATCH", "TENANT_MISMATCH")
         }
 
