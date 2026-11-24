@@ -996,7 +996,7 @@ class MappingPackSchemeTagTest {
     }
 
     @Test
-    fun `INV-AC-28435 the accepted set no longer holds the entry after the withdrawal and holds it after a new acceptance`() {
+    fun `INV-AC-28435 the accepted set drops the entry on withdrawal and holds it after a new acceptance`() {
         val e = Env().submitted()
         val entries = e.store.listEntries("P1", null, 100)
         MappingAcceptance.acceptedEntryIds(entries, e.store.acceptances("P1"), TODAY) shouldBe setOf("B")

@@ -151,6 +151,7 @@ private fun guarded(block: () -> MappingPackResult): MappingPackResult =
  * Every command checks a scoped permission key through the authority port with the command's `entityRef` (INV-Q-10027,
  * INV-Q-14652 A), never a role name. A refusal stores nothing: every check runs before the first write.
  */
+@Suppress("TooManyFunctions") // one use case per command of the mapping pack lifecycle
 class MappingPackAuthoring(
     private val ports: MappingPackCollaborators,
     private val clock: Clock,
