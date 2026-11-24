@@ -66,17 +66,40 @@ class RecordRenditionSample(
                     command.submissionType,
                     check.result,
                 )
-            store.save(
-                command.entityRef,
-                command.sampleSha256,
-                command.scenario,
-                command.submissionType,
-                check,
-                standing.latest,
-            )
+            store.save(command.entityRef, stored(command, check), standing.latest)
             emit(command, check)
             RenditionSampleOutcome.Recorded(check, standing.open, standing.changed)
         }
+
+    private fun stored(
+        command: RenditionSampleCommand,
+        check: SampleCheckResult,
+    ) = StoredSampleCheck(
+        checkId = command.checkId,
+        entityRef = command.entityRef,
+        scenario = command.scenario,
+        submissionType = command.submissionType,
+        sampleContent = command.pdf,
+        sampleSha256 = command.sampleSha256,
+        result = check.result,
+        missingWording = check.missingWording,
+        textFound = check.textFound,
+        checkedAt = command.checkedAt,
+        checkedBy = command.checkedBy,
+        artefactBytes =
+            SampleCheckArtefact.canonicalBytes(
+                command.entityRef,
+                command.checkId,
+                command.scenario,
+                command.submissionType,
+                check.result,
+                check.missingWording,
+                check.textFound,
+                command.sampleSha256,
+                command.checkedAt,
+                command.checkedBy,
+            ),
+    )
 
     private fun emit(
         command: RenditionSampleCommand,

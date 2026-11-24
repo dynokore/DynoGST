@@ -30,6 +30,7 @@ private class FakeStore(
     val samples = mutableMapOf<List<Any>, SampleCheckResult>()
     var standing: Map<Pair2, SampleResult> = emptyMap()
     var saves = 0
+    val stored = mutableListOf<StoredSampleCheck>()
 
     override fun findRecorded(
         entityRef: String,
@@ -42,15 +43,14 @@ private class FakeStore(
 
     override fun save(
         entityRef: String,
-        sampleSha256: String,
-        scenario: String,
-        submissionType: SubmissionType,
-        result: SampleCheckResult,
+        check: StoredSampleCheck,
         latest: Map<Pair2, SampleResult>,
     ) {
         journal.events += "save"
         saves++
-        samples[listOf(entityRef, sampleSha256, scenario, submissionType)] = result
+        stored += check
+        samples[listOf(entityRef, check.sampleSha256, check.scenario, check.submissionType)] =
+            SampleCheckResult(check.result, check.missingWording, check.textFound)
         standing = latest
     }
 }
@@ -223,5 +223,42 @@ class RecordRenditionSampleTest {
     fun `INV-AC-20322 the unit of work wraps the store write and the emission`() {
         useCase.record(cmd())
         journal.events shouldBe listOf("begin", "save", "emit", "commit")
+    }
+
+    @Test
+    fun `INV-AC-27768 the retained artefact bytes equal the shared vector bytes and hash to the shared vector hash`() {
+        val pdf = "%PDF-1.4\n".toByteArray(Charsets.UTF_8)
+        text = "Tax Invoice"
+        val shared = SharedVector.SHA
+        val wordingUseCase =
+            RecordRenditionSample(
+                { _, _, _ -> listOf(WordingRequirement("Buyer Created Tax Invoice", "c1")) },
+                { text },
+                store,
+                uow,
+                RecordSampleCheckEvidence(recorder),
+            )
+        wordingUseCase.record(
+            RenditionSampleCommand(
+                "ENT-0001",
+                "SELF_BILLING",
+                SubmissionType.TYPE_2,
+                pdf,
+                shared,
+                "chk-0001",
+                SharedVector.at,
+                SharedVector.BY,
+                ctx,
+            ),
+        )
+        val kept = store.stored.single()
+        kept.artefactBytes.contentEquals(SharedVector.artefact) shouldBe true
+        EvidenceArtefact.sha256Hex(kept.artefactBytes) shouldBe
+            "e40fe0157e91bbb6f722d2d56f1b49ef2535a63a5aa9381f9ee0fb19d8dce76c"
+        recorder.recorded.single().hash shouldBe EvidenceArtefact.sha256Hex(kept.artefactBytes)
+        kept.sampleContent.contentEquals(pdf) shouldBe true
+        kept.sampleSha256 shouldBe shared
+        kept.checkedBy shouldBe SharedVector.BY
+        kept.checkedAt shouldBe SharedVector.at
     }
 }
