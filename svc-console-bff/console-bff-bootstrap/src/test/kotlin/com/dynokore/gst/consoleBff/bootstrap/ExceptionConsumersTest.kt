@@ -250,7 +250,8 @@ class ExceptionConsumersTest {
     fun `INV-AC-21028 the replay dispatch reaches one handler by type and refuses any other type`(
         @TempDir dir: Path,
     ) = run(dir) {
-        context.getBeansOfType(ReplayDelivery::class.java).keys shouldBe setOf("consoleBffReplayDelivery", "documentIndexReplayDelivery")
+        context.getBeansOfType(ReplayDelivery::class.java).keys shouldBe
+            setOf("consoleBffReplayDelivery", "documentIndexReplayDelivery")
         val calls = mutableListOf<String>()
 
         fun fake(name: String) =

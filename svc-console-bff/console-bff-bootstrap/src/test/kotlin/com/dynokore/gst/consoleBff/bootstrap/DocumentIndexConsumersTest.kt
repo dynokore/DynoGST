@@ -3,8 +3,8 @@ package com.dynokore.gst.consoleBff.bootstrap
 import com.dynokore.gst.consoleBff.adapters.ConsoleDb
 import com.dynokore.gst.consoleBff.adapters.SignedBindings
 import com.dynokore.gst.consoleBff.application.index.IndexMetrics
-import com.dynokore.platform.outboxandqueue.CausationId
 import com.dynokore.platform.outboxandqueue.CatalogueEntry
+import com.dynokore.platform.outboxandqueue.CausationId
 import com.dynokore.platform.outboxandqueue.ConsumerSubscription
 import com.dynokore.platform.outboxandqueue.CorrelationId
 import com.dynokore.platform.outboxandqueue.DocUuid
@@ -44,7 +44,6 @@ class DocumentIndexConsumersTest {
     private val json = EnvelopeJson()
     private val time = Instant.parse("2026-11-12T08:15:30Z")
     private val doc = UUID.randomUUID()
-    private val doc2 = UUID.randomUUID()
 
     private class ListReader(
         val records: MutableList<LogRecord> = mutableListOf(),
@@ -89,7 +88,8 @@ class DocumentIndexConsumersTest {
         ) = run {
             val subscription = context.getBean(subscriptionBean, ConsumerSubscription::class.java)
             val reader = readers.getOrPut(name + subscription.topic) { ListReader() }
-            reader.records += LogRecord(offsets.merge(name + subscription.topic, 1L, Long::plus)!!, json.write(envelope))
+            val offset = offsets.merge(name + subscription.topic, 1L, Long::plus)!!
+            reader.records += LogRecord(offset, json.write(envelope))
             JdbcInboxConsumer(
                 ConsumerSubscription(name, subscription.topic, subscription.schema),
                 catalogue,
@@ -108,7 +108,8 @@ class DocumentIndexConsumersTest {
         ) = deliver("index${kind}Subscription", "index${kind}Handler", indexName, envelope)
 
         /** Delivers a DocumentHeld or SubmissionFailed envelope to the existing exception consumers. */
-        fun exceptionHeld(envelope: Envelope) = deliver("documentHeldSubscription", "documentHeldHandler", exceptionName, envelope)
+        fun exceptionHeld(envelope: Envelope) =
+            deliver("documentHeldSubscription", "documentHeldHandler", exceptionName, envelope)
 
         fun exceptionFailed(envelope: Envelope) =
             deliver("submissionFailedSubscription", "submissionFailedHandler", exceptionName, envelope)
@@ -143,12 +144,13 @@ class DocumentIndexConsumersTest {
         entityRef: String? = "E-001",
         version: Int = 1,
     ): Envelope {
-        val entity = entityRef?.let { """"entityRef":"$it",""" } ?: ""
+        val entity = entityRef?.let { """"entityRef":"$it",""" }.orEmpty()
         return envelope(
             tenant,
             id,
             ConsoleEvents.CANONICAL_VERSION_CREATED_TYPE,
-            """{"docUuid":"$doc","version":$version,$entity"transactionDate":"2026-03-20","scopeVerdict":"SUBMITTABLE",""" +
+            """{"docUuid":"$doc","version":$version,$entity"transactionDate":"2026-03-20",""" +
+                """"scopeVerdict":"SUBMITTABLE",""" +
                 """"routingFacts":{"direction":"SALE"},"canonicalDocument":{"parties":{"value":{"buyer":""" +
                 """{"identifierScheme":"SG_UEN","identifierValue":"201888888A","name":"Buyer Pte Ltd"}}},""" +
                 """"documentNumber":{"value":"INV-1"},"documentDate":{"value":"2026-03-20"},""" +
@@ -198,7 +200,8 @@ class DocumentIndexConsumersTest {
         tenant,
         id,
         ConsoleEvents.SUBMISSION_FAILED_TYPE,
-        """{"docUuid":"$doc","version":1,"code":"SUB-REJECTED","failureClass":"SUB-REJECTED","retryDisposition":"NONE"}""",
+        """{"docUuid":"$doc","version":1,"code":"SUB-REJECTED","failureClass":"SUB-REJECTED",""" +
+            """"retryDisposition":"NONE"}""",
     )
 
     private fun resolvedEvent(
@@ -233,7 +236,9 @@ class DocumentIndexConsumersTest {
         ) { r -> (1..5).map { r.getString(it) } }
 
     private fun exceptionRows(tenant: UUID): List<Pair<String, String>> =
-        bound(tenant, "select code, state from console_bff.exception order by code") { it.getString(1) to it.getString(2) }
+        bound(tenant, "select code, state from console_bff.exception order by code") {
+            it.getString(1) to it.getString(2)
+        }
 
     private fun deadLetters(tenant: UUID): Int = bound(tenant, "select 1 from console_bff.event_dead_letter") { 1 }.size
 
@@ -327,14 +332,24 @@ class DocumentIndexConsumersTest {
         @TempDir dir: Path,
     ) = run(dir) {
         val catalogue = context.getBean(EventCatalogue::class.java)
+        expectedCatalogue().forEach { expected ->
+            val actual = catalogue.find(expected.eventType)
+            actual shouldNotBe null
+            actual shouldBe expected
+        }
+        expectedCatalogue().size shouldBe 10
+        ConsoleEvents.consumed.size shouldBe 10
+    }
 
+    /** The literal rows of platform-contracts `event-log/topics.yaml` the service consumes. */
+    private fun expectedCatalogue(): List<CatalogueEntry> {
         fun entry(
             type: String,
             topic: String,
             producer: String,
             content: Boolean,
         ) = CatalogueEntry(type, topic, setOf(producer), content, recordTopic = false, retainedWhileResolvable = false)
-        listOf(
+        return listOf(
             entry(
                 "com.dynokore.gst.canonical.CanonicalVersionCreated.v1",
                 "gst.canonical.canonical-version-created.v1",
@@ -353,45 +368,29 @@ class DocumentIndexConsumersTest {
                 "submission-svc",
                 false,
             ),
-            entry("com.dynokore.gst.canonical.DocumentHeld.v1", "gst.canonical.document-held.v1", "canonical-svc", false),
-            entry(
-                "com.dynokore.gst.canonical.DocumentReleased.v1",
-                "gst.canonical.document-released.v1",
-                "canonical-svc",
-                false,
-            ),
-            entry(
-                "com.dynokore.gst.masterdata.MasterDataResolved.v1",
-                "gst.masterdata.master-data-resolved.v1",
-                "masterdata-svc",
-                false,
-            ),
-            entry(
-                "com.dynokore.gst.tenancy.PeriodDueDateChanged.v1",
-                "gst.tenancy.period-due-date-changed.v1",
-                "tenancy-svc",
-                false,
-            ),
-            entry(
-                "com.dynokore.gst.tenancy.PeriodRecordsChanged.v1",
-                "gst.tenancy.period-records-changed.v1",
-                "tenancy-svc",
-                false,
-            ),
-            entry("com.dynokore.gst.payload.PayloadRejected.v1", "gst.payload.payload-rejected.v1", "payload-svc", true),
-            entry(
-                "com.dynokore.gst.submission.SubmissionFailed.v1",
-                "gst.submission.submission-failed.v1",
-                "submission-svc",
-                false,
-            ),
-        ).forEach { expected ->
-            val actual = catalogue.find(expected.eventType)
-            actual shouldNotBe null
-            actual shouldBe expected
-        }
-        ConsoleEvents.consumed.size shouldBe 10
+        ) + existingCatalogue()
     }
+
+    /** The seven rows the catalogue held before the index consumers: type, topic, producer, content topic. */
+    private fun existingCatalogue(): List<CatalogueEntry> =
+        listOf(
+            listOf("canonical.DocumentHeld", "canonical.document-held", "canonical-svc", false),
+            listOf("canonical.DocumentReleased", "canonical.document-released", "canonical-svc", false),
+            listOf("masterdata.MasterDataResolved", "masterdata.master-data-resolved", "masterdata-svc", false),
+            listOf("tenancy.PeriodDueDateChanged", "tenancy.period-due-date-changed", "tenancy-svc", false),
+            listOf("tenancy.PeriodRecordsChanged", "tenancy.period-records-changed", "tenancy-svc", false),
+            listOf("payload.PayloadRejected", "payload.payload-rejected", "payload-svc", true),
+            listOf("submission.SubmissionFailed", "submission.submission-failed", "submission-svc", false),
+        ).map { (type, topic, producer, content) ->
+            CatalogueEntry(
+                "com.dynokore.gst.$type.v1",
+                "gst.$topic.v1",
+                setOf(producer as String),
+                content as Boolean,
+                recordTopic = false,
+                retainedWhileResolvable = false,
+            )
+        }
 
     @Test
     fun `INV-AC-26810 a version event without entityRef writes no row and counts the unscoped metric once`(
@@ -399,7 +398,7 @@ class DocumentIndexConsumersTest {
     ) = run(dir) {
         val a = UUID.randomUUID()
         context.getBean(IndexMetrics::class.java) shouldNotBe null
-        val counter = context.getBean(MeterRegistry::class.java).counter("console_bff_index_unscoped_version_events_total")
+        val counter = context.getBean(MeterRegistry::class.java).counter(UNSCOPED_METRIC)
         val before = counter.count()
         index("CanonicalVersion", versionEvent(a, "u1", entityRef = null))
         indexRows(a) shouldBe emptyList()
@@ -408,7 +407,9 @@ class DocumentIndexConsumersTest {
     }
 
     private companion object {
-        /** The inbox drops an envelope whose doc sequence is not above the last one of its Doc UUID, so each type has its own. */
+        const val UNSCOPED_METRIC = "console_bff_index_unscoped_version_events_total"
+
+        /** The inbox drops an envelope whose doc sequence is not above the last of its Doc UUID: one per type. */
         val SEQUENCE =
             listOf(
                 ConsoleEvents.CANONICAL_VERSION_CREATED_TYPE,
