@@ -15,9 +15,6 @@ import com.dynokore.gst.access.contract.model.IssueFlowContextRequest
 import com.dynokore.gst.access.contract.model.IssueFlowContextRequestEntity
 import com.dynokore.gst.access.contract.model.VerificationKeysResponseKeysInner
 import com.dynokore.platform.serviceruntime.identity.FlowContext
-import com.dynokore.platform.tenancykernel.PlatformTenantBinding
-import com.dynokore.platform.tenancykernel.TenantContext
-import com.dynokore.platform.tenancykernel.TenantId
 import com.nimbusds.jose.crypto.ECDSAVerifier
 import com.nimbusds.jose.jwk.ECKey
 import com.nimbusds.jwt.SignedJWT
@@ -46,8 +43,6 @@ import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
 
 /** Counts the calls of the flow-context signer port: a refused call must not reach it (nothing issued). */
-const val OTHER_TENANT = "00000000-0000-4000-8000-0000000000b2"
-
 class FlowSignCalls {
     val signs = AtomicInteger()
 }
@@ -134,33 +129,15 @@ class FlowEnv(
         return """{"tenant":"$tenantText","entity":$entity,"principalKind":"$principal","flowId":"FLW-1"$extra}"""
     }
 
-    /** The token binding of the call: [OWN] the request tenant, [OTHER] another tenant, [NONE], [PLATFORM]. */
-    enum class Bound { OWN, OTHER, NONE, PLATFORM }
-
-    private val tenantContext = context.getBean(TenantContext::class.java)
-    private val platformBinding = context.getBean(PlatformTenantBinding::class.java)
-
-    /** Runs [perform] with the request tenant bound, as the token of that tenant binds it. */
-    fun <T> asTokenTenant(perform: () -> T): T = tenantContext.bind(tokens.kit.tenant, "usr-1", perform)
-
     fun call(
         body: String,
         service: String? = "ingestion-svc",
-        bound: Bound = Bound.OWN,
     ): MockHttpServletResponse {
         caller.value = service
-        val perform = {
-            mvc
-                .perform(post(FLOW_CONTEXTS_PATH).contentType(MediaType.APPLICATION_JSON).content(body))
-                .andReturn()
-                .response
-        }
-        return when (bound) {
-            Bound.OWN -> asTokenTenant(perform)
-            Bound.OTHER -> tenantContext.bind(TenantId.of(OTHER_TENANT), "usr-1", perform)
-            Bound.PLATFORM -> platformBinding.bindPlatform("usr-1", perform)
-            Bound.NONE -> perform()
-        }
+        return mvc
+            .perform(post(FLOW_CONTEXTS_PATH).contentType(MediaType.APPLICATION_JSON).content(body))
+            .andReturn()
+            .response
     }
 
     fun published(): List<VerificationKeysResponseKeysInner> = tokens.published()

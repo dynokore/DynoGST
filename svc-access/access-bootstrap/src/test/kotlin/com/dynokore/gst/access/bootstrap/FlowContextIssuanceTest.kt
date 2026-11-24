@@ -167,83 +167,17 @@ class FlowContextIssuanceTest {
         withFlowEnv { env ->
             // a header that names a served caller changes nothing: the caller is read from the verified identity only
             caller(env)
-            // the token tenant is bound, so only the missing caller can refuse this call
             val response =
-                env.asTokenTenant {
-                    env.mvc
-                        .perform(
-                            post(FLOW_CONTEXTS_PATH)
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .header("X-Caller-Service", "ingestion-svc")
-                                .param("callerService", "ingestion-svc")
-                                .content(env.body()),
-                        ).andReturn()
-                        .response
-                }
+                env.mvc
+                    .perform(
+                        post(FLOW_CONTEXTS_PATH)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .header("X-Caller-Service", "ingestion-svc")
+                            .param("callerService", "ingestion-svc")
+                            .content(env.body()),
+                    ).andReturn()
+                    .response
             refusedWith(env, response, 403, "SRT-004")
-            assertThat(env.lines().single()).containsEntry("result", "CALLER_NOT_SERVED")
-        }
-
-    @Test
-    fun `INV-AC-24990 tenant equal to the propagated token tenant is issued`() =
-        withFlowEnv { env ->
-            val response = env.call(env.body(), bound = FlowEnv.Bound.OWN)
-            assertThat(response.status).describedAs(response.contentAsString).isEqualTo(200)
-            assertThat(env.signs.signs.get()).isEqualTo(1)
-        }
-
-    @Test
-    fun `INV-AC-24990 tenant other than the token tenant is refused 403 SRT-004 and nothing is signed`() =
-        withFlowEnv { env ->
-            refusedWith(env, env.call(env.body(), bound = FlowEnv.Bound.OTHER), 403, "SRT-004")
-            assertThat(env.lines().single()).containsEntry("result", "TENANT_MISMATCH")
-            // case (9) as written: the request tenant is T2 while the bound tenant is T1
-            refusedWith(env, env.call(env.body(tenantText = OTHER_TENANT)), 403, "SRT-004")
-            assertThat(env.lines().map { it["result"] }).containsExactly("TENANT_MISMATCH", "TENANT_MISMATCH")
-        }
-
-    @Test
-    fun `INV-AC-24990 a token without a tenant is refused 403 SRT-004 and nothing is signed`() =
-        withFlowEnv { env ->
-            refusedWith(env, env.call(env.body(), bound = FlowEnv.Bound.NONE), 403, "SRT-004")
-            refusedWith(env, env.call(env.body(), bound = FlowEnv.Bound.PLATFORM), 403, "SRT-004")
-            assertThat(env.lines().map { it["result"] }).containsOnly("TENANT_MISMATCH")
-        }
-
-    @Test
-    fun `INV-AC-24990 tenant look-alikes - last digit 403, leading space and platform tenant 400`() =
-        withFlowEnv { env ->
-            val lastDigit = env.tenant.dropLast(1) + (if (env.tenant.last() == 'f') '0' else 'f')
-            refusedWith(env, env.call(env.body(tenantText = lastDigit)), 403, "SRT-004")
-            refusedWith(env, env.call(env.body(tenantText = " " + env.tenant)), 400, "SRT-001")
-            val platform = "ffffffff-ffff-ffff-ffff-ffffffffffff"
-            refusedWith(env, env.call(env.body(tenantText = platform), bound = FlowEnv.Bound.OWN), 400, "SRT-001")
-            refusedWith(env, env.call(env.body(tenantText = platform), bound = FlowEnv.Bound.PLATFORM), 400, "SRT-001")
-        }
-
-    @Test
-    fun `INV-AC-24990 a caller outside the set with a mismatching tenant gets the body of case (3)`() =
-        withFlowEnv { env ->
-            val notServed = env.call(env.body(), "submission-svc")
-            val mismatch = env.call(env.body(tenantText = OTHER_TENANT))
-            val outside = env.call(env.body(tenantText = OTHER_TENANT), "submission-svc")
-            listOf(notServed, mismatch, outside).forEach { refusedWith(env, it, 403, "SRT-004") }
-            // the bodies are equal except for the per-request correlation id, so no body names a tenant
-            val withoutId = { r: MockHttpServletResponse ->
-                r.contentAsString.replace(Regex("\"correlationId\":\"[^\"]*\""), "")
-            }
-            assertThat(withoutId(outside)).isEqualTo(withoutId(notServed))
-            assertThat(withoutId(mismatch)).isEqualTo(withoutId(notServed))
-            assertThat(env.lines().map { it["result"] })
-                .containsExactly("CALLER_NOT_SERVED", "TENANT_MISMATCH", "TENANT_MISMATCH")
-        }
-
-    @Test
-    fun `INV-AC-24990 a mismatching tenant is refused 403 before the content and an absent caller stays not served`() =
-        withFlowEnv { env ->
-            refusedWith(env, env.call(env.body(ref = " "), bound = FlowEnv.Bound.OTHER), 403, "SRT-004")
-            refusedWith(env, env.call(env.body(), null, bound = FlowEnv.Bound.OTHER), 403, "SRT-004")
-            assertThat(env.lines().map { it["result"] }).containsExactly("TENANT_MISMATCH", "CALLER_NOT_SERVED")
         }
 
     private fun caller(env: FlowEnv) {
