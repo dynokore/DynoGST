@@ -104,7 +104,7 @@ class OffboardingExportResultDbTest {
         scope = OffboardingScope.ENTITY,
         entityRef = entityRef,
         state = OffboardingState.REQUESTED,
-        retentionCustodyHolder = RetentionCustodyHolder("Holder", "holder@example.invalid"),
+        retentionCustodyHolder = HOLDER,
         export = ExportManifest("EXP-$offboardingRef", ExportState.REQUESTED, emptyList()),
         idempotencyKey = "key-$offboardingRef",
     )
@@ -124,7 +124,7 @@ class OffboardingExportResultDbTest {
         seed: Seed,
         offboardingRef: String,
         entityRef: String = "ENT-1",
-    ) = ExportOrder(offboardingRef, seed.ref, OffboardingScope.ENTITY, entityRef)
+    ) = ExportOrder(offboardingRef, seed.ref, OffboardingScope.ENTITY, entityRef, HOLDER, null)
 
     private fun outbox(
         dsl: DSLContext,
@@ -233,7 +233,7 @@ class OffboardingExportResultDbTest {
     fun `INV-AC-22960 the stored entity of a tenant request is tenant-wide and of an entity request its entity`() {
         val seed = seed()
         Db.bound(seed.tenant) {
-            outbox(it, seed.tenant).produce(ExportOrder("OFF-T", seed.ref, OffboardingScope.TENANT, null))
+            outbox(it, seed.tenant).produce(ExportOrder("OFF-T", seed.ref, OffboardingScope.TENANT, null, HOLDER, null))
             outbox(it, seed.tenant).produce(order(seed, "OFF-E", "ENT-1"))
         }
         val entities =
@@ -445,3 +445,5 @@ class OffboardingExportResultDbTest {
 
 private fun randomHex(): String =
     ByteArray(32).also { SecureRandom().nextBytes(it) }.joinToString("") { "%02x".format(Locale.ROOT, it) }
+
+private val HOLDER = RetentionCustodyHolder("Holder", "holder@example.invalid")

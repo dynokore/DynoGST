@@ -35,6 +35,13 @@ class OffboardingExportRequestedOutbox(
         payload.put("scope", order.scope.name)
         if (order.scope == OffboardingScope.ENTITY) order.entityRef?.let { payload.put("entityRef", it) }
         payload.put("requestedAt", clock.instant().toString())
+        // contact values only go on the wire here; never into a log line or an exception text
+        val holder = order.retentionCustodyHolder
+        val holderNode = payload.putObject("retentionCustodyHolder")
+        holderNode.put("name", holder.name)
+        holderNode.put("contactEmail", holder.contactEmail)
+        holder.contactMobile?.let { holderNode.put("contactMobile", it) }
+        order.noticeWindowDays?.let { payload.put("noticeWindowDays", it) }
         // an entity export is written with its registered entity, a tenant export with the real tenant and the
         // tenant-wide entity (no entityref on the wire); the tenant ref is never written as an entity
         val entity =

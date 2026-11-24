@@ -4,6 +4,7 @@ import com.dynokore.gst.tenancy.application.offboarding.ExportOrder
 import com.dynokore.gst.tenancy.application.offboarding.UnavailableInput
 import com.dynokore.gst.tenancy.domain.ExportState
 import com.dynokore.gst.tenancy.domain.OffboardingScope
+import com.dynokore.gst.tenancy.domain.RetentionCustodyHolder
 import com.dynokore.platform.outboxandqueue.EntityRef
 import com.dynokore.platform.outboxandqueue.EventContext
 import com.dynokore.platform.outboxandqueue.OutboundEvent
@@ -57,7 +58,7 @@ class OffboardingExportRequestedPayloadSchemaTest {
 
     @Test
     fun `INV-AC-22960 the payload of a tenant-scope request validates and has no entityRef`() {
-        val manifest = outbox.produce(ExportOrder("OFF-1", "T-1", OffboardingScope.TENANT, null))
+        val manifest = outbox.produce(ExportOrder("OFF-1", "T-1", OffboardingScope.TENANT, null, HOLDER, null))
         manifest.exportRef shouldBe "EXP-OFF-1"
         manifest.state shouldBe ExportState.REQUESTED
         manifest.contents.shouldBeEmpty()
@@ -69,7 +70,7 @@ class OffboardingExportRequestedPayloadSchemaTest {
 
     @Test
     fun `INV-AC-22960 the entity of a tenant-scope request is tenant-wide, never the tenant ref`() {
-        outbox.produce(ExportOrder("OFF-4", "T-1", OffboardingScope.TENANT, null))
+        outbox.produce(ExportOrder("OFF-4", "T-1", OffboardingScope.TENANT, null, HOLDER, null))
         val context = contexts.single()
         context.entity shouldBe EntityRef.TENANT_WIDE
         context.entity.toString() shouldBe "00000000-0000-0000-0000-000000000000"
@@ -80,7 +81,7 @@ class OffboardingExportRequestedPayloadSchemaTest {
 
     @Test
     fun `INV-AC-22960 the entity of an entity-scope request is the order entity, not tenant-wide`() {
-        outbox.produce(ExportOrder("OFF-5", "T-1", OffboardingScope.ENTITY, "ENT-1"))
+        outbox.produce(ExportOrder("OFF-5", "T-1", OffboardingScope.ENTITY, "ENT-1", HOLDER, null))
         val context = contexts.single()
         context.entity shouldBe EntityRef("ENT-1")
         context.entity shouldNotBe EntityRef.TENANT_WIDE
@@ -89,7 +90,7 @@ class OffboardingExportRequestedPayloadSchemaTest {
 
     @Test
     fun `INV-AC-22960 the payload of an entity-scope request validates and names the entity`() {
-        outbox.produce(ExportOrder("OFF-2", "T-1", OffboardingScope.ENTITY, "ENT-1"))
+        outbox.produce(ExportOrder("OFF-2", "T-1", OffboardingScope.ENTITY, "ENT-1", HOLDER, null))
         val json = recording.events.single().dataJson
         SchemaFixture.errors(schema, json).shouldBeEmpty()
         mapper.readTree(json).get("entityRef").asString() shouldBe "ENT-1"
@@ -117,8 +118,72 @@ class OffboardingExportRequestedPayloadSchemaTest {
         val thrown =
             shouldThrow<UnavailableInput> {
                 OffboardingExportRequestedOutbox(failing, mapper, tenants, clock)
-                    .produce(ExportOrder("OFF-3", "T-1", OffboardingScope.TENANT, null))
+                    .produce(ExportOrder("OFF-3", "T-1", OffboardingScope.TENANT, null, HOLDER, null))
             }
         thrown.input shouldBe "tenant-export"
+    }
+
+    @Test
+    fun `INV-AC-26712 the payload holds the custody holder and the notice window and validates`() {
+        outbox.produce(ExportOrder("OFF-6", "T-1", OffboardingScope.TENANT, null, FULL_HOLDER, 45))
+        val json = recording.events.single().dataJson
+        SchemaFixture.errors(schema, json).shouldBeEmpty()
+        val node = mapper.readTree(json)
+        node.get("retentionCustodyHolder").get("name").asString() shouldBe FULL_HOLDER.name
+        node.get("retentionCustodyHolder").get("contactEmail").asString() shouldBe FULL_HOLDER.contactEmail
+        node.get("retentionCustodyHolder").get("contactMobile").asString() shouldBe FULL_HOLDER.contactMobile
+        node.get("noticeWindowDays").asInt() shouldBe 45
+        listOf(
+            "tenantRef",
+            "offboardingRef",
+            "exportRef",
+            "scope",
+            "requestedAt",
+        ).forEach { node.has(it) shouldBe true }
+    }
+
+    @Test
+    fun `INV-AC-26712 noticeWindowDays is absent when the request has none`() {
+        outbox.produce(ExportOrder("OFF-7", "T-1", OffboardingScope.TENANT, null, FULL_HOLDER, null))
+        val json = recording.events.single().dataJson
+        SchemaFixture.errors(schema, json).shouldBeEmpty()
+        mapper.readTree(json).has("noticeWindowDays") shouldBe false
+    }
+
+    @Test
+    fun `INV-AC-26712 contactMobile is absent when null`() {
+        outbox.produce(ExportOrder("OFF-8", "T-1", OffboardingScope.TENANT, null, HOLDER, null))
+        val json = recording.events.single().dataJson
+        SchemaFixture.errors(schema, json).shouldBeEmpty()
+        mapper.readTree(json).get("retentionCustodyHolder").has("contactMobile") shouldBe false
+    }
+
+    @Test
+    fun `INV-AC-26712 the payload never holds a role name`() {
+        outbox.produce(ExportOrder("OFF-9", "T-1", OffboardingScope.TENANT, null, FULL_HOLDER, 30))
+        val json = recording.events.single().dataJson
+        listOf("platform.engineer", "security.officer", "deployment.operator", "tax.approver", "role").forEach {
+            json.contains(it) shouldBe false
+        }
+    }
+
+    @Test
+    fun `INV-AC-26712 a payload without the custody holder is not produced`() {
+        outbox.produce(ExportOrder("OFF-10", "T-1", OffboardingScope.TENANT, null, HOLDER, null))
+        val json = recording.events.single().dataJson
+        mapper
+            .readTree(json)
+            .get("retentionCustodyHolder")
+            .get("name")
+            .asString() shouldBe HOLDER.name
+        val without =
+            """{"tenantRef":"T","offboardingRef":"O","exportRef":"E","scope":"TENANT",""" +
+                """"requestedAt":"2026-11-20T10:00:00Z","retentionCustodyHolder":{"contactEmail":"a@b.invalid"}}"""
+        SchemaFixture.errors(schema, without).shouldNotBeEmpty()
+    }
+
+    private companion object {
+        val HOLDER = RetentionCustodyHolder("Holder", "holder@example.invalid")
+        val FULL_HOLDER = RetentionCustodyHolder("Holder", "holder@example.invalid", "+6591234567")
     }
 }

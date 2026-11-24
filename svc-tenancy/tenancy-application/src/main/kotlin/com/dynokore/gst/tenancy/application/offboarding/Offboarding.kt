@@ -79,6 +79,8 @@ data class ExportOrder(
     val tenantRef: String,
     val scope: OffboardingScope,
     val entityRef: String?,
+    val retentionCustodyHolder: RetentionCustodyHolder,
+    val noticeWindowDays: Int?,
 )
 
 /** The export port (INV-REQ-877); unbound in profile prod before Wave 4, where [UnboundTenantExport] refuses. */
@@ -321,7 +323,9 @@ class OffboardTenant(
         val ref = store.nextOffboardingRef()
         val manifest =
             try {
-                export.produce(ExportOrder(ref, tenantRef, request.scope, request.entityRef))
+                export.produce(
+                    ExportOrder(ref, tenantRef, request.scope, request.entityRef, holder, request.noticeWindowDays),
+                )
             } catch (e: UnavailableInput) {
                 return OffboardOutcome.Refused(e.input)
             }
