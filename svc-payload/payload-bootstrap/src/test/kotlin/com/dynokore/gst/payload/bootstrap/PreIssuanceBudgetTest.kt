@@ -23,10 +23,11 @@ import java.util.UUID
 import java.util.concurrent.Executors
 
 /**
- * INV-AC-2201 (INV-REQ-1203, INV-NOTE-3 FR-AH.7): a register that answers in 2 s, no cached answer, a request deadline of
- * 300 ms: the wired `checkPreIssuance` answers 200 with the verdict WARN and the flag REGISTER_UNAVAILABLE inside the
- * budget, not an error. The service is the real wiring (controller, use case, register adapter, service-runtime filters)
- * over a stub of masterdata-svc `getRegisterAndRates`; the deadline travels in the API-29 header `X-Deadline-Ms`.
+ * INV-AC-2201 (INV-REQ-1203, INV-NOTE-3 FR-AH.7): a register that answers in 2 s, no cached answer, a request
+ * deadline of 300 ms: the wired `checkPreIssuance` answers 200 with the verdict WARN and the flag
+ * REGISTER_UNAVAILABLE inside the budget, not an error. The service is the real wiring (controller, use case,
+ * register adapter, service-runtime filters) over a stub of masterdata-svc `getRegisterAndRates`; the deadline
+ * travels in the API-29 header `X-Deadline-Ms`.
  */
 class PreIssuanceBudgetTest : OverrideWiringBase() {
     /** A masterdata-svc stub that answers REGISTERED after [delayMs]; it never answers faster than that. */
@@ -71,7 +72,7 @@ class PreIssuanceBudgetTest : OverrideWiringBase() {
             "\"gstAmount\":\"9.00\"",
         ).joinToString(",", "{", "}")
 
-    /** The wired service as [withService] serves it, with a MockMvc of the same filters that can carry `X-Deadline-Ms`. */
+    /** The wired service as [withService] serves it, with a MockMvc of the same filters carrying `X-Deadline-Ms`. */
     private fun <T> served(
         delayMs: Long,
         block: (MockMvc, SlowMasterdata) -> T,
@@ -132,7 +133,7 @@ class PreIssuanceBudgetTest : OverrideWiringBase() {
 
     /**
      * One call to warm the class loading and the connection path, so the timed call measures the budget only. It uses
-     * another supplier GSTN, so it leaves no cached register answer for the timed call (the case says: no cached answer).
+     * another supplier GSTN, so it leaves no cached register answer for the timed call.
      */
     private fun MockMvc.warmUp(md: SlowMasterdata) {
         val delay = md.delayMs
