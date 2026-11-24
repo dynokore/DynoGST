@@ -17,7 +17,9 @@ import io.kotest.matchers.types.shouldBeInstanceOf
 import org.junit.jupiter.api.Test
 import org.springframework.boot.test.context.runner.ApplicationContextRunner
 import java.io.ByteArrayInputStream
+import java.security.SignatureException
 import java.security.cert.CertificateFactory
+import java.security.interfaces.ECPublicKey
 
 /**
  * INV-AC-27741: the audit pack signing key reference is required, and the key is read per use (INV-T-27742). The
@@ -156,7 +158,7 @@ class ReportSigningConfigurationTest {
                 pem(P384_KEY, P384_CERT),
                 pem(P256_KEY),
                 pem(P256_KEY, P256B_KEY, P256_CERT),
-                pem(P256_KEY.replace("MI", "@@"), P256_CERT),
+                pem(P256_KEY.replace(Regex("(?<=\\n)[A-Za-z0-9+/=]"), "@"), P256_CERT),
                 "-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----\n" + P256_CERT,
             )
         secrets.forEach { secret ->
@@ -174,79 +176,27 @@ class ReportSigningConfigurationTest {
         shouldThrow<SigningKeyRefused> { loader.sign("x".toByteArray()) }
     }
 
+    @Test
+    fun `INV-AC-28399 the test keys are generated at runtime and differ per pair`() {
+        TestSigningMaterial.p256Key shouldNotBe TestSigningMaterial.p256bKey
+        TestSigningMaterial.p256Key shouldNotBe TestSigningMaterial.p384Key
+        (TestSigningMaterial.p256Pair.public as ECPublicKey).params.order.bitLength() shouldBe 256
+        (TestSigningMaterial.p256bPair.public as ECPublicKey).params.order.bitLength() shouldBe 256
+        (TestSigningMaterial.p384Pair.public as ECPublicKey).params.order.bitLength() shouldBe 384
+        TestSigningMaterial.p256Certificate.verify(TestSigningMaterial.p256Pair.public)
+        TestSigningMaterial.p256bCertificate.verify(TestSigningMaterial.p256bPair.public)
+        TestSigningMaterial.p384Certificate.verify(TestSigningMaterial.p384Pair.public)
+        shouldThrow<SignatureException> {
+            TestSigningMaterial.p256Certificate.verify(TestSigningMaterial.p256bPair.public)
+        }
+    }
+
     private companion object {
-        private val P256_KEY =
-            listOf(
-                "-----BEGIN PRIVATE KEY-----",
-                "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgZrqp+p2dyYyFZ8S0",
-                "GiIvAWgzBo0p2DnLY/oyexfHgwChRANCAAQdVDXlLE0CKSYRwgJNWfjcHCkwyD/2",
-                "iTfrnIyUd/jmmYn31w7QrNq+rjmWXjWtJKGsyB06mDU5jMvn9LOIB99s",
-                "-----END PRIVATE KEY-----",
-            ).joinToString("\n")
-
-        private val P256_CERT =
-            listOf(
-                "-----BEGIN CERTIFICATE-----",
-                "MIIBmDCCAT2gAwIBAgIUZfd/11smjHdJ1LcAI8Lx67Z+lMowCgYIKoZIzj0EAwIw",
-                "IDEeMBwGA1UEAwwVZXZpZGVuY2Utc2lnbmluZy10ZXN0MCAXDTI2MTEyMzEzNTYw",
-                "NloYDzIxMjYxMDMwMTM1NjA2WjAgMR4wHAYDVQQDDBVldmlkZW5jZS1zaWduaW5n",
-                "LXRlc3QwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAAQdVDXlLE0CKSYRwgJNWfjc",
-                "HCkwyD/2iTfrnIyUd/jmmYn31w7QrNq+rjmWXjWtJKGsyB06mDU5jMvn9LOIB99s",
-                "o1MwUTAdBgNVHQ4EFgQU8Ym2CTFxzgN6uN/fElVgyrLDPkUwHwYDVR0jBBgwFoAU",
-                "8Ym2CTFxzgN6uN/fElVgyrLDPkUwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQD",
-                "AgNJADBGAiEAwxn7lagv77QARjz6sgkjpy6TW0gBU4+2EKLgIqf0pM0CIQC9iO+I",
-                "foyyA4RSc+eq6PLJY2QxY9dR/Be5JzGpcFXnkw==",
-                "-----END CERTIFICATE-----",
-            ).joinToString("\n")
-
-        private val P256B_KEY =
-            listOf(
-                "-----BEGIN PRIVATE KEY-----",
-                "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgtb9JT9luVCus8mzP",
-                "LYWr1A1+7MEvo0kNOTGiNwyyc9ihRANCAATDD+IFpk+C1krywT2wRYBEqjgid1mc",
-                "0finYNDWQlEq5qdHPA0wtfW266L6PgpDF5QMSKcZZT2uIZHNLqDNSIWh",
-                "-----END PRIVATE KEY-----",
-            ).joinToString("\n")
-
-        private val P256B_CERT =
-            listOf(
-                "-----BEGIN CERTIFICATE-----",
-                "MIIBljCCAT2gAwIBAgIUa9opyeniDLsSpoq7+QuH1hAeX/cwCgYIKoZIzj0EAwIw",
-                "IDEeMBwGA1UEAwwVZXZpZGVuY2Utc2lnbmluZy10ZXN0MCAXDTI2MTEyMzEzNTYw",
-                "NloYDzIxMjYxMDMwMTM1NjA2WjAgMR4wHAYDVQQDDBVldmlkZW5jZS1zaWduaW5n",
-                "LXRlc3QwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAATDD+IFpk+C1krywT2wRYBE",
-                "qjgid1mc0finYNDWQlEq5qdHPA0wtfW266L6PgpDF5QMSKcZZT2uIZHNLqDNSIWh",
-                "o1MwUTAdBgNVHQ4EFgQUpj66WxssjGP6re+JQe/iGjDELPowHwYDVR0jBBgwFoAU",
-                "pj66WxssjGP6re+JQe/iGjDELPowDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQD",
-                "AgNHADBEAiBEqZ8NQhXcjfFtkeb9uXnSZ4qnIMI92AaodTGMBG2qagIgfNMQS9EI",
-                "se99abls1YWBnYHBAzO5AIygGhsfee+0PtA=",
-                "-----END CERTIFICATE-----",
-            ).joinToString("\n")
-
-        private val P384_KEY =
-            listOf(
-                "-----BEGIN PRIVATE KEY-----",
-                "MIG2AgEAMBAGByqGSM49AgEGBSuBBAAiBIGeMIGbAgEBBDAa8gdHuqRvXVvLDRpA",
-                "n5Qo1SlOVAH52paf804mMKzlcV94e0mCoVYUKaxOvjc99x6hZANiAARqfBAUJZKD",
-                "g8RZKSq/LPxDnzZ97DEWmNWCQSbWXb85O3wBZdd9Wi95thc8vjD0yyHrdvZ0hqtU",
-                "t2BiozZRUgW9t370fsm71smlzyXEgHGlLnEtBylAqo69YUNq7yYPSto=",
-                "-----END PRIVATE KEY-----",
-            ).joinToString("\n")
-
-        private val P384_CERT =
-            listOf(
-                "-----BEGIN CERTIFICATE-----",
-                "MIIB1TCCAVqgAwIBAgIUfPFjTbVb4t9YnKfuLbBkysam6aYwCgYIKoZIzj0EAwIw",
-                "IDEeMBwGA1UEAwwVZXZpZGVuY2Utc2lnbmluZy10ZXN0MCAXDTI2MTEyMzEzNTYw",
-                "NloYDzIxMjYxMDMwMTM1NjA2WjAgMR4wHAYDVQQDDBVldmlkZW5jZS1zaWduaW5n",
-                "LXRlc3QwdjAQBgcqhkjOPQIBBgUrgQQAIgNiAARqfBAUJZKDg8RZKSq/LPxDnzZ9",
-                "7DEWmNWCQSbWXb85O3wBZdd9Wi95thc8vjD0yyHrdvZ0hqtUt2BiozZRUgW9t370",
-                "fsm71smlzyXEgHGlLnEtBylAqo69YUNq7yYPStqjUzBRMB0GA1UdDgQWBBQCdKyK",
-                "qUwPTEkEcWnYeODSTxM2ETAfBgNVHSMEGDAWgBQCdKyKqUwPTEkEcWnYeODSTxM2",
-                "ETAPBgNVHRMBAf8EBTADAQH/MAoGCCqGSM49BAMCA2kAMGYCMQCQcEbhkd9gefOZ",
-                "9+dgTCZ+3SX5VLBwiGdqoalLYIDMbiMGE3B0/xfssK4iBK5WGtMCMQCX/JRvoLIR",
-                "Oeljm9Nd2oTHMgN85lZ0OpkjPyfZ/iwnel5768DpMJCTt3un1ejTUoI=",
-                "-----END CERTIFICATE-----",
-            ).joinToString("\n")
+        private val P256_KEY = TestSigningMaterial.p256Key
+        private val P256_CERT = TestSigningMaterial.p256Cert
+        private val P256B_KEY = TestSigningMaterial.p256bKey
+        private val P256B_CERT = TestSigningMaterial.p256bCert
+        private val P384_KEY = TestSigningMaterial.p384Key
+        private val P384_CERT = TestSigningMaterial.p384Cert
     }
 }
