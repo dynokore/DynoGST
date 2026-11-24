@@ -139,6 +139,13 @@ class AuditPackExportHttpTest {
                 "sha256:" + "a".repeat(HASH_LENGTH),
             )
         }
+        seedLocatorAndWorkPaper(tenant, period)
+    }
+
+    private fun seedLocatorAndWorkPaper(
+        tenant: UUID,
+        period: String,
+    ) {
         sql(
             "insert into evidence.document_locator (tenant_id, doc_uuid, version, entity_ref, period_ref, " +
                 "transaction_date, trace_reference, source_event_id, recorded_at, source_document_ref) " +
@@ -224,7 +231,9 @@ class AuditPackExportHttpTest {
     }
 
     private fun stored(tenant: UUID): Int =
-        store.objects.keys.count { it.startsWith("exports/offboarding/$tenant/") && it.endsWith("/manifest-sha256.txt") }
+        store.objects.keys.count {
+            it.startsWith("exports/offboarding/$tenant/") && it.endsWith("/manifest-sha256.txt")
+        }
 
     private fun jobs(tenant: UUID): Int =
         sql("select count(*) from evidence.audit_pack_job where tenant_id = ?", tenant).single().single()!!.toInt()
@@ -232,6 +241,7 @@ class AuditPackExportHttpTest {
     private fun Pair<HttpResponse<String>, JsonNode>.status() = first.statusCode()
 
     @Test
+    @Suppress("MaxLineLength", "ktlint:standard:max-line-length") // the task fixes this test name
     fun `INV-AC-1971 the audit pack of an entity and period opens with the library verifier and holds all six classes`() {
         val tenant = tenant()
         seed(tenant, PERIOD, 1)

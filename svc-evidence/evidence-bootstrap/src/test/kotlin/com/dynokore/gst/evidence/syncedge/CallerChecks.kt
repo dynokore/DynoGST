@@ -161,6 +161,9 @@ class CallerChecks(
                 "GET /internal/v1/evidence/documents/{docUuid}/versions/{version}/decision-trace" to FORBIDDEN,
                 // INV-T-26265: the same token holds no doc.view.content key, so getTransmittedVersion refuses it too
                 "GET /internal/v1/evidence/documents/{docUuid}/versions/{version}/transmitted-xml" to FORBIDDEN,
+                // INV-T-25920: the same token holds no audit-pack.export key, so both audit-pack operations refuse it
+                "POST /internal/v1/evidence/entities/{entityRef}/periods/{periodRef}/audit-packs" to FORBIDDEN,
+                "GET /internal/v1/evidence/entities/{entityRef}/periods/{periodRef}/audit-packs/{packId}" to FORBIDDEN,
             )
         private const val FORBIDDEN = 403
         private const val NOT_FOUND = 404
