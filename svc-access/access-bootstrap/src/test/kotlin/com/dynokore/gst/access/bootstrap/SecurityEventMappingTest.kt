@@ -191,6 +191,7 @@ class SecurityEventMappingTest {
                         "recordBreakGlassAction" to "break_glass",
                         "openOperatorSession" to "elevation",
                         "signInBreakGlass" to "sign_in",
+                        "issueAccessToken" to "credential_use",
                     ),
                 )
         }
@@ -274,6 +275,20 @@ class SecurityEventMappingTest {
                     env.tx.inTransaction {
                         audit.record(GrantAuditEntry(ADMIN, action, "break-glass:BG-L", null, null))
                     }
+                }
+                assertThat(env.auditRows(action)).hasSize(1)
+            }
+            assertThat(collector.await(1)).isEmpty()
+        }
+
+    @Test
+    fun `INV-AC-24874 the look-alike keys of issueAccessToken write their entry and yield no record`() =
+        run { env, collector ->
+            val audit = env.context.getBean(GrantAudit::class.java)
+            val lookAlikes = listOf("IssueAccessToken", "issueAccessTokenX", " issueAccessToken")
+            lookAlikes.forEach { action ->
+                env.tenants.bind(env.tenant, ADMIN) {
+                    env.tx.inTransaction { audit.record(GrantAuditEntry(ADMIN, action, "principal:P-L", null, null)) }
                 }
                 assertThat(env.auditRows(action)).hasSize(1)
             }

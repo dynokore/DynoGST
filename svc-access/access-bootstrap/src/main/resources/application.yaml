@@ -48,6 +48,7 @@ gst:
       recordBreakGlassAction: break_glass
       openOperatorSession: elevation
       signInBreakGlass: sign_in
+      issueAccessToken: credential_use
 inv:
   tenancy:
     # The table-valued functions config-resolver's DDL adds to the schema (INV-T-4935): jOOQ generates them as tables; they
