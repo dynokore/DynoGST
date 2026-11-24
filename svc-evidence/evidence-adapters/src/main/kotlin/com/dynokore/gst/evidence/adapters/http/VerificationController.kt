@@ -2,6 +2,7 @@ package com.dynokore.gst.evidence.adapters.http
 
 import com.dynokore.gst.evidence.application.artefact.ListRenditionSampleChecks
 import com.dynokore.gst.evidence.application.artefact.ListRenditionSampleChecksResult
+import com.dynokore.gst.evidence.application.artefact.SampleCheckCursors
 import com.dynokore.gst.evidence.contract.api.VerificationApi
 import com.dynokore.gst.evidence.contract.model.SampleCheckArtefact
 import com.dynokore.gst.evidence.contract.model.SampleCheckArtefactPage
@@ -45,6 +46,8 @@ class VerificationRefusalAdvice {
 @RestController
 open class VerificationController(
     private val sampleChecks: ListRenditionSampleChecks,
+    @Suppress("UnusedPrivateProperty") // named by the task; the use case issues and opens the cursor with this bean
+    private val cursors: SampleCheckCursors,
     private val requests: ObjectProvider<HttpServletRequest>,
 ) : VerificationApi {
     override fun listRenditionSampleChecks(
