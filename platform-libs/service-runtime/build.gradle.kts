@@ -319,6 +319,7 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+    maxHeapSize = "1g"
     jvmArgs("-Duser.timezone=UTC") // CS-41 baseline, matched with platform-build's own modules
     systemProperty("user.language", "de")
     systemProperty("user.country", "DE")

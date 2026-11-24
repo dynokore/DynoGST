@@ -24,6 +24,8 @@ import io.micrometer.core.instrument.Counter
 import io.micrometer.core.instrument.MeterRegistry
 import org.springframework.web.client.ResourceAccessException
 import java.net.ConnectException
+import java.net.SocketTimeoutException
+import java.net.http.HttpTimeoutException
 import java.time.Clock
 import java.util.concurrent.Callable
 import java.util.concurrent.ExecutorService
@@ -64,10 +66,8 @@ class Resilience4jResilientEdge(
     meters: MeterRegistry? = null,
 ) : ResilientEdge,
     AutoCloseable {
-    private val timeLimiter = TimeLimiter.of(edge, policy.timeout.toResilience4j())
     private val bulkhead = Bulkhead.of(edge, policy.bulkhead.toResilience4j())
     private val circuitBreaker = CircuitBreaker.of(edge, policy.circuitBreaker.toResilience4j())
-    private val retry = policy.retry?.takeIf { it.budget == null }?.let { Retry.of(edge, it.toResilience4j()) }
     private val budgeted = policy.retry?.takeIf { it.budget != null }
     private val budgetTracker = budgeted?.budget?.let { RetryBudgetTracker(it, clock) }
 
@@ -91,22 +91,10 @@ class Resilience4jResilientEdge(
 
         // Counts the attempts that actually reach the block (a breaker or bulkhead refusal does not), per call.
         val started = AtomicInteger()
-        val timeLimited: Callable<T> =
-            Callable {
-                if (started.incrementAndGet() == 1) budgetTracker?.firstAttemptStarted()
-                timeLimiter.executeFutureSupplier { executorService.submit(boundBlock) }
-            }
+        val timeLimited = boundedAttempt(deadline, boundBlock, started)
         val bulkheaded: Callable<T> = Bulkhead.decorateCallable(bulkhead, timeLimited)
         val guarded: Callable<T> = CircuitBreaker.decorateCallable(circuitBreaker, bulkheaded)
-        val perCallRetry =
-            if (budgeted != null &&
-                budgetTracker != null
-            ) {
-                budgetedRetry(budgeted, budgetTracker, started)
-            } else {
-                null
-            }
-        val toRun: Callable<T> = (retry ?: perCallRetry)?.let { Retry.decorateCallable(it, guarded) } ?: guarded
+        val toRun: Callable<T> = retryFor(deadline, started)?.let { Retry.decorateCallable(it, guarded) } ?: guarded
 
         return try {
             toRun.call()
@@ -119,8 +107,89 @@ class Resilience4jResilientEdge(
         } catch (expected: ConnectException) {
             onConnectFailure()
         } catch (expected: ResourceAccessException) {
-            if (expected.cause is ConnectException) onConnectFailure() else throw expected
+            resourceFailure(expected, deadline, onConnectFailure, onTimeout)
         }
+    }
+
+    /**
+     * One attempt (INV-AC-28249): none starts once the budget is spent, and each is bounded by the smaller of the
+     * edge's own timeout and what the deadline has left; the bound cancels the attempt's future (interrupting it).
+     */
+    private fun <T> boundedAttempt(
+        deadline: Deadline,
+        boundBlock: Callable<T>,
+        started: AtomicInteger,
+    ): Callable<T> =
+        Callable {
+            val remaining = deadline.remaining(clock)
+            if (started.get() > 0 && remaining.isZero) {
+                throw TimeoutException("deadline exhausted before attempt on edge $edge")
+            }
+            if (started.incrementAndGet() == 1) budgetTracker?.firstAttemptStarted()
+            val effective = minOf(policy.timeout.timeout, remaining)
+            TimeLimiter
+                .of(edge, TimeLimiterConfig.custom().timeoutDuration(effective).build())
+                .executeFutureSupplier { executorService.submit(boundBlock) }
+        }
+
+    private fun retryFor(
+        deadline: Deadline,
+        started: AtomicInteger,
+    ): Retry? =
+        if (budgeted != null && budgetTracker != null) {
+            budgetedRetry(budgeted, budgetTracker, started, deadline)
+        } else {
+            policy.retry?.let { deadlineBoundRetry(it, deadline) }
+        }
+
+    private fun <T> resourceFailure(
+        failure: ResourceAccessException,
+        deadline: Deadline,
+        onConnectFailure: () -> T,
+        onTimeout: () -> T,
+    ): T {
+        val cause = failure.cause
+        // Only the deadline's own timeout: the per-request read timeout of the internal client
+        // (DeadlineBoundRequestFactory) ends the request at the deadline, a hair before this edge's bound. A read
+        // timeout raised while the deadline still has time left is the service's own and stays a raw exception.
+        val deadlineTimeout =
+            (cause is HttpTimeoutException || cause is SocketTimeoutException) && deadline.isExpired(clock)
+        return when {
+            cause is ConnectException -> onConnectFailure()
+            deadlineTimeout -> onTimeout()
+            else -> throw failure
+        }
+    }
+
+    /**
+     * The retry of a call without budget, bound to [deadline] (INV-AC-28249): no retry once the deadline is spent,
+     * and no backoff wait longer than what the deadline has left.
+     */
+    private fun deadlineBoundRetry(
+        retryPolicy: RetryPolicy,
+        deadline: Deadline,
+    ): Retry {
+        val config =
+            RetryConfig
+                .from<Any>(retryPolicy.toResilience4j())
+                .retryOnException { failure -> failure.isRetryable() && !deadline.isExpired(clock) }
+                .intervalFunction(cappedBackoff(retryPolicy, deadline))
+                .build()
+        return Retry.of(edge, config)
+    }
+
+    private fun cappedBackoff(
+        retryPolicy: RetryPolicy,
+        deadline: Deadline,
+    ): IntervalFunction {
+        val base =
+            IntervalFunction.ofExponentialRandomBackoff(
+                retryPolicy.initialBackoff,
+                2.0,
+                retryPolicy.jitter,
+                retryPolicy.maxBackoff,
+            )
+        return IntervalFunction { attempt -> minOf(base.apply(attempt), deadline.remaining(clock).toMillis()) }
     }
 
     /**
@@ -131,14 +200,16 @@ class Resilience4jResilientEdge(
         retryPolicy: RetryPolicy,
         tracker: RetryBudgetTracker,
         started: AtomicInteger,
+        deadline: Deadline,
     ): Retry {
         val config =
             RetryConfig
                 .from<Any>(retryPolicy.toResilience4j())
                 .retryOnException { failure ->
-                    failure.isRetryable() &&
+                    failure.isRetryable() && !deadline.isExpired(clock) &&
                         (started.get() >= retryPolicy.maxAttempts || withinBudget(tracker))
-                }.build()
+                }.intervalFunction(cappedBackoff(retryPolicy, deadline))
+                .build()
         return Retry.of(edge, config)
     }
 

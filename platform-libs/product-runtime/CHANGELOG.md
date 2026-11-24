@@ -6,6 +6,10 @@ train is its own (README.md: "own version and changelog").
 
 ## [Unreleased]
 
+## [2.23.7] - 2026-11-24
+### Changed
+- Version step only (G-DVS, INV-T-28250, INV-AC-28249): the published bytes change because the dependency `service-runtime` steps to 13.29.1 (edge calls bounded by the remaining deadline; `DeadlineBoundRequestFactory`); no code change in this module.
+
 ## [2.23.6] - 2026-11-23
 ### Changed
 - Version step only (G-DVS, INV-T-27204, INV-AC-27203): the published bytes change because the dependency `service-runtime` steps to 13.29.0 (`IngestionErrorCode` gains ING-025, ING-023 and ING-026; `TenancyErrorCode` gains TNC-015; `ClosedErrorCode` gains SRT-016); no code change in this module.

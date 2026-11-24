@@ -8,6 +8,8 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Scope
 import org.springframework.http.client.ClientHttpRequestInterceptor
 import org.springframework.web.client.RestClient
+import java.net.http.HttpClient
+import java.time.Clock
 
 /**
  * The `RestClient.Builder` a service builds every generated ARC-08 client from
@@ -26,12 +28,27 @@ import org.springframework.web.client.RestClient
  * on its own copy, never sharing base URL/state with another edge's client.
  */
 @AutoConfiguration
-class InternalRestClientAutoConfiguration {
+class InternalRestClientAutoConfiguration(
+    private val clock: ObjectProvider<Clock>? = null,
+) {
+    // One JDK client (one selector thread) for every builder this configuration hands out.
+    private val httpClient: HttpClient by lazy { HttpClient.newHttpClient() }
+
     @Bean
     @Scope(BeanDefinition.SCOPE_PROTOTYPE)
     @ConditionalOnMissingBean(name = ["internalRestClientBuilder"])
     fun internalRestClientBuilder(
         interceptors: ObjectProvider<List<ClientHttpRequestInterceptor>>,
     ): RestClient.Builder =
-        RestClient.builder().requestInterceptors { it.addAll(interceptors.getIfAvailable(::emptyList)) }
+        RestClient
+            .builder()
+            // INV-AC-28249: a request made under a bound deadline ends at it (DeadlineBoundRequestFactory).
+            .requestFactory(
+                DeadlineBoundRequestFactory(
+                    clock?.getIfAvailable {
+                        Clock.systemUTC()
+                    } ?: Clock.systemUTC(),
+                    httpClient,
+                ),
+            ).requestInterceptors { it.addAll(interceptors.getIfAvailable(::emptyList)) }
 }
