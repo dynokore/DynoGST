@@ -50,8 +50,6 @@ import java.time.Clock
  * of the exception consumers, so each topic keeps one offset row per consumer and the exception queue still receives
  * its events. The replay delivery of the index is its own bean with its own dispatch (one per consumer).
  */
-// one bean per element of the composition root: seven subscriptions, readers, handlers and consumers
-@Suppress("TooManyFunctions")
 @Configuration(proxyBeanMethods = false)
 class DocumentIndexConsumerConfiguration {
     @Bean
