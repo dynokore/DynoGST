@@ -91,8 +91,8 @@ data class RejectionDecision(
         }
     }
 
-    private companion object {
-        val CODE_PATTERN = Regex("^[A-Z]{3}-[0-9]{3}$")
+    companion object {
+        private val CODE_PATTERN = Regex("^[A-Z]{3}-[0-9]{3}$")
         const val RULE_ID_MAX = 80
         const val ASSERTION_MAX = 500
     }
@@ -115,7 +115,7 @@ data class DecisionInputFact(
         require(value.length <= VALUE_MAX) { "decision input value must be at most $VALUE_MAX characters" }
     }
 
-    private companion object {
+    companion object {
         const val NAME_MAX = 100
         const val VALUE_MAX = 500
     }

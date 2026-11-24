@@ -352,8 +352,22 @@ val stageMdeSchema =
         into(layout.buildDirectory.dir("mde-schema"))
     }
 
+// INV-T-28356: the PayloadRejected schema from the pinned bundle, staged for DecisionBoundsContractTest.
+val stagePayloadRejectedSchema =
+    tasks.register<Sync>("stagePayloadRejectedSchema") {
+        from(zipTree(contractsBundle.singleFile)) { include("payload/schemas/payload-rejected-payload.schema.json") }
+        into(layout.buildDirectory.dir("payload-rejected-schema"))
+    }
+
 tasks.withType<Test>().configureEach {
-    dependsOn(stageMdeSchema)
+    dependsOn(stageMdeSchema, stagePayloadRejectedSchema)
+    systemProperty(
+        "gst.payload-rejected.schema",
+        layout.buildDirectory
+            .file("payload-rejected-schema/payload/schemas/payload-rejected-payload.schema.json")
+            .get()
+            .asFile.path,
+    )
     systemProperty(
         "gst.mde.schema",
         layout.buildDirectory
