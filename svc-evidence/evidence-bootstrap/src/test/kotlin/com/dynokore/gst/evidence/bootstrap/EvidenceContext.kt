@@ -17,6 +17,12 @@ object EvidenceContext {
         Files.createDirectories(mountRoot.resolve("tenancy"))
         Files.writeString(mountRoot.resolve("db/evidence_runtime"), EvidenceDb.RUNTIME_PASSWORD)
         Files.writeString(mountRoot.resolve("tenancy/binding-key-current"), EvidenceDb.BINDING_SECRET)
+        // the audit pack signing key (INV-T-27743): the export now signs its report, so the secret must be bound
+        Files.createDirectories(mountRoot.resolve("audit-pack"))
+        Files.writeString(
+            mountRoot.resolve("audit-pack/signing-key"),
+            TestSigningMaterial.p256Key + "\n" + TestSigningMaterial.p256Cert,
+        )
     }
 
     /** No connection is opened at start: the pool is lazy (TPL-16). */

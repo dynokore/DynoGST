@@ -110,10 +110,16 @@ class ProductionIdentityTest {
         tenant: TenantId,
         principal: String,
         role: String,
+    ) = grantAt(replica, tenant, principal, RoleGrant(role, GrantScope.TENANT, tenant.toString(), Instant.EPOCH))
+
+    private fun grantAt(
+        replica: AuthorityReplica,
+        tenant: TenantId,
+        principal: String,
+        grant: RoleGrant,
     ) {
         val at = versions.incrementAndGet()
-        val grant = RoleGrant(role, GrantScope.TENANT, tenant.toString(), Instant.EPOCH)
-        val record = AuthorityRecord.RoleGrantRecord("grant-$principal-$role", RoleGrantState.ACTIVE, grant)
+        val record = AuthorityRecord.RoleGrantRecord("grant-$principal-${grant.role}", RoleGrantState.ACTIVE, grant)
         replica.accept(AuthorityChanged(tenant, principal, at, record))
         replica.onSnapshotComplete(at)
     }
@@ -245,7 +251,15 @@ class ProductionIdentityTest {
         @TempDir dir: Path,
     ) {
         production(dir).use { s ->
-            val operator = token("op1", null) // installation scope: a tenantless token, no grant seeded
+            val operator = token("op1", null) // installation scope: a tenantless token
+            // config-resolver 6.1.3 decides the permission before the planned refusal (INV-T-27167): the operator holds
+            // the installation grant, so the refusal under test is still the planned one (INV-T-27743, pin-forced)
+            grantAt(
+                s.bean(AuthorityReplica::class.java),
+                TenantId.PLATFORM,
+                "op1",
+                RoleGrant("platform.engineer", GrantScope.INSTALLATION, null, Instant.EPOCH),
+            )
             val rows = settingRows()
             val longer = installationBody("LONGER", 120)
             val shorter = installationBody("SHORTER_ACKNOWLEDGED", 60)

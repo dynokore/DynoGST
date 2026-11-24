@@ -15,6 +15,7 @@ import com.dynokore.gst.evidence.application.export.ExportPackageStore
 import com.dynokore.gst.evidence.application.export.ExportRequest
 import com.dynokore.gst.evidence.application.export.ExportScope
 import com.dynokore.gst.evidence.application.export.ExportState
+import com.dynokore.gst.evidence.application.export.ReportSigner
 import com.dynokore.gst.evidence.application.integrity.IntegrityStatusQueryHandler
 import com.dynokore.gst.evidence.application.integrity.IntegrityStore
 import com.dynokore.gst.evidence.contract.model.ExportManifest
@@ -111,6 +112,7 @@ class ExportsControllerTest {
                 unused(IntegrityStore::class.java),
                 unused(ExportChainIntegrity::class.java),
                 clock,
+                unused(ReportSigner::class.java),
             ),
             AuthorityReplica(
                 clock,

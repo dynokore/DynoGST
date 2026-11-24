@@ -13,6 +13,7 @@ import com.dynokore.platform.evidencestore.exportpackage.PackageScope
 import com.dynokore.platform.evidencestore.exportpackage.PackageSource
 import com.dynokore.platform.evidencestore.exportpackage.PackageVerification
 import com.dynokore.platform.evidencestore.exportpackage.PackageVerifier
+import java.nio.charset.StandardCharsets
 import java.time.Clock
 
 /**
@@ -29,6 +30,7 @@ class ExportAuditPack(
     private val integrity: IntegrityStore,
     private val chainIntegrity: ExportChainIntegrity,
     private val clock: Clock,
+    private val signer: ReportSigner,
     private val verifier: (PackageFiles) -> PackageVerification = ::verifyAuditPack,
 ) {
     fun execute(job: AuditPackExportJob): AuditPackExportJob {
@@ -48,7 +50,11 @@ class ExportAuditPack(
         }
         val candidates = candidates(job)
         val latest = port { integrity.latestRun(job.tenant, job.entityRef, job.periodRef) }
-        val assembled = assemble(job, candidates, report(latest))
+        val report = report(latest)
+        // the exact bytes the writer stores as verification-report.txt: the text with one final LF, UTF-8
+        val stored = (if (report.endsWith("\n")) report else report + "\n").toByteArray(StandardCharsets.UTF_8)
+        val signed = port { signer.sign(stored) }
+        val assembled = assemble(job, candidates, report, signed)
         refuseInvalid(assembled.files)
         return port { store.store(job.tenant, job.packId.toString(), assembled.files) }
     }
@@ -62,6 +68,7 @@ class ExportAuditPack(
         job: AuditPackExportJob,
         candidates: List<PackageCandidate>,
         report: String,
+        signed: SignedReport,
     ): AssemblyResult.Assembled =
         when (
             val result =
@@ -70,6 +77,8 @@ class ExportAuditPack(
                     candidates,
                     clock.instant(),
                     report,
+                    signed.signatureDer,
+                    signed.certificatePem,
                 )
         ) {
             is AssemblyResult.Refused -> throw Stop("assembly refused: ${result.reason} ${result.itemName}")

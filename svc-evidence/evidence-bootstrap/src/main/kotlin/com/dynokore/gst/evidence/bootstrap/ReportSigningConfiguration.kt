@@ -1,5 +1,9 @@
 package com.dynokore.gst.evidence.bootstrap
 
+import com.dynokore.gst.evidence.application.export.ReportSigner
+import com.dynokore.gst.evidence.application.export.SignedReport
+import com.dynokore.platform.crypto.BouncyCastleCms
+import com.dynokore.platform.crypto.DetachedSigner
 import com.dynokore.platform.crypto.JcaSigningKey
 import com.dynokore.platform.crypto.SignatureAlgorithm
 import com.dynokore.platform.crypto.SigningKey
@@ -128,7 +132,7 @@ class SigningKeyRefused(
     cause: Throwable? = null,
 ) : RuntimeException(message, cause)
 
-/** The report signing key of the service, read from its secret on every use (slice 3 signs with it). */
+/** The report signing key, read from its secret on every use; the audit pack report is signed with it. */
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(ReportSigningProperties::class)
 class ReportSigningConfiguration {
@@ -137,4 +141,22 @@ class ReportSigningConfiguration {
         properties: ReportSigningProperties,
         store: SecretStore,
     ): SigningKey = SecretSigningKey(store, properties.keyRef)
+
+    /** Signs the report with the key of [reportSigningKey] and ships its certificate (STK-13: detached CMS). */
+    @Bean
+    fun reportSigner(reportSigningKey: SigningKey): ReportSigner {
+        val signer: DetachedSigner = BouncyCastleCms()
+        return ReportSigner { report ->
+            SignedReport(signer.sign(report, reportSigningKey), certificatePem(reportSigningKey.certificateDer))
+        }
+    }
+
+    private fun certificatePem(der: ByteArray): String =
+        "-----BEGIN CERTIFICATE-----\n" +
+            Base64.getMimeEncoder(PEM_LINE, "\n".toByteArray()).encodeToString(der) +
+            "\n-----END CERTIFICATE-----\n"
+
+    private companion object {
+        const val PEM_LINE = 64
+    }
 }

@@ -17,4 +17,7 @@ dependencies {
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly(libs.junit.platformLauncher)
     testImplementation(libs.kotest.assertionsCore)
+    // INV-AC-1815: the real detached CMS signer and verifier
+    testImplementation(libs.platform.crypto.api)
+    testImplementation(libs.platform.crypto.impl)
 }

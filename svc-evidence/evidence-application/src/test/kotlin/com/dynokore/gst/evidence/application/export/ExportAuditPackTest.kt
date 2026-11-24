@@ -23,6 +23,11 @@ import java.time.Instant
 import java.time.ZoneOffset
 import java.util.UUID
 
+private val FAKE_SIGNER =
+    ReportSigner {
+        SignedReport(byteArrayOf(1, 2, 3), "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n")
+    }
+
 class ExportAuditPackTest {
     private val t1 = TenantId(UUID.fromString("abcdef01-2345-6789-abcd-ef0123456789"))
     private val t2 = TenantId(UUID.fromString("abcdef01-2345-6789-abcd-ef0123456790"))
@@ -151,6 +156,7 @@ class ExportAuditPackTest {
                     },
                     { allows },
                     clock,
+                    FAKE_SIGNER,
                 )
             } else {
                 ExportAuditPack(
@@ -192,6 +198,7 @@ class ExportAuditPackTest {
                     },
                     { allows },
                     clock,
+                    FAKE_SIGNER,
                     verifier,
                 )
             }

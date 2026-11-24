@@ -11,6 +11,7 @@ import com.dynokore.gst.evidence.application.export.AuditPackJobs
 import com.dynokore.gst.evidence.application.export.ExportAuditPack
 import com.dynokore.gst.evidence.application.export.ExportChainIntegrity
 import com.dynokore.gst.evidence.application.export.ExportPackageStore
+import com.dynokore.gst.evidence.application.export.ReportSigner
 import com.dynokore.platform.evidencestore.ObjectStore
 import com.dynokore.platform.evidencestore.exportpackage.PackageContentClass
 import org.jooq.DSLContext
@@ -64,5 +65,6 @@ class AuditPackConfiguration {
         dsl: DSLContext,
         chainIntegrity: ExportChainIntegrity,
         clock: Clock,
-    ): ExportAuditPack = ExportAuditPack(sources, jobs, store, JooqIntegrityStore(dsl), chainIntegrity, clock)
+        signer: ReportSigner,
+    ): ExportAuditPack = ExportAuditPack(sources, jobs, store, JooqIntegrityStore(dsl), chainIntegrity, clock, signer)
 }
