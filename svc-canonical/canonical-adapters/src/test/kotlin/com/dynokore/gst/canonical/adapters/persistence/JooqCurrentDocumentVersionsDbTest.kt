@@ -142,7 +142,7 @@ class JooqCurrentDocumentVersionsDbTest {
     }
 
     @Test
-    fun `INV-AC-26792 case 10 without row-level security the tenant predicate alone hides the document of another tenant`() {
+    fun `INV-AC-26792 case 10 without row-level security the tenant predicate hides another tenant`() {
         seed()
         CanonicalDb.superuser().use { connection ->
             // The owner login bypasses row-level security, so only the adapter's own tenant predicates are left.
