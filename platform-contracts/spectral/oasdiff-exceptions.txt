@@ -199,3 +199,5 @@ POST /internal/v1/rules/mapping-packs/{packId}/entries request property `sourceC
 POST /internal/v1/event-consumers/rebuilds request property `mode` was restricted to a list of enum values
 # Request enumeration closed (API-09): answered design question on the request-enumeration findings, tooling/gap25007-gap.md (INV-T-25194); INV-Q-3569 reasoning applies: no train is cut and no consumer is deployed.
 POST /internal/v1/event-consumers/rebuilds request property `scope/kind` was restricted to a list of enum values
+# documentNumber required in RecordDocumentRequest (INV-T-23316; EN 16931 BT-1/BR-02): pre-go-live rule (owner 2026-11-15, contracts change in place) applies, no train is published and no consumer of the operation is deployed; after the first published train a newly required request property is breaking (API-03).
+POST /internal/v1/canonical/documents the request property `documentNumber` became required

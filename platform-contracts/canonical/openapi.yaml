@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: canonical API
-  version: 2.2.0
+  version: 2.3.0
   description: >-
     Contract-first source of truth for canonical (API-01, STK-44). The
     `canonical-contract` module generates its server interfaces and DTOs
@@ -627,9 +627,9 @@ components:
           maxLength: 100
           description: >-
             The document number issued to the customer; payload-svc builds IBT-001 from it and the internal
-            accounting reference is never used as the number (INV-REQ-714, INV-AC-766). Optional: this contract does
-            not refuse its absence, and a document that builds into an invoice or a credit note without one is stopped
-            downstream by PAY-001 (Mandatory Data Element absent). `sourceKey` and `sourceRevision` keep their meaning
+            accounting reference is never used as the number (INV-REQ-714, INV-AC-766). Required (EN 16931 BT-1, BR-02):
+            a request without it does not match the schema and is refused with `400` and SRT-001, and nothing is
+            recorded. `sourceKey` and `sourceRevision` keep their meaning
             (the identity of the source record and its revision) and are never the number.
         documentFunction:
           type: string
@@ -802,7 +802,7 @@ components:
           description: >-
             Reference to the source document in the tenant's document store (INV-REQ-646, INV-REQ-1319). The System holds the reference, not the content, and never transmits it to the network or to IRAS. Required for Types 2 and 3 once the entity is live, a condition the receiving service enforces, not this schema (INV-Q-16005).
       required:
-        [tenantId, entityRef, sourceSystem, sourceKey, sourceRevision, documentFunction, transactionDate, currency, lines]
+        [tenantId, entityRef, sourceSystem, sourceKey, sourceRevision, documentFunction, transactionDate, currency, lines, documentNumber]
       allOf:
         # INV-Q-6999 A: the network markers are mutually exclusive facts of the path; a marker counts as carried
         # when its property is present (relayIssuance only when true, because absent means false).
