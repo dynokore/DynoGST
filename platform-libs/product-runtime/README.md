@@ -32,7 +32,7 @@ config-resolver takes its catalogue in either order from service-runtime 3.2.1, 
   `serviceruntime.replica.structure.snapshot-topics`) and the listener that completes the structure replica's snapshot
   only when the service's own replay moved every listed topic (INV-Q-17064 A, INV-Q-13786 A);
 - the tenancy-svc and access-svc fallbacks, once `product-runtime.fallback.tenancy-svc-url` and
-  `product-runtime.fallback.access-svc-url` are set; without them a replica serves what it holds.
+  `service-runtime.peers.access-svc.base-url` are set; without them a replica serves what it holds.
 
 The generated contract types come from the platform-contracts bundle pinned as `platformContractsBundle` in
 `gradle/libs.versions.toml`; the build stages it as a local Maven layout under `build/contracts-repo`.

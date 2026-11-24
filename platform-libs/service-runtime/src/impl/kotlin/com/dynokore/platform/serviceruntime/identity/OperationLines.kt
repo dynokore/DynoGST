@@ -27,6 +27,8 @@ internal class OperationLine<P>(
 internal class OperationLines<P> private constructor(
     private val lines: List<OperationLine<P>>,
 ) {
+    fun isEmpty(): Boolean = lines.isEmpty()
+
     /** The line of the operation that serves [path] for [method], or null when no line matches. */
     fun serving(
         method: String,

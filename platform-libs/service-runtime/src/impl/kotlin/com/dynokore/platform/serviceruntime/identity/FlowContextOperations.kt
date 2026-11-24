@@ -15,6 +15,9 @@ import java.nio.charset.StandardCharsets
 class FlowContextOperations internal constructor(
     private val lines: OperationLines<String>,
 ) {
+    /** True when no operation is listed, i.e. no flow entry exists in this service. */
+    fun isEmpty(): Boolean = lines.isEmpty()
+
     /** The operation key ("METHOD template") of the row that serves [method] and [path], or null when none does. */
     fun serving(
         method: String,

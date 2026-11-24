@@ -24,10 +24,14 @@ import com.dynokore.platform.serviceruntime.binding.InstallationBindingKey
 import com.dynokore.platform.serviceruntime.events.PlatformEventTypes
 import com.dynokore.platform.serviceruntime.replica.AuthorityFallback
 import com.dynokore.platform.serviceruntime.replica.AuthorityReplica
+import com.dynokore.platform.serviceruntime.replica.AuthorizationRequest
 import com.dynokore.platform.serviceruntime.replica.OperationRoleMap
 import com.dynokore.platform.serviceruntime.replica.PolicyReplica
+import com.dynokore.platform.serviceruntime.replica.Principal
+import com.dynokore.platform.serviceruntime.replica.PrincipalKind
 import com.dynokore.platform.serviceruntime.replica.StructureFallback
 import com.dynokore.platform.serviceruntime.replica.StructureReplica
+import com.dynokore.platform.serviceruntime.resilience.Deadline
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.shouldBe
@@ -63,15 +67,17 @@ private class GstPropertiesConfig
 class WiringTest {
     private val runner = runnerFor("SAAS")
 
-    private fun runnerFor(form: String) =
-        ApplicationContextRunner()
-            .withConfiguration(AutoConfigurations.of(ProductRuntimeConfiguration::class.java))
-            .withBean(StructureReplica::class.java, { StructureReplica(CLOCK) })
-            .withBean(AuthorityReplica::class.java, { AuthorityReplica(CLOCK, OperationRoleMap { emptyMap() }) })
-            .withBean(PolicyReplica::class.java, { PolicyReplica(CLOCK) })
-            .withUserConfiguration(GstPropertiesConfig::class.java)
-            .withBean("internalRestClientBuilder", RestClient.Builder::class.java, { RestClient.builder() })
-            .withPropertyValues("gst.service=submission-svc", "gst.form=$form")
+    private fun runnerFor(
+        form: String,
+        builder: () -> RestClient.Builder = { RestClient.builder() },
+    ) = ApplicationContextRunner()
+        .withConfiguration(AutoConfigurations.of(ProductRuntimeConfiguration::class.java))
+        .withBean(StructureReplica::class.java, { StructureReplica(CLOCK) })
+        .withBean(AuthorityReplica::class.java, { AuthorityReplica(CLOCK, OperationRoleMap { emptyMap() }) })
+        .withBean(PolicyReplica::class.java, { PolicyReplica(CLOCK) })
+        .withUserConfiguration(GstPropertiesConfig::class.java)
+        .withBean("internalRestClientBuilder", RestClient.Builder::class.java, builder)
+        .withPropertyValues("gst.service=submission-svc", "gst.form=$form")
 
     @Test
     fun `the operationRoleMap bean answers from the generated matrix of the gst form`() {
@@ -106,11 +112,52 @@ class WiringTest {
         runner
             .withPropertyValues(
                 "product-runtime.fallback.tenancy-svc-url=http://tenancy-svc:8080",
-                "product-runtime.fallback.access-svc-url=http://access-svc:8080",
+                "service-runtime.peers.access-svc.base-url=http://access-svc:8080",
             ).run { context ->
                 context.getBean(StructureFallback::class.java)
                 context.getBean(AuthorityFallback::class.java)
             }
+    }
+
+    /** Builds a runner whose `internalRestClientBuilder` records the URI of every call, then fails it. */
+    private fun recordingRunner(seen: MutableList<java.net.URI>) =
+        runnerFor("SAAS") {
+            RestClient.builder().requestInterceptor { request, _, _ ->
+                seen += request.uri
+                throw java.io.IOException("recorded")
+            }
+        }
+
+    @Test
+    fun `INV-AC-24992 the access-svc fallback is registered from the peers key and uses it`() {
+        val seen = mutableListOf<java.net.URI>()
+        recordingRunner(seen)
+            .withPropertyValues("service-runtime.peers.access-svc.base-url=http://access-peer:9090")
+            .run { context ->
+                val fallback = context.getBean(AuthorityFallback::class.java)
+                runCatching {
+                    fallback.fetch(
+                        AuthorizationRequest(
+                            Fixtures.TENANT,
+                            Principal("P-1", PrincipalKind.HUMAN),
+                            "E-001",
+                            "document.read",
+                        ),
+                        Deadline.after(java.time.Duration.ofMillis(500), CLOCK),
+                    )
+                }
+                seen.size shouldBe 1
+                seen.single().toString().startsWith("http://access-peer:9090/") shouldBe true
+            }
+    }
+
+    @Test
+    fun `INV-AC-24992 the access-svc fallback is not registered from the removed key or from a different key`() {
+        runner
+            .withPropertyValues(
+                "product-runtime.fallback.access-svc-url=http://access-svc:8080",
+                "service-runtime.peers.access-svc.url=http://access-svc:8080",
+            ).run { context -> context.getBeansOfType(AuthorityFallback::class.java).size shouldBe 0 }
     }
 
     @Test

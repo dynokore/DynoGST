@@ -109,7 +109,7 @@ class FlowContextFilterTest {
         caller: String = CALLER,
         issuedAt: Long = FlowContextTestSupport.NOW.epochSecond,
         expiresAt: Long = issuedAt + 300,
-        issuer: FlowContextIssuer = FlowContextTestSupport.issuer(),
+        issuer: FakeFlowContextIssuer = FlowContextTestSupport.issuer(),
     ) = FlowContextTestSupport.contextFor(tenant, entity, "HUMAN", caller, "flow-7", issuedAt, expiresAt, issuer)
 
     private fun person(

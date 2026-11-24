@@ -104,8 +104,11 @@ internal class OperatorSessionTokens(
         /** API-23, owner ruling INV-Q-4119: an operator session lasts at most 15 minutes. */
         val MAX_LIFETIME: Duration = Duration.ofMinutes(15)
 
-        /** The clock skew Spring's JwtTimestampValidator allows the identity provider's tokens by default. */
-        val CLOCK_SKEW: Duration = Duration.ofSeconds(60)
+        /**
+         * The clock skew Spring's JwtTimestampValidator allows the identity provider's tokens by default; one source
+         * of truth with the flow context's `exp` window ([FlowContext.CLOCK_SKEW_SECONDS], gap24993c option A).
+         */
+        val CLOCK_SKEW: Duration = Duration.ofSeconds(FlowContext.CLOCK_SKEW_SECONDS)
     }
 }
 

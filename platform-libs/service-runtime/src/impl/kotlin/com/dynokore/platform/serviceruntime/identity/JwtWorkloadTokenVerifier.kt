@@ -1,7 +1,9 @@
 package com.dynokore.platform.serviceruntime.identity
 
+import com.nimbusds.jwt.JWTParser
 import org.springframework.security.oauth2.jwt.JwtDecoder
 import org.springframework.security.oauth2.jwt.JwtException
+import java.text.ParseException
 
 /**
  * STK-26: verifies the signature, expiry and (where configured) audience of a
@@ -21,6 +23,7 @@ class JwtWorkloadTokenVerifier(
 ) : WorkloadTokenVerifier {
     override fun verify(token: WorkloadToken?): WorkloadVerification {
         if (token == null) return WorkloadVerification.Refused("missing")
+        if (isFlowContext(token.value)) return WorkloadVerification.Refused("invalid")
         return try {
             val jwt = jwtDecoder.decode(token.value)
             WorkloadVerification.Verified(jwt.subject ?: "unknown")
@@ -28,4 +31,15 @@ class JwtWorkloadTokenVerifier(
             WorkloadVerification.Refused("invalid")
         }
     }
+
+    /** A flow context (JOSE header `typ` [FlowContext.TYP], RFC 8725 section 3.11) is never a workload token. */
+    private fun isFlowContext(token: String): Boolean =
+        try {
+            JWTParser
+                .parse(token)
+                .header.type
+                ?.type == FlowContext.TYP
+        } catch (_: ParseException) {
+            false
+        }
 }

@@ -1,7 +1,10 @@
 package com.dynokore.platform.serviceruntime.identity
 
+import com.dynokore.platform.serviceruntime.client.PeersProperties
+import com.dynokore.platform.serviceruntime.replica.AuthorityReplica
 import com.dynokore.platform.tenancykernel.TenantContext
 import org.springframework.beans.factory.ObjectProvider
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.boot.autoconfigure.AutoConfiguration
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication
@@ -16,6 +19,7 @@ import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.security.oauth2.jwt.JwtClaimValidator
 import org.springframework.security.oauth2.jwt.JwtValidators
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder
+import org.springframework.web.client.RestClient
 import java.nio.file.Path
 import java.time.Clock
 
@@ -34,7 +38,7 @@ import java.time.Clock
  * filter needs no exemption path.
  */
 @AutoConfiguration
-@EnableConfigurationProperties(WorkloadIdentityProperties::class)
+@EnableConfigurationProperties(WorkloadIdentityProperties::class, PeersProperties::class)
 class IdentityAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean(WorkloadTokenSource::class)
@@ -89,6 +93,50 @@ class IdentityAutoConfiguration {
         FlowContextOperations.from(
             checkNotNull(resources.classLoader) { "no class loader to read the contract resources" },
         )
+
+    /**
+     * Verifies a flow context with the machine-access keys the authority replica holds for access-svc tokens (owner
+     * answer 2026-11-18, option A); without a replica every context is refused.
+     */
+    @Bean
+    @ConditionalOnMissingBean(FlowContextKeys::class)
+    fun flowContextKeys(authority: ObjectProvider<AuthorityReplica>): FlowContextKeys =
+        AccessKeysFlowContextKeys(authority.ifAvailable)
+
+    /**
+     * The flow entry's issuer: access-svc at `service-runtime.peers.access-svc.base-url`, called through
+     * `internalRestClientBuilder` (its interceptors carry the workload token and the deadline). Without the address
+     * (a service with no flow entry, see [flowContextPeerCheck]) nothing can issue and every call is refused.
+     */
+    @Bean
+    @ConditionalOnMissingBean(FlowContextIssuer::class)
+    fun flowContextIssuer(
+        peers: PeersProperties,
+        @Qualifier("internalRestClientBuilder") builder: ObjectProvider<RestClient.Builder>,
+    ): FlowContextIssuer {
+        val baseUrl = peers.accessSvc.baseUrl?.takeIf { it.isNotBlank() }
+        return if (baseUrl == null) {
+            FlowContextIssuer { throw FlowContextUnavailableException() }
+        } else {
+            AccessSvcFlowContextIssuer(builder.getObject().baseUrl(baseUrl).build())
+        }
+    }
+
+    /**
+     * Fails the start-up of a service with a flow entry (a listed operation, so [FlowContextFilter] is active) that has
+     * no `service-runtime.peers.access-svc.base-url` (fail closed; twelve-factor: fail fast on missing required config).
+     * A service with no flow entry starts without it.
+     */
+    @Bean
+    fun flowContextPeerCheck(
+        operations: FlowContextOperations,
+        peers: PeersProperties,
+    ): FlowContextPeerCheck {
+        check(operations.isEmpty() || !peers.accessSvc.baseUrl.isNullOrBlank()) {
+            "a service with a flow entry needs ${PeersProperties.ACCESS_SVC_BASE_URL} (the address of access-svc)"
+        }
+        return FlowContextPeerCheck
+    }
 
     /**
      * Verifies the signed flow context of a listed operation, immediately after the calling-service filter (INV-T-9254).

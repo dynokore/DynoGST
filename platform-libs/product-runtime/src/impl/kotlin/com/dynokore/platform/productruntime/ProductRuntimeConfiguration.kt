@@ -15,6 +15,7 @@ import com.dynokore.platform.productruntime.feed.OperatorSessionKeysFeedHandler
 import com.dynokore.platform.productruntime.feed.PolicyFeed
 import com.dynokore.platform.productruntime.feed.StructureFeedHandler
 import com.dynokore.platform.serviceruntime.binding.GstProperties
+import com.dynokore.platform.serviceruntime.client.PeersProperties
 import com.dynokore.platform.serviceruntime.replica.AuthorityFallback
 import com.dynokore.platform.serviceruntime.replica.AuthorityReplica
 import com.dynokore.platform.serviceruntime.replica.OperationRoleMap
@@ -34,14 +35,14 @@ import org.springframework.web.client.RestClient
 import com.dynokore.gst.catalogue.DeploymentForm as GstForm
 
 /**
- * Where the two fallback services answer (INV-REQ-1200 b2, INV-REQ-1201 b3). Without a URL the replica has no
+ * Where the tenancy-svc fallback answers (INV-REQ-1201 b3); access-svc's address is `service-runtime.peers.access-svc.base-url`
+ * (INV-REQ-1200 b2). Without a URL the replica has no
  * fallback and serves what it holds; the structure replica keeps serving its last state, the authority replica
  * applies its degraded rule (INV-REQ-1214).
  */
 @ConfigurationProperties(prefix = "product-runtime.fallback")
 data class ProductRuntimeProperties(
     val tenancySvcUrl: String? = null,
-    val accessSvcUrl: String? = null,
 )
 
 /**
@@ -85,13 +86,18 @@ class ProductRuntimeConfiguration {
 
     @Bean
     @ConditionalOnMissingBean(AuthorityFallback::class)
-    @ConditionalOnProperty(prefix = "product-runtime.fallback", name = ["access-svc-url"])
+    @ConditionalOnProperty(prefix = "service-runtime.peers.access-svc", name = ["base-url"])
     fun accessAuthorityFallback(
         @Qualifier("internalRestClientBuilder") builder: ObjectProvider<RestClient.Builder>,
-        properties: ProductRuntimeProperties,
+        environment: Environment,
     ): AuthorityFallback =
         AccessAuthorityFallback(
-            AuthoriseApi(builder.getObject().baseUrl(requireNotNull(properties.accessSvcUrl)).build()),
+            AuthoriseApi(
+                builder
+                    .getObject()
+                    .baseUrl(requireNotNull(environment.getProperty(PeersProperties.ACCESS_SVC_BASE_URL)))
+                    .build(),
+            ),
         )
 
     @Bean

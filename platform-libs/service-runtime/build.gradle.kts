@@ -323,6 +323,9 @@ tasks.test {
     jvmArgs("-Duser.timezone=UTC") // CS-41 baseline, matched with platform-build's own modules
     systemProperty("user.language", "de")
     systemProperty("user.country", "DE")
+    // The Konsist architecture tests parse every source set of the module; the default heap no longer holds them
+    // (INV-T-24993). Same setting as reconciliation-engine's test task.
+    maxHeapSize = "1g"
 }
 
 val implTestTask =

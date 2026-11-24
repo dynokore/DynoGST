@@ -47,8 +47,28 @@ class FakeFlowContextKeys(
 class FakeFlowContextIssuer(
     private val kid: String = FlowContextTestSupport.KEY_ID,
     private val secret: ByteArray = FlowContextTestSupport.SECRET,
+    private val callerService: String = "control-plane-svc",
+    private val clock: Clock = FlowContextTestSupport.CLOCK,
 ) : FlowContextIssuer {
-    override fun sign(payload: ByteArray): String {
+    /** What access-svc does: the caller, `iat` and `exp` (900 seconds) are its own; the entry gave the other claims. */
+    override fun issue(claims: FlowContextClaims): IssuedFlowContext {
+        val iat = clock.instant().epochSecond
+        val exp = iat + FlowContext.MAX_LIFETIME_SECONDS
+        val ref =
+            claims.entity.ref
+                ?.let { ",\"ref\":\"$it\"" }
+                .orEmpty()
+        val payload =
+            "{\"tenant\":${json(claims.tenant)},\"entity\":{\"kind\":\"${claims.entity.kind}\"$ref}," +
+                "\"principalKind\":\"${claims.principalKind}\",\"callerService\":\"$callerService\"," +
+                "\"flowId\":${json(claims.flowId)},\"iat\":$iat,\"exp\":$exp}"
+        return IssuedFlowContext(sign(payload.toByteArray(Charsets.UTF_8)), exp)
+    }
+
+    private fun json(value: String): String = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+
+    /** Signs a payload with the fake key (HS256, typ-less header): a test builds contexts the keys must verify or refuse. */
+    fun sign(payload: ByteArray): String {
         val encoder = Base64.getUrlEncoder().withoutPadding()
         val signingInput =
             encoder.encodeToString(FakeFlowContextKeys.headerJson(kid).toByteArray(Charsets.UTF_8)) + "." +
@@ -67,10 +87,10 @@ object FlowContextTestSupport {
 
     fun keys(): FlowContextKeys = FakeFlowContextKeys()
 
-    fun issuer(): FlowContextIssuer = FakeFlowContextIssuer()
+    fun issuer(): FakeFlowContextIssuer = FakeFlowContextIssuer()
 
     /** An issuer whose key is not in [keys]: its contexts must not verify. */
-    fun outsideIssuer(): FlowContextIssuer =
+    fun outsideIssuer(): FakeFlowContextIssuer =
         FakeFlowContextIssuer("outside", "another-key-0123456789abcdefghij".toByteArray(Charsets.UTF_8))
 
     /**
@@ -86,7 +106,7 @@ object FlowContextTestSupport {
         flowId: String = "flow-1",
         issuedAt: Long = NOW.epochSecond,
         expiresAt: Long = issuedAt + 300,
-        issuer: FlowContextIssuer = issuer(),
+        issuer: FakeFlowContextIssuer = issuer(),
     ): String {
         val ref = entity.ref?.let { ",\"ref\":\"$it\"" }.orEmpty()
         val payload =

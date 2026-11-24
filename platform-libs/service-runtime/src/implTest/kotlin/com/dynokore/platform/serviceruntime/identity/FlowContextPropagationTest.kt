@@ -8,7 +8,6 @@ import org.springframework.http.client.ClientHttpRequestExecution
 import org.springframework.mock.http.client.MockClientHttpRequest
 import org.springframework.mock.http.client.MockClientHttpResponse
 import java.net.URI
-import java.time.Duration
 
 class FlowContextPropagationTest {
     private val operations =
@@ -60,22 +59,17 @@ class FlowContextPropagationTest {
     }
 
     @Test
-    fun `INV-AC-8251 begin refuses a lifetime over 900 seconds and an empty claim`() {
-        fun begin(
-            lifetime: Duration = Duration.ofSeconds(900),
-            tenant: String = "t",
-        ) = FlowContext.begin(
-            FlowContextTestSupport.issuer(),
-            FlowContextTestSupport.CLOCK,
-            tenant,
-            FlowEntity.tenantWide(),
-            "MACHINE",
-            "control-plane-svc",
-            lifetime = lifetime,
-        )
+    fun `INV-AC-8251 begin refuses an empty claim and keeps the claims as written`() {
+        fun begin(tenant: String = "t") =
+            FlowContext.begin(
+                FlowContextTestSupport.issuer(),
+                FlowContextTestSupport.CLOCK,
+                tenant,
+                FlowEntity.tenantWide(),
+                "MACHINE",
+                "control-plane-svc",
+            )
         begin()
-        shouldThrow<IllegalArgumentException> { begin(Duration.ofSeconds(901)) }
-        shouldThrow<IllegalArgumentException> { begin(Duration.ZERO) }
         shouldThrow<IllegalArgumentException> { begin(tenant = "") }
         shouldThrow<IllegalArgumentException> { begin(tenant = "x".repeat(65)) }
         val tricky = begin(tenant = "a\"b\\c")

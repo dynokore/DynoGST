@@ -47,8 +47,14 @@ class JwtEndUserPrincipalResolver(
         val parsed = token?.let(::parseOrNull)
         return when {
             token == null || parsed == null -> null
+
+            // a flow context (RFC 8725 section 3.11) is never a person token, whichever key signed it
+            parsed.header.type?.type == FlowContext.TYP -> null
+
             hasLinkSubject(parsed) -> linkPrincipal(parsed)
+
             carriesAct(parsed) -> operatorPrincipal(parsed)
+
             else -> identityProviderPrincipal(token)
         }
     }

@@ -6,6 +6,10 @@ train is its own (README.md: "own version and changelog").
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-11-24
+### Changed
+- BREAKING: the key `product-runtime.fallback.access-svc-url` is removed (no alias); the access-svc fallback is registered when `service-runtime.peers.access-svc.base-url` is set and takes that value as its base URL (one key per backing-service address; INV-T-24993, INV-AC-24992). `product-runtime.fallback.tenancy-svc-url` is unchanged. The dependency `service-runtime` steps to 14.0.0.
+
 ## [2.23.7] - 2026-11-24
 ### Changed
 - Version step only (G-DVS, INV-T-28250, INV-AC-28249): the published bytes change because the dependency `service-runtime` steps to 13.29.1 (edge calls bounded by the remaining deadline; `DeadlineBoundRequestFactory`); no code change in this module.

@@ -1,7 +1,6 @@
 package com.dynokore.platform.serviceruntime.identity
 
 import java.time.Clock
-import java.time.Duration
 import java.util.UUID
 
 /**
@@ -41,6 +40,15 @@ class FlowContext internal constructor(
         /** The longest lifetime (`exp - iat`) the schema allows, in seconds. */
         const val MAX_LIFETIME_SECONDS = 900L
 
+        /** The JOSE header `typ` of a flow context (RFC 8725 section 3.11); compared by string equality. */
+        const val TYP = "flow-context+jwt"
+
+        /**
+         * The skew allowed between access-svc's `exp` and this service's clock (the single source:
+         * `OperatorSessionTokens.CLOCK_SKEW` is derived from it).
+         */
+        const val CLOCK_SKEW_SECONDS = 60L
+
         private const val MAX_TEXT = 64
         private val holder = ThreadLocal<FlowContext>()
 
@@ -48,9 +56,13 @@ class FlowContext internal constructor(
         fun current(): FlowContext? = holder.get()
 
         /**
-         * Opens a context at a flow entry with the claims the entry gives, signed by [issuer], valid from `now` for
-         * [lifetime] (at most [MAX_LIFETIME_SECONDS], whole seconds, at least one). The claims are validated as the
-         * schema states; an invalid claim is an [IllegalArgumentException]. Run the flow under it with [runWith].
+         * Opens a context at a flow entry: the claims the entry gives (validated as the schema states; an invalid claim
+         * is an [IllegalArgumentException]) are sent to [issuer], which is access-svc's `issueFlowContext` (owner
+         * answer 2026-11-18, option A). access-svc sets the caller, `iat` and `exp` (a lifetime of at most
+         * [MAX_LIFETIME_SECONDS]); the held context is built from its response. A response that expires at or before
+         * `now` of [clock], or later than [MAX_LIFETIME_SECONDS] plus [CLOCK_SKEW_SECONDS] after it, is refused as
+         * [FlowContextUnavailableException], like any failure of the issuer: no context is held (fail closed).
+         * Run the flow under the result with [runWith].
          */
         @Suppress("LongParameterList")
         fun begin(
@@ -61,34 +73,18 @@ class FlowContext internal constructor(
             principalKind: String,
             callerService: String,
             flowId: String = UUID.randomUUID().toString(),
-            lifetime: Duration = Duration.ofSeconds(MAX_LIFETIME_SECONDS),
         ): FlowContext {
             require(tenant.length in 1..MAX_TEXT) { "tenant must be 1 to $MAX_TEXT characters" }
             require(flowId.length in 1..MAX_TEXT) { "flowId must be 1 to $MAX_TEXT characters" }
             require(principalKind.isNotEmpty()) { "principalKind must not be empty" }
             require(callerService.isNotEmpty()) { "callerService must not be empty" }
-            val seconds = lifetime.seconds
-            require(lifetime.nano == 0 && seconds in 1..MAX_LIFETIME_SECONDS) {
-                "the lifetime must be 1 to $MAX_LIFETIME_SECONDS whole seconds"
-            }
             val iat = clock.instant().epochSecond
-            val exp = iat + seconds
-            val payload =
-                buildString {
-                    append("{\"tenant\":").append(quote(tenant))
-                    append(",\"entity\":{\"kind\":").append(quote(entity.kind.name))
-                    entity.ref?.let { append(",\"ref\":").append(quote(it)) }
-                    append("},\"principalKind\":").append(quote(principalKind))
-                    append(",\"callerService\":").append(quote(callerService))
-                    append(",\"flowId\":").append(quote(flowId))
-                    append(",\"iat\":")
-                        .append(iat)
-                        .append(",\"exp\":")
-                        .append(exp)
-                        .append('}')
-                }
-            val compact = issuer.sign(payload.toByteArray(Charsets.UTF_8))
-            return FlowContext(tenant, entity, principalKind, callerService, flowId, iat, exp, compact)
+            val issued = issuer.issue(FlowContextClaims(tenant, entity, principalKind, flowId))
+            val exp = issued.expiresAt
+            if (issued.compact.isEmpty() || exp <= iat || exp - iat > MAX_LIFETIME_SECONDS + CLOCK_SKEW_SECONDS) {
+                throw FlowContextUnavailableException()
+            }
+            return FlowContext(tenant, entity, principalKind, callerService, flowId, iat, exp, issued.compact)
         }
 
         /** Runs [block] with [context] as the current context of this thread; the previous one is restored after. */
@@ -104,19 +100,6 @@ class FlowContext internal constructor(
                 if (previous == null) holder.remove() else holder.set(previous)
             }
         }
-
-        private fun quote(value: String): String =
-            buildString {
-                append('"')
-                for (c in value) {
-                    when {
-                        c == '"' || c == '\\' -> append('\\').append(c)
-                        c.isISOControl() -> append("\\u%04x".format(c.code))
-                        else -> append(c)
-                    }
-                }
-                append('"')
-            }
     }
 }
 
@@ -147,8 +130,8 @@ class FlowEntity private constructor(
 }
 
 /**
- * The verification keys of flow contexts (the adapter is a separate design question; this module ships the port and a
- * fake). [verify] returns the payload bytes of [compact] only when it is a JWS compact serialization (RFC 7515) whose
+ * The verification keys of flow contexts. [verify] returns the payload bytes of [compact] only when it is a JWS
+ * compact serialization (RFC 7515) whose
  * signature verifies under an accepted key with an accepted algorithm; an unsigned value (`alg` none), an unknown key,
  * a bad signature or any malformed input gives null. It never throws for bad input.
  */
@@ -156,10 +139,32 @@ fun interface FlowContextKeys {
     fun verify(compact: String): ByteArray?
 }
 
-/** Signs the payload of a context into a JWS compact serialization (RFC 7515); the adapter owns the key. */
+/** The claims a flow entry gives access-svc; the caller, `iat` and `exp` are set by access-svc, never by the entry. */
+class FlowContextClaims(
+    val tenant: String,
+    val entity: FlowEntity,
+    val principalKind: String,
+    val flowId: String,
+)
+
+/** What access-svc issued: the compact form (JWS, RFC 7515) and its `exp` in epoch seconds. */
+class IssuedFlowContext(
+    val compact: String,
+    val expiresAt: Long,
+)
+
+/**
+ * Obtains the signed context of a flow from access-svc (`issueFlowContext`, owner answer 2026-11-18, option A). An
+ * answer that is not a success, a timeout or a body without the context throws [FlowContextUnavailableException].
+ */
 fun interface FlowContextIssuer {
-    fun sign(payload: ByteArray): String
+    fun issue(claims: FlowContextClaims): IssuedFlowContext
 }
+
+/** No context could be obtained at the flow entry; retryable, the entry answers 503 and holds no context. */
+class FlowContextUnavailableException(
+    cause: Throwable? = null,
+) : RuntimeException("the flow context could not be obtained from access-svc", cause)
 
 /**
  * A flow context refused the call; service-runtime answers 403 SRT-004 with nothing stored. [reason] is a fixed label,
