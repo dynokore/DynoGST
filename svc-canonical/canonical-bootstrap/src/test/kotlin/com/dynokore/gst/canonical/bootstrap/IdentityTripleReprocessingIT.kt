@@ -201,7 +201,7 @@ class IdentityTripleReprocessingIT {
                     source = "/gst/submission-svc",
                     type = type,
                     subject = "ENT-1",
-                    time = Instant.parse("2026-11-24T10:00:00Z"),
+                    time = clock.instant(),
                     tenant = TenantId(tenant),
                     entity = EntityRef("ENT-1"),
                     docUuid = null,

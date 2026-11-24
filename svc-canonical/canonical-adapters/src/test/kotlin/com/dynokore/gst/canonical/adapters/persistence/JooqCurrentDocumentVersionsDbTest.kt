@@ -140,4 +140,16 @@ class JooqCurrentDocumentVersionsDbTest {
         asTenant(t2) { adapter.read(t1, doc) } shouldBe null
         asTenant(t1) { adapter.read(t1, UUID.randomUUID()) } shouldBe null
     }
+
+    @Test
+    fun `INV-AC-26792 case 10 without row-level security the tenant predicate alone hides the document of another tenant`() {
+        seed()
+        CanonicalDb.superuser().use { connection ->
+            // The owner login bypasses row-level security, so only the adapter's own tenant predicates are left.
+            val unfiltered = JooqCurrentDocumentVersions(DSL.using(connection, SQLDialect.POSTGRES), tenants)
+            tenants.bind(TenantId(t1), SignedBindings.ACTOR) { unfiltered.read(t1, doc)?.version } shouldBe 2
+            tenants.bind(TenantId(t2), SignedBindings.ACTOR) { unfiltered.read(t2, doc) } shouldBe null
+            tenants.bind(TenantId(t2), SignedBindings.ACTOR) { unfiltered.read(t1, doc) } shouldBe null
+        }
+    }
 }
