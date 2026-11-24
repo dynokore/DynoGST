@@ -2,7 +2,7 @@ kind	id	task
 operation	getExceptions	INV-T-21108
 operation	overrideException	INV-T-21207
 operation	createAuditPackExport	UNASSIGNED
-operation	correctPersonalData	UNASSIGNED
+operation	correctPersonalData	INV-T-27145
 operation	copyAnonymisedSample	UNASSIGNED
 operation	exportSupportBundle	UNASSIGNED
 channel	gst.console-bff.example-happened.v1	UNASSIGNED

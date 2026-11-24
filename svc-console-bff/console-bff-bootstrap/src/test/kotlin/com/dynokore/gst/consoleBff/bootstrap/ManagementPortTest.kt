@@ -39,9 +39,10 @@ class ManagementPortTest {
                         "spring.datasource.url=${ConsoleDb.jdbcUrl}",
                     ),
                 ).run(
-                    // default properties rank below application.yaml, whose owner URLs have no default (INV-T-21207)
+                    // default properties rank below application.yaml, whose owner URLs have no default
                     "--console.payload-svc-url=http://localhost:8083",
                     "--console.submission-svc-url=http://localhost:8084",
+                    "--console.evidence-svc-url=http://localhost:8086",
                 )
         app.use { context ->
             val management = context.environment.getProperty("local.management.port")!!
