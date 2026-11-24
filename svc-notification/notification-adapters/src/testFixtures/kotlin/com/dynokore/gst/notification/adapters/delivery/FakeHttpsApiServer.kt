@@ -73,13 +73,33 @@ class FakeHttpsApiServer : AutoCloseable {
         val keytool = File(File(System.getProperty("java.home"), "bin"), "keytool").path
         val process =
             ProcessBuilder(
-                keytool, "-genkeypair", "-alias", alias, "-keyalg", "RSA", "-keysize", "2048", "-validity", "2",
-                "-dname", "CN=localhost", "-ext", "SAN=dns:localhost,ip:127.0.0.1",
-                "-keystore", file.path, "-storetype", "PKCS12",
-                "-storepass", String(PASSWORD), "-keypass", String(PASSWORD),
+                keytool,
+                "-genkeypair",
+                "-alias",
+                alias,
+                "-keyalg",
+                "RSA",
+                "-keysize",
+                "2048",
+                "-validity",
+                "2",
+                "-dname",
+                "CN=localhost",
+                "-ext",
+                "SAN=dns:localhost,ip:127.0.0.1",
+                "-keystore",
+                file.path,
+                "-storetype",
+                "PKCS12",
+                "-storepass",
+                String(PASSWORD),
+                "-keypass",
+                String(PASSWORD),
             ).redirectErrorStream(true).start()
         val output = process.inputStream.readAllBytes().toString(Charsets.UTF_8)
-        check(process.waitFor(KEYTOOL_SECONDS, TimeUnit.SECONDS) && process.exitValue() == 0) { "keytool failed: $output" }
+        check(
+            process.waitFor(KEYTOOL_SECONDS, TimeUnit.SECONDS) && process.exitValue() == 0,
+        ) { "keytool failed: $output" }
         return KeyStore.getInstance("PKCS12").also { ks -> file.inputStream().use { ks.load(it, PASSWORD) } }
     }
 
