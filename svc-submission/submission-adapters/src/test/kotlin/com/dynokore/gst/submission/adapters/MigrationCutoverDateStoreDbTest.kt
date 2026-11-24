@@ -52,7 +52,7 @@ class MigrationCutoverDateStoreDbTest {
     private fun find(tenant: UUID) = asTenant(tenant) { store.find(TenantId(tenant), "E") }
 
     @Test
-    fun `INV-AC-28451 the stored cutover date follows the highest effective date and equal or older ones change nothing`() {
+    fun `INV-AC-28451 the stored date follows the highest effective date, equal or older ones change nothing`() {
         val t1 = UUID.randomUUID()
         val t2 = UUID.randomUUID()
         record(t1, LocalDate.of(2026, 4, 1), LocalDate.of(2026, 3, 1)) shouldBe true
