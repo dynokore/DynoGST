@@ -242,11 +242,7 @@ class TestPeople :
             }
 
             ElectionPermissions.APPROVE -> {
-                approvals.holds(
-                    person,
-                    entityRef,
-                    action,
-                )
+                approvals.holds(person, entityRef, action)
             }
 
             SandboxCertificationPermissions.RECORD,

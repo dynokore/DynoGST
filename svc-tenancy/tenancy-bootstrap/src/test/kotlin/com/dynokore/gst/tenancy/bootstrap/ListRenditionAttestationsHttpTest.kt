@@ -34,6 +34,7 @@ import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
 
 private const val USER = "identity:USR-L1"
+private val INVALID = ClosedErrorCode.CONTRACT_VIOLATION
 
 /**
  * listRenditionAttestations at the service boundary (INV-T-27611, INV-REQ-1036): the page of the contract, the key
@@ -246,14 +247,13 @@ class ListRenditionAttestationsHttpTest {
             env.record("CREDIT_NOTE")
             val cursor = env.list(limit = 1).nextCursor!!
             val flipped = cursor.dropLast(1) + (if (cursor.last() == 'A') 'B' else 'A')
-            assertThat(env.statusOf { env.list(limit = 1, cursor = flipped) }).isEqualTo(ClosedErrorCode.CONTRACT_VIOLATION)
-            assertThat(env.statusOf { env.list(limit = 1, cursor = "ra1.AAAA.AAAA") })
-                .isEqualTo(ClosedErrorCode.CONTRACT_VIOLATION)
+            assertThat(env.statusOf { env.list(limit = 1, cursor = flipped) }).isEqualTo(INVALID)
+            assertThat(env.statusOf { env.list(limit = 1, cursor = "ra1.AAAA.AAAA") }).isEqualTo(INVALID)
             val foreign =
                 env.e.context
                     .getBean(PeriodListCursor::class.java)
                     .issue(env.entity.entityRef, USER, PagePosition(LocalDate.parse("2026-01-01"), "P1"), Instant.now())
-            assertThat(env.statusOf { env.list(limit = 1, cursor = foreign) }).isEqualTo(ClosedErrorCode.CONTRACT_VIOLATION)
+            assertThat(env.statusOf { env.list(limit = 1, cursor = foreign) }).isEqualTo(INVALID)
             assertThat(env.statusOf { env.list(limit = 1, cursor = cursor) }).isNull()
         }
     }

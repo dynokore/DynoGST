@@ -57,7 +57,8 @@ class RenditionUseCases {
     ): ListRenditionAttestations = ListRenditionAttestations(tx, access, entities, history)
 
     @Bean
-    fun renditionAttestationCursor(secrets: SecretStore): RenditionAttestationCursor = RenditionAttestationCursor(secrets)
+    fun renditionAttestationCursor(secrets: SecretStore): RenditionAttestationCursor =
+        RenditionAttestationCursor(secrets)
 
     @Bean
     fun applyRenditionFinding(
