@@ -997,7 +997,7 @@ class RegulatoryPackArmingAbortBoundaryTest(
     }
 
     @Test
-    fun `INV-AC-1235 one unacknowledged instance aborts RUL-005, arms none, keeps the previous version`() {
+    fun `INV-AC-1235,one,unacknowledged,instance,aborts,RUL-005,,arms,none,,keeps,the,previous,version`() {
         val effective = uniqueDate()
         val v = approvedSchematron(effective)
         val previous = seedApproved(SCHEMATRON, "2026-01-01", "ARMED")

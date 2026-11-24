@@ -353,7 +353,7 @@ class SchemeHandlerBoundaryTest {
     private val inScope = EvaluationResult.ScopeVerdict.IN_SCOPE
 
     @Test
-    fun `INV-AC-2451 an A3PL supply to a customer with MES status is NA at rate 0 with the A3PL statement`() {
+    fun `INV-AC-2451,an,A3PL,supply,to,a,customer,with,MES,status,is,NA,at,rate,0,with,the,A3PL,statement`() {
         val r = eval(fixture(), "A3S", "A3PL", listOf("MES"))
         r.treated() shouldBe Triple("NA", "0", a3pl)
         r.scopeVerdict shouldBe inScope
@@ -362,13 +362,13 @@ class SchemeHandlerBoundaryTest {
     }
 
     @Test
-    fun `INV-AC-2452 an A3PL supply to a customer with no status or an ended status is RUL-011`() {
+    fun `INV-AC-2452,an,A3PL,supply,to,a,customer,with,no,status,or,an,ended,status,is,RUL-011`() {
         eval(fixture(), "A3S", "A3PL", null).blockedWith("RUL-011")
         eval(fixture(), "A3S", "A3PL", emptyList()).blockedWith("RUL-011")
     }
 
     @Test
-    fun `INV-AC-2453 an MES entity not electing A3PL codes the purchase TXNA at rate 0 without RUL-004`() {
+    fun `INV-AC-2453,an,MES,entity,not,electing,A3PL,codes,the,purchase,TXNA,at,rate,0,without,RUL-004`() {
         eval(fixture(), "A3P", "MES", listOf("A3PL"), purchase = true).treated() shouldBe Triple("TXNA", "0", a3pl)
     }
 
@@ -378,7 +378,7 @@ class SchemeHandlerBoundaryTest {
     }
 
     @Test
-    fun `INV-AC-2454 an AMCS supply is ZR and the customer's purchase ZP, each with the AMCS statement`() {
+    fun `INV-AC-2454,an,AMCS,supply,is,ZR,and,the,customer's,purchase,ZP,,each,with,the,AMCS,statement`() {
         eval(fixture(), "AMS", "AMCS", listOf("AMCS")).treated() shouldBe Triple("ZR", "0", amcs)
         eval(fixture(), "AMP", "AMCS", listOf("AMCS"), purchase = true).treated() shouldBe Triple("ZP", "0", amcs)
     }
@@ -389,7 +389,7 @@ class SchemeHandlerBoundaryTest {
     }
 
     @Test
-    fun `INV-AC-2455 an AMCS self-accounting line is RUL-004 and neither coded nor dropped`() {
+    fun `INV-AC-2455,an,AMCS,self-accounting,line,is,RUL-004,and,neither,coded,nor,dropped`() {
         eval(fixture(), "AMSELF", "AMCS").blockedWith("RUL-004")
     }
 
@@ -402,12 +402,12 @@ class SchemeHandlerBoundaryTest {
     }
 
     @Test
-    fun `INV-AC-2456 an ARCS supply with no written agreement recorded is NA at rate 0 with the ARCS statement`() {
+    fun `INV-AC-2456,an,ARCS,supply,with,no,written,agreement,recorded,is,NA,at,rate,0,with,the,ARCS,statement`() {
         eval(fixture(), "ARS", "ARCS", listOf("ARCS")).treated() shouldBe Triple("NA", "0", arcs)
     }
 
     @Test
-    fun `INV-AC-2457 the counterparty flag, the line override and both absent decide the ARCS treatment`() {
+    fun `INV-AC-2457,the,counterparty,flag,,the,line,override,and,both,absent,decide,the,ARCS,treatment`() {
         val arcsSchemes = listOf("ARCS")
         // counterparty flag set: the NA line contradicts it, the SR line is coded
         eval(fixture(), "ARS", "ARCS", arcsSchemes, counterpartyAgreed = true).blockedWith("RUL-011")
@@ -476,7 +476,7 @@ class SchemeHandlerBoundaryTest {
     }
 
     @Test
-    fun `INV-AC-2458 an ACMT disregarded service is not submitted and a recipient-accounting line is RUL-004`() {
+    fun `INV-AC-2458,an,ACMT,disregarded,service,is,not,submitted,and,a,recipient-accounting,line,is,RUL-004`() {
         val acmt = eval(fixture(), "ACSVC", "ACMT")
         acmt.scopeVerdict shouldBe EvaluationResult.ScopeVerdict.OUT_OF_SCOPE
         acmt.code shouldBe null
@@ -515,7 +515,7 @@ class SchemeHandlerBoundaryTest {
     }
 
     @Test
-    fun `INV-AC-2460 a Cash Accounting purchase and an AMCS tag without election both block with RUL-004`() {
+    fun `INV-AC-2460,a,Cash,Accounting,purchase,and,an,AMCS,tag,without,election,both,block,with,RUL-004`() {
         eval(fixture(), "CAP", "CASH_ACCOUNTING", purchase = true).blockedWith("RUL-004")
         val other = eval(fixture(), "AMS", "ARCS", listOf("AMCS"))
         other.blockedWith("RUL-004")
@@ -544,7 +544,7 @@ class SchemeHandlerBoundaryTest {
     }
 
     @Test
-    fun `INV-AC-2449 an MES entity's local sale is SR at the prevailing rate with no scheme data`() {
+    fun `INV-AC-2449,an,MES,entity's,local,sale,is,SR,at,the,prevailing,rate,with,no,scheme,data`() {
         val r = eval(fixture(), "MESS", "MES")
         r.categoryCode shouldBe "SR"
         r.rate?.toPlainString() shouldBe "9"
@@ -566,7 +566,7 @@ class SchemeHandlerBoundaryTest {
     private val imports = listOf("IGDSIMP" to "IGDS", "MEIMP" to "ME", "IMIMP" to "IM")
 
     @Test
-    fun `INV-AC-2448 an import mapped to IGDS, ME or IM is EXCLUDED_TXN with VP-21 off or absent`() {
+    fun `INV-AC-2448,an,import,mapped,to,IGDS,,ME,or,IM,is,EXCLUDED_TXN,with,VP-21,off,or,absent`() {
         imports.forEach { (internal, iras) ->
             val absent = eval(fixture(), internal, "IGDS", purchase = true)
             val off = fixture().also { vp21(it, "OFF") }.let { eval(it, internal, "IGDS", purchase = true) }

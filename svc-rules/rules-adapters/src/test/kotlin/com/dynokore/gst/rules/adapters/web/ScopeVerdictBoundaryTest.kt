@@ -281,7 +281,7 @@ class ScopeVerdictBoundaryTest {
     }
 
     @Test
-    fun `INV-AC-513 INV-AC-523 a DS supply line is EXCLUDED_TXN and the line is still coded, not blocked`() {
+    fun `INV-AC-513,INV-AC-523,a,DS,supply,line,is,EXCLUDED_TXN,and,the,line,is,still,coded,,not,blocked`() {
         val answer = evaluate(fixture().also { profile(it) }, "DS")
         answer.scopeVerdict shouldBe EvaluationResult.ScopeVerdict.EXCLUDED_TXN
         answer.categoryCode shouldBe "DS"
@@ -290,13 +290,13 @@ class ScopeVerdictBoundaryTest {
     }
 
     @Test
-    fun `INV-AC-514 INV-REQ-496 an SRRC line is EXCLUDED_TXN`() {
+    fun `INV-AC-514,INV-REQ-496,an,SRRC,line,is,EXCLUDED_TXN`() {
         evaluate(fixture().also { profile(it) }, "SRRC", extra = purchase).pair() shouldBe
             (EvaluationResult.ScopeVerdict.EXCLUDED_TXN to "SRRC")
     }
 
     @Test
-    fun `INV-AC-388 an unclaimed standard-rated purchase is OUT_OF_SCOPE and a claimed one IN_SCOPE`() {
+    fun `INV-AC-388,an,unclaimed,standard-rated,purchase,is,OUT_OF_SCOPE,and,a,claimed,one,IN_SCOPE`() {
         val f = fixture().also { profile(it) }
         evaluate(f, "OP", extra = purchase + ""","inputTaxClaimedNonZero":false""").scopeVerdict shouldBe
             EvaluationResult.ScopeVerdict.OUT_OF_SCOPE
@@ -330,7 +330,7 @@ class ScopeVerdictBoundaryTest {
     // ---- voluntary over-submission ----
 
     @Test
-    fun `INV-AC-396 INV-AC-384 INV-AC-2268 an OS line is OUT_OF_SCOPE by default, SUBMITTABLE with VP-21 ON`() {
+    fun `INV-AC-396,INV-AC-384,INV-AC-2268,an,OS,line,is,OUT_OF_SCOPE,by,default,,SUBMITTABLE,with,VP-21,ON`() {
         val (off, on) = both("OS")
         off.pair() shouldBe (EvaluationResult.ScopeVerdict.OUT_OF_SCOPE to "OS")
         on.pair() shouldBe (EvaluationResult.ScopeVerdict.SUBMITTABLE to "OS")
@@ -410,7 +410,7 @@ class ScopeVerdictBoundaryTest {
     // ---- intra-group ----
 
     @Test
-    fun `INV-AC-2783 INV-AC-761 sameGroup true with an SR line carries the warning, absent request key gives none`() {
+    fun `INV-AC-2783,INV-AC-761,sameGroup,true,with,an,SR,line,carries,the,warning,,absent,request,key,gives,none`() {
         val f = fixture().also { profile(it) }
         val flagged = evaluate(f, "SR", extra = ""","sameGroup":true""")
         flagged.scopeVerdict shouldBe EvaluationResult.ScopeVerdict.IN_SCOPE

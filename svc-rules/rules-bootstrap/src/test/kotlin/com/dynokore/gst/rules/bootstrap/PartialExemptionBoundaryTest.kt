@@ -228,7 +228,7 @@ class PartialExemptionBoundaryTest(
     }
 
     @Test
-    fun `INV-AC-398 a partially exempt purchase with input tax not claimed is IN_SCOPE and keeps TX-RE`() {
+    fun `INV-AC-398,a,partially,exempt,purchase,with,input,tax,not,claimed,is,IN_SCOPE,and,keeps,TX-RE`() {
         val answer = evaluate(entity(exempt), "RE", extra = PURCHASE + UNCLAIMED)
         answer.text("scopeVerdict") shouldBe IN_SCOPE
         answer.text("categoryCode") shouldBe "TX-RE"
@@ -299,7 +299,7 @@ class PartialExemptionBoundaryTest(
     }
 
     @Test
-    fun `INV-AC-399 with the recorded election a partially exempt TX-N33 purchase is OUT_OF_SCOPE`() {
+    fun `INV-AC-399,with,the,recorded,election,a,partially,exempt,TX-N33,purchase,is,OUT_OF_SCOPE`() {
         val answer =
             evaluate(
                 entity(exempt, "exemptPurchaseCodes" to "TX-N33", "exemptPurchaseBasis" to "exempt supplies"),
@@ -346,7 +346,7 @@ class PartialExemptionBoundaryTest(
     }
 
     @Test
-    fun `INV-AC-393 claimable-portion mode submits a mixed-use purchase as TX with no amount in the answer`() {
+    fun `INV-AC-393,claimable-portion,mode,submits,a,mixed-use,purchase,as,TX,with,no,amount,in,the,answer`() {
         val both = PURCHASE + ""","apportionmentMode":"CLAIMABLE_PORTION","mixedUse":"CLAIMABLE_PORTION""""
         val answer = evaluate(entity(), "MIXED", extra = both)
         answer.text("scopeVerdict") shouldBe IN_SCOPE
@@ -395,7 +395,7 @@ class PartialExemptionBoundaryTest(
     }
 
     @Test
-    fun `INV-AC-392 a TX-RE purchase keeps its code and verdict across a period end, no period property`() {
+    fun `INV-AC-392,a,TX-RE,purchase,keeps,its,code,and,verdict,across,a,period,end,,no,period,property`() {
         val e = entity(exempt)
         val inside = evaluate(e, "RE", date = "2026-12-31")
         val after = evaluate(e, "RE", date = "2027-01-01")

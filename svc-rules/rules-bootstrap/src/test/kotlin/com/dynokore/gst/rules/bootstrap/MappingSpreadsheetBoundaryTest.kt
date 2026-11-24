@@ -528,7 +528,7 @@ class MappingSpreadsheetBoundaryTest(
 
     @Test
     @Suppress("LongMethod") // one scenario: export, edit three rows, re-import, compare
-    fun `INV-AC-844 an exported pack re-imports as a draft with three changed rows and nothing active`() {
+    fun `INV-AC-844,an,exported,pack,re-imports,as,a,draft,with,three,changed,rows,and,nothing,active`() {
         val source = draft("rt-${UUID.randomUUID().toString().take(6)}")
         val codes = (1..6).map { "T$it" }
         codes.forEach { ok(mapCode(source, it, "SR", if (it == "T6") "SECONDARY" else "PRIMARY"), 201) }

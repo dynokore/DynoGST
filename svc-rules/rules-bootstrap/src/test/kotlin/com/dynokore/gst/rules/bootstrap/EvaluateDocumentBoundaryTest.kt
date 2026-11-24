@@ -311,7 +311,7 @@ class EvaluateDocumentBoundaryTest(
             ?.asString()
 
     @Test
-    fun `INV-AC-395 a back-dated invoice is coded under the mapping version in force on its transaction date`() {
+    fun `INV-AC-395,a,back-dated,invoice,is,coded,under,the,mapping,version,in,force,on,its,transaction,date`() {
         val before = evaluate("CHG", "2026-09-15")
         before.text("categoryCode") shouldBe "SR"
         before.version("MAPPING") shouldBe "m1"
@@ -481,7 +481,7 @@ class EvaluateDocumentBoundaryTest(
     }
 
     @Test
-    fun `INV-AC-2430 a mapping entry outside the catalogue is RUL-009 at sign-off and passes once corrected`() {
+    fun `INV-AC-2430,a,mapping,entry,outside,the,catalogue,is,RUL-009,at,sign-off,and,passes,once,corrected`() {
         val catalogue =
             tenants.bind(TENANT_A, "boundary-test") {
                 tx.inTransaction { reader.catalogueAt(TENANT_A, TransactionDate(LocalDate.parse("2026-09-15"))) }

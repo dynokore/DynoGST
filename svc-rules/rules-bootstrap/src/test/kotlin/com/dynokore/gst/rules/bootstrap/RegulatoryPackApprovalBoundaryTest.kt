@@ -247,7 +247,7 @@ class RegulatoryPackApprovalBoundaryTest(
     }
 
     @Test
-    fun `INV-AC-536 a new pack version passes the dry run and the approval and no service image or context changes`() {
+    fun `INV-AC-536,a,new,pack,version,passes,the,dry,run,and,the,approval,and,no,service,image,or,context,changes`() {
         val version = seed()
         addDryRun(version)
         val before = context.getBeanDefinitionNames().toList()
