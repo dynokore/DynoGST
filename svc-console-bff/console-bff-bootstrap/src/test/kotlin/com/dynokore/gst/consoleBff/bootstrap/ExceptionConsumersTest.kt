@@ -230,6 +230,9 @@ class ExceptionConsumersTest {
                 "com.dynokore.gst.tenancy.PeriodRecordsChanged.v1",
                 "com.dynokore.gst.payload.PayloadRejected.v1",
                 "com.dynokore.gst.submission.SubmissionFailed.v1",
+                "com.dynokore.gst.canonical.CanonicalVersionCreated.v1",
+                "com.dynokore.gst.submission.SubmissionDespatched.v1",
+                "com.dynokore.gst.submission.SubmissionAcknowledged.v1",
             )
     }
 
@@ -247,7 +250,8 @@ class ExceptionConsumersTest {
     fun `INV-AC-21028 the replay dispatch reaches one handler by type and refuses any other type`(
         @TempDir dir: Path,
     ) = run(dir) {
-        context.getBeansOfType(ReplayDelivery::class.java).keys shouldBe setOf("consoleBffReplayDelivery")
+        context.getBeansOfType(ReplayDelivery::class.java).keys shouldBe
+            setOf("consoleBffReplayDelivery", "documentIndexReplayDelivery")
         val calls = mutableListOf<String>()
 
         fun fake(name: String) =

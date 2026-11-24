@@ -54,6 +54,15 @@ object ConsoleEvents {
     const val SUBMISSION_FAILED_TYPE = "com.dynokore.gst.submission.SubmissionFailed.v1"
     const val SUBMISSION_FAILED_TOPIC = "gst.submission.submission-failed.v1"
 
+    const val CANONICAL_VERSION_CREATED_TYPE = "com.dynokore.gst.canonical.CanonicalVersionCreated.v1"
+    const val CANONICAL_VERSION_CREATED_TOPIC = "gst.canonical.canonical-version-created.v1"
+
+    const val SUBMISSION_DESPATCHED_TYPE = "com.dynokore.gst.submission.SubmissionDespatched.v1"
+    const val SUBMISSION_DESPATCHED_TOPIC = "gst.submission.submission-despatched.v1"
+
+    const val SUBMISSION_ACKNOWLEDGED_TYPE = "com.dynokore.gst.submission.SubmissionAcknowledged.v1"
+    const val SUBMISSION_ACKNOWLEDGED_TOPIC = "gst.submission.submission-acknowledged.v1"
+
     val consumed: List<CatalogueEntry> =
         listOf(
             Triple(DOCUMENT_HELD_TYPE, DOCUMENT_HELD_TOPIC, CANONICAL),
@@ -82,6 +91,30 @@ object ConsoleEvents {
             CatalogueEntry(
                 SUBMISSION_FAILED_TYPE,
                 SUBMISSION_FAILED_TOPIC,
+                setOf(SUBMISSION),
+                contentTopic = false,
+                recordTopic = false,
+                retainedWhileResolvable = false,
+            ) +
+            CatalogueEntry(
+                CANONICAL_VERSION_CREATED_TYPE,
+                CANONICAL_VERSION_CREATED_TOPIC,
+                setOf(CANONICAL),
+                contentTopic = true,
+                recordTopic = false,
+                retainedWhileResolvable = false,
+            ) +
+            CatalogueEntry(
+                SUBMISSION_DESPATCHED_TYPE,
+                SUBMISSION_DESPATCHED_TOPIC,
+                setOf(SUBMISSION),
+                contentTopic = false,
+                recordTopic = false,
+                retainedWhileResolvable = false,
+            ) +
+            CatalogueEntry(
+                SUBMISSION_ACKNOWLEDGED_TYPE,
+                SUBMISSION_ACKNOWLEDGED_TOPIC,
                 setOf(SUBMISSION),
                 contentTopic = false,
                 recordTopic = false,
