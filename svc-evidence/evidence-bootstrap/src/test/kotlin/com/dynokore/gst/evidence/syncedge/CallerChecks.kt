@@ -164,6 +164,8 @@ class CallerChecks(
                 // INV-T-25920: the same token holds no audit-pack.export key, so both audit-pack operations refuse it
                 "POST /internal/v1/evidence/entities/{entityRef}/periods/{periodRef}/audit-packs" to FORBIDDEN,
                 "GET /internal/v1/evidence/entities/{entityRef}/periods/{periodRef}/audit-packs/{packId}" to FORBIDDEN,
+                // INV-T-27618: the same token holds no rendition-evidence.view key, so the handler refuses it
+                "GET /internal/v1/evidence/entities/{entityRef}/rendition-sample-checks" to FORBIDDEN,
             )
         private const val FORBIDDEN = 403
         private const val NOT_FOUND = 404

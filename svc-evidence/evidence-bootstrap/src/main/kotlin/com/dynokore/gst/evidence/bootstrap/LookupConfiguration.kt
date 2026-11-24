@@ -91,6 +91,7 @@ class LookupConfiguration {
     fun sampleCheckCursors(secrets: SecretStore): SampleCheckCursors = SampleCheckCursor(secrets)
 
     @Bean
+    @Suppress("LongParameterList") // the replica, the store with its transaction, the cursor and the clock
     fun listRenditionSampleChecks(
         replica: AuthorityReplica,
         dsl: DSLContext,

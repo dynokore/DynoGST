@@ -169,7 +169,10 @@ class ListRenditionSampleChecksHttpTest {
             Instant.parse("2026-11-01T00:00:00Z")
         OffsetDateTime.parse(items.get(1).get("recordedAt").asString()).toInstant() shouldBe
             Instant.parse("2026-11-02T00:00:00.123456Z")
-        answer.body.get("nextCursor").asString().isNotBlank() shouldBe true
+        answer.body
+            .get("nextCursor")
+            .asString()
+            .isNotBlank() shouldBe true
     }
 
     @Test
@@ -180,7 +183,11 @@ class ListRenditionSampleChecksHttpTest {
         val second = get("E1", t, query = "?limit=2&cursor=$cursor")
         second.status shouldBe 200
         second.body.get("items").size() shouldBe 1
-        second.body.get("items").get(0).get("reference").asString() shouldBe "s-3"
+        second.body
+            .get("items")
+            .get(0)
+            .get("reference")
+            .asString() shouldBe "s-3"
         second.body.has("nextCursor") shouldBe false
     }
 
