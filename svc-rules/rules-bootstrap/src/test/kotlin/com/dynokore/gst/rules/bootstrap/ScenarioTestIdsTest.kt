@@ -137,11 +137,7 @@ class ScenarioTestIdsTest {
         val spaced = "INV-AC-2451 an A3PL supply"
         assertEquals(
             listOf("$cls#$spaced holds a whitespace character"),
-            violations(listOf(goodKey), cls, spaced, mapOf(spaced to true)).filter { "whitespace" in it },
-        )
-        assertEquals(
-            1,
-            violations(listOf(goodKey), cls, spaced, mapOf(spaced to true)).size,
+            violations(listOf(goodKey), cls, spaced, mapOf(spaced to true)),
         )
     }
 
@@ -168,9 +164,10 @@ class ScenarioTestIdsTest {
 
     @Test
     fun `INV-AC-28282,a,tuple,naming,an,absent,method,or,class,is,the,one,violation`() {
+        val absent = "$goodKey,absent"
         assertEquals(
-            listOf("$cls declares no method named 'absent'"),
-            violations(listOf(goodKey), cls, "absent", mapOf(good to true)).filter { "declares no method" in it },
+            listOf("$cls declares no method named '$absent'"),
+            violations(listOf(goodKey), cls, absent, mapOf(good to true)),
         )
         assertEquals(
             listOf("$cls is not a class of this module"),
