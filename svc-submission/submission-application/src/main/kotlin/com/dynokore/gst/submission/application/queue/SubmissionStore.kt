@@ -58,7 +58,9 @@ interface SubmissionStore {
 
     /**
      * Runs `UPDATE submission SET next_attempt_at = NULL WHERE state = 'RETRY' AND next_attempt_at IS NOT NULL AND
-     * next_attempt_at <= now RETURNING doc_uuid, version` and returns the (Doc UUID, version) pairs.
+     * next_attempt_at <= now AND submission_type NOT IN (the kinds for which [isOnScheduledPath] is false) RETURNING
+     * doc_uuid, version` and returns the (Doc UUID, version) pairs. A row of a refused kind (Type 1A, INV-REQ-74), or
+     * with no submission type, is not updated and not returned: it keeps its `next_attempt_at`.
      */
     fun clearDueRetries(
         tenant: TenantId,

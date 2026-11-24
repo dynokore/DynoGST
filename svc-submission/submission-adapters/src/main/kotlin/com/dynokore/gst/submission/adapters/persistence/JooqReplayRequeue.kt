@@ -3,6 +3,7 @@ package com.dynokore.gst.submission.adapters.persistence
 import com.dynokore.gst.submission.adapters.persistence.jooq.tables.Submission
 import com.dynokore.gst.submission.application.queue.InFlightBreach
 import com.dynokore.gst.submission.application.queue.InFlightStore
+import com.dynokore.gst.submission.application.queue.isOnScheduledPath
 import com.dynokore.gst.submission.application.replay.ReplayRequeue
 import com.dynokore.gst.submission.application.replay.RequeueOutcome
 import com.dynokore.gst.submission.domain.ordering.InFlight
@@ -54,10 +55,15 @@ class JooqReplayRequeue(
     ): RequeueOutcome =
         runner.inTransaction {
             val rows = versions.lockVersions(tenant, docUuid)
-            val state =
-                checkNotNull(rows.firstOrNull { it.version == version }?.state) {
+            val row =
+                checkNotNull(rows.firstOrNull { it.version == version }) {
                     "submission $docUuid version $version does not exist"
                 }
+            val state = row.state
+            val kind = row.submissionType
+            check(isOnScheduledPath(kind)) {
+                "replay of $docUuid version $version: submission type ${kind.name} is not on the scheduled path"
+            }
             when (val planned = RetryPlanner.onReplay(docUuid, version, state)) {
                 is ReplayResult.Unchanged -> {
                     RequeueOutcome.ALREADY_QUEUED

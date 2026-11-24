@@ -111,7 +111,7 @@ class SubmissionQueue(
         val doc = UUID.fromString(docUuid).toString()
         return transactions.inTransaction {
             val rows = versions.lockVersions(tenants.current(), doc)
-            val next = rows.firstOrNull { it.state == LifecycleState.READY && isScheduled(it.submissionType) }
+            val next = rows.firstOrNull { it.state == LifecycleState.READY && isOnScheduledPath(it.submissionType) }
             if (next == null || rows.any { InFlight.isInFlight(it.state) }) {
                 ReleaseResult.NothingToRelease
             } else {
@@ -134,18 +134,13 @@ class SubmissionQueue(
         rows: List<VersionState>,
     ): EnqueueResult {
         val row = rows.firstOrNull { it.version == version } ?: throw VersionNotReady(doc, version)
-        if (!isScheduled(row.submissionType)) return EnqueueResult.NotScheduled
+        if (!isOnScheduledPath(row.submissionType)) return EnqueueResult.NotScheduled
         if (store.moveReadyToQueued(tenants.current(), doc, version) != 1) throw VersionNotReady(doc, version)
         queue.enqueue(QueueEntry(partitionKey = doc, lane = lane, payloadJson = itemPayload(doc, version)))
         return EnqueueResult.Queued
     }
 
     private companion object {
-        /** True when the scheduled path takes the kind; Type 1A (and any undecided kind) is refused (INV-REQ-74). */
-        fun isScheduled(kind: SubmissionKind): Boolean =
-            ScheduledPathEligibility.decide(TypeDecision.Decided(SubmissionType.valueOf(kind.name))) is
-                ScheduleEligibility.Eligible
-
         /** The JSON object with exactly the members `docUuid` and `version` (a UUID text holds nothing to escape). */
         fun itemPayload(
             docUuid: String,
@@ -153,3 +148,11 @@ class SubmissionQueue(
         ): String = """{"docUuid":"$docUuid","version":$version}"""
     }
 }
+
+/**
+ * True when the scheduled path takes the kind; Type 1A (and any undecided kind) is refused (INV-REQ-74). The one
+ * predicate of the Type 1A guard: the enqueue funnel, the retry due-scan and the replay requeue all apply it.
+ */
+fun isOnScheduledPath(kind: SubmissionKind): Boolean =
+    ScheduledPathEligibility.decide(TypeDecision.Decided(SubmissionType.valueOf(kind.name))) is
+        ScheduleEligibility.Eligible

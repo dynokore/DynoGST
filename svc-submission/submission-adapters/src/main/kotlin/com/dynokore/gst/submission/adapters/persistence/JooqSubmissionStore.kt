@@ -11,6 +11,8 @@ import com.dynokore.gst.submission.application.queue.NewReadySubmission
 import com.dynokore.gst.submission.application.queue.OutcomeFacts
 import com.dynokore.gst.submission.application.queue.RetrySchedule
 import com.dynokore.gst.submission.application.queue.SubmissionStore
+import com.dynokore.gst.submission.application.queue.isOnScheduledPath
+import com.dynokore.gst.submission.domain.listing.SubmissionKind
 import com.dynokore.gst.submission.domain.ordering.InFlight
 import com.dynokore.gst.submission.domain.ordering.LifecycleState
 import com.dynokore.platform.tenancykernel.TenantId
@@ -261,6 +263,7 @@ class JooqSubmissionStore(
             .and(Submission.SUBMISSION_.STATE.eq(LifecycleState.RETRY.name))
             .and(Submission.SUBMISSION_.NEXT_ATTEMPT_AT.isNotNull)
             .and(Submission.SUBMISSION_.NEXT_ATTEMPT_AT.le(now.atOffset(ZoneOffset.UTC)))
+            .and(Submission.SUBMISSION_.SUBMISSION_TYPE.notIn(REFUSED_KINDS))
             .returning(Submission.SUBMISSION_.DOC_UUID, Submission.SUBMISSION_.VERSION)
             .fetch()
             .map { checkNotNull(it.docUuid) to checkNotNull(it.version) }
@@ -283,6 +286,9 @@ class JooqSubmissionStore(
 
     private companion object {
         const val UNIQUE_VIOLATION = "23505"
+
+        /** The names of the kinds the scheduled path refuses, computed from the one predicate (INV-REQ-74). */
+        val REFUSED_KINDS: List<String> = SubmissionKind.entries.filterNot(::isOnScheduledPath).map { it.name }
 
         /** The constraint of a unique violation (23505), from the driver's structured field, not the message. */
         fun violatedConstraint(e: Throwable): String? =
