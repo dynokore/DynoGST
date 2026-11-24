@@ -2,6 +2,8 @@ package com.dynokore.gst.notification.bootstrap
 
 import com.dynokore.gst.notification.adapters.delivery.HttpsMailApiDeliveryProperties
 import com.dynokore.gst.notification.adapters.delivery.HttpsMailApiMessageDelivery
+import com.dynokore.gst.notification.adapters.delivery.HttpsSmsGatewayDeliveryProperties
+import com.dynokore.gst.notification.adapters.delivery.HttpsSmsGatewayMessageDelivery
 import com.dynokore.gst.notification.adapters.delivery.SmtpDeliveryProperties
 import com.dynokore.gst.notification.adapters.delivery.SmtpMessageDelivery
 import com.dynokore.platform.serviceruntime.binding.MessageDelivery
@@ -25,6 +27,12 @@ import org.springframework.core.env.Environment
  * without the endpoint also stop the start, naming the endpoint key. Exactly one EMAIL
  * implementation may be configured: the endpoint key and the SMTP host key together stop the start before any
  * delivery bean is built, naming the two keys and no value (fail closed on an ambiguous binding).
+ *
+ * The SMS gateway adapter is bound to the SMS channel the same way, only when
+ * `gst.message-delivery.sms.gateway.endpoint-url` is set; then every other key of its set is required (a missing or
+ * malformed one, including an endpoint that is not https, stops the start naming the key only); other SMS keys without
+ * the endpoint also stop the start, naming the endpoint key. With no SMS key the installation has no SMS channel
+ * (INV-REQ-817 behavior 4) and no default exists in code.
  */
 @Configuration(proxyBeanMethods = false)
 class MessageDeliveryConfiguration {
@@ -50,6 +58,33 @@ class MessageDeliveryConfiguration {
     }
 
     @Bean
+    @ConditionalOnProperty(name = [HttpsSmsGatewayDeliveryProperties.ENDPOINT_URL])
+    fun smsMessageDelivery(
+        environment: Environment,
+        secrets: SecretStore,
+    ): MessageDelivery {
+        val properties = HttpsSmsGatewayDeliveryProperties.from(environment::getProperty)
+        return HttpsSmsGatewayMessageDelivery(
+            properties,
+            HttpsSmsGatewayMessageDelivery.productionClient(properties),
+            secrets,
+        )
+    }
+
+    @Bean
+    fun smsKeySetCheck(environment: Environment): SmsKeySetCheck {
+        val others =
+            SMS_KEYS.filter {
+                it != HttpsSmsGatewayDeliveryProperties.ENDPOINT_URL &&
+                    environment.containsProperty(it)
+            }
+        check(environment.containsProperty(HttpsSmsGatewayDeliveryProperties.ENDPOINT_URL) || others.isEmpty()) {
+            "missing configuration key ${HttpsSmsGatewayDeliveryProperties.ENDPOINT_URL}"
+        }
+        return SmsKeySetCheck
+    }
+
+    @Bean
     fun smtpKeySetCheck(environment: Environment): SmtpKeySetCheck {
         val others = KEYS.filter { it != SmtpDeliveryProperties.HOST && environment.containsProperty(it) }
         check(environment.containsProperty(SmtpDeliveryProperties.HOST) || others.isEmpty()) {
@@ -70,6 +105,9 @@ class MessageDeliveryConfiguration {
         }
         return MailApiKeySetCheck
     }
+
+    /** Marker of a passed check; the bean exists only so that the check runs at start. */
+    object SmsKeySetCheck
 
     /** Marker of a passed check; the bean exists only so that the check runs at start. */
     object MailApiKeySetCheck
@@ -93,6 +131,16 @@ class MessageDeliveryConfiguration {
                         "${HttpsMailApiDeliveryProperties.ENDPOINT_URL} and ${SmtpDeliveryProperties.HOST} are both set"
                 }
             }
+
+        private val SMS_KEYS =
+            listOf(
+                HttpsSmsGatewayDeliveryProperties.ENDPOINT_URL,
+                HttpsSmsGatewayDeliveryProperties.SENDER_ID,
+                HttpsSmsGatewayDeliveryProperties.CREDENTIAL_SECRET_REF,
+                HttpsSmsGatewayDeliveryProperties.CONNECT_TIMEOUT_MS,
+                HttpsSmsGatewayDeliveryProperties.REQUEST_TIMEOUT_MS,
+                HttpsSmsGatewayDeliveryProperties.STATUS_TABLE_SIZE,
+            )
 
         private val API_KEYS =
             listOf(
