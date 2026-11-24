@@ -48,15 +48,12 @@ import java.time.Clock
  * The seven inbox consumers of the document index (INV-REQ-1037, INV-AC-26810): one `JdbcInboxConsumer` per topic over
  * the index handlers and store, in schema `console_bff`, under [INDEX_CONSUMER], a name distinct from the consumer name
  * of the exception consumers, so each topic keeps one offset row per consumer and the exception queue still receives
- * its events. The replay delivery of the index is its own bean with its own dispatch (one per consumer). The class
- * has one bean per element of the composition root (seven of each kind), hence the suppression.
+ * its events. The replay delivery of the index is its own bean with its own dispatch (one per consumer).
  */
-@Suppress("TooManyFunctions")
 @Configuration(proxyBeanMethods = false)
 class DocumentIndexConsumerConfiguration {
     @Bean
-    fun indexCanonicalVersionSubscription(): ConsumerSubscription =
-        subscription(ConsoleEvents.CANONICAL_VERSION_CREATED_TOPIC)
+    fun indexCanonicalVersionSubscription(): ConsumerSubscription = subscription(ConsoleEvents.CANONICAL_VERSION_CREATED_TOPIC)
 
     @Bean
     fun indexDocumentHeldSubscription(): ConsumerSubscription = subscription(ConsoleEvents.DOCUMENT_HELD_TOPIC)
