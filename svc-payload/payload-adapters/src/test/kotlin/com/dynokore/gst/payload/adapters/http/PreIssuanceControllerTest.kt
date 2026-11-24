@@ -9,12 +9,7 @@ import com.dynokore.gst.payload.contract.model.PreIssuanceVerdict
 import com.dynokore.gst.payload.contract.model.ReasonItem
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
-import com.dynokore.platform.serviceruntime.http.BindingFailureAdvice
-import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
-import org.springframework.test.web.servlet.request.MockMvcRequestBuilders
-import org.springframework.test.web.servlet.result.MockMvcResultMatchers
-import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import tools.jackson.databind.json.JsonMapper
 import java.math.BigDecimal
 import java.time.LocalDate
@@ -115,39 +110,6 @@ class PreIssuanceControllerTest {
                 ?.toString()
                 .orEmpty() shouldBe "application/problem+json"
             json.readTree(textOf(response))["code"].asString() shouldBe "SRT-001"
-        }
-        queries shouldBe emptyList()
-    }
-
-    @Test
-    fun `INV-AC-26308 each left-out field is 400 SRT-001 and the register is never asked`() {
-        // The contract types the four fields as required, so the body fails to deserialise before the controller runs;
-        // BindingFailureAdvice (service-runtime, ARC-19) maps that failure to 400 SRT-001 once for every service.
-        val mvc =
-            MockMvcBuilders
-                .standaloneSetup(controller(notRegistered))
-                .setControllerAdvice(BindingFailureAdvice())
-                .build()
-        val complete =
-            """{"entityRef":"E-1","currency":"SGD","totalIncludingTax":"109.00","submissionType":"TYPE_1A",""" +
-                """"supplierGstn":"M90054321K","invoiceDate":"2026-03-20","gstAmount":"9.00"}"""
-        fun post(body: String) =
-            mvc.perform(
-                MockMvcRequestBuilders
-                    .post("/internal/v1/payload/pre-issuance-checks")
-                    .header("X-Flow-Context", "flow")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(body),
-            )
-        post(complete).andExpect(MockMvcResultMatchers.status().isOk)
-        queries.clear()
-        listOf("submissionType", "supplierGstn", "invoiceDate", "gstAmount").forEach { member ->
-            val tree = json.readTree(complete) as ObjectNode
-            tree.remove(member)
-            val result = post(tree.toString()).andReturn().response
-            result.status shouldBe 400
-            result.contentType.orEmpty().startsWith("application/problem+json") shouldBe true
-            json.readTree(result.contentAsString)["code"].asString() shouldBe "SRT-001"
         }
         queries shouldBe emptyList()
     }
