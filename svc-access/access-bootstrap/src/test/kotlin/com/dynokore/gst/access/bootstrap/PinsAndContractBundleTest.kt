@@ -127,9 +127,8 @@ class PinsAndContractBundleTest {
     @Test
     fun `INV-AC-24943 the pins follow INV-T-24946 and the staged reseal role equals the staged unlock role`() {
         val bundle = Regex("""(?m)^platformContractsBundle\s*=\s*"([^"]+)"""").find(toml)!!.groupValues[1]
-        // 8fa007d9 is the first bundle build that holds INV-T-26236 and descends from INV-T-24946 (f6b7b6e6);
-        // the ancestry check is shown in the merge request
-        assertThat(bundle).isEqualTo("0.0.0-dev+8fa007d9")
+        // c73ac521 carries issueFlowContext (INV-T-24982) and contains the merge commit f6b7b6e6 of INV-T-24946
+        assertThat(bundle).isEqualTo("0.0.0-dev+c73ac521")
         val catalogue = Regex("""(?m)^gstCatalogue\s*=\s*"([^"]+)"""").find(toml)!!.groupValues[1]
         assertThat(atLeast(parts(catalogue), parts("3.14.0"))).isTrue()
         // probes: a catalogue below fails; 3.9.0 is below 3.14.0 although a string compare says otherwise

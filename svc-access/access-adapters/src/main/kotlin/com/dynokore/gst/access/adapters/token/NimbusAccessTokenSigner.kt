@@ -29,35 +29,47 @@ import java.util.Locale
 class NimbusAccessTokenSigner(
     private val secrets: SecretStore,
 ) : AccessTokenSigner {
-    override fun open(): SigningSession {
-        val key =
-            try {
-                ECKey.parse(secrets.read(SecretRef(SIGNING_KEY_SECRET)).reveal())
-            } catch (_: Exception) {
-                throw SigningKeyUnavailable("the signing key secret is unreadable")
-            }
-        if (!key.isPrivate || key.curve != Curve.P_256) {
-            throw SigningKeyUnavailable("the signing key secret is not a P-256 private key")
-        }
-        return NimbusSigningSession(key)
-    }
+    override fun open(): SigningSession = NimbusSigningSession(readSigningKey(secrets))
 
     companion object {
         const val SIGNING_KEY_SECRET = "access/token-signing-key"
     }
 }
 
+/**
+ * Reads the one signing key of access-svc from the binding [NimbusAccessTokenSigner.SIGNING_KEY_SECRET]: it signs
+ * access tokens and flow contexts alike, so a service verifies both with the keys it already holds. Any read or parse
+ * failure, or a key that is not a P-256 private key, is [SigningKeyUnavailable] with a fixed text.
+ */
+internal fun readSigningKey(secrets: SecretStore): ECKey {
+    val key =
+        try {
+            ECKey.parse(secrets.read(SecretRef(NimbusAccessTokenSigner.SIGNING_KEY_SECRET)).reveal())
+        } catch (_: Exception) {
+            throw SigningKeyUnavailable("the signing key secret is unreadable")
+        }
+    if (!key.isPrivate || key.curve != Curve.P_256) {
+        throw SigningKeyUnavailable("the signing key secret is not a P-256 private key")
+    }
+    return key
+}
+
+/** The `kid` of a signing key: the first 16 hexadecimal characters of the SHA-256 of the DER public key. */
+internal fun keyIdOf(key: ECKey): String =
+    MessageDigest
+        .getInstance("SHA-256")
+        .digest(key.toECPublicKey().encoded)
+        .take(KID_BYTES)
+        .joinToString("") { "%02x".format(Locale.ROOT, it) }
+
+private const val KID_BYTES = 8
+
 private class NimbusSigningSession(
     private val key: ECKey,
 ) : SigningSession {
     private val der: ByteArray = key.toECPublicKey().encoded
 
-    override val kid: String =
-        MessageDigest
-            .getInstance("SHA-256")
-            .digest(der)
-            .take(KID_BYTES)
-            .joinToString("") { "%02x".format(Locale.ROOT, it) }
+    override val kid: String = keyIdOf(key)
     override val alg: String = JWSAlgorithm.ES256.name
     override val publicKey: String = Base64.getEncoder().encodeToString(der)
 
@@ -96,8 +108,4 @@ private class NimbusSigningSession(
     }
 
     override fun toString(): String = "SigningSession(kid=$kid, key=<redacted>)"
-
-    private companion object {
-        const val KID_BYTES = 8
-    }
 }

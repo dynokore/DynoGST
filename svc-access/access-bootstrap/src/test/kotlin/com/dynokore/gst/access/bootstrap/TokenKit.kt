@@ -6,6 +6,7 @@ import ch.qos.logback.core.read.ListAppender
 import com.dynokore.gst.access.adapters.http.AuthoriseController
 import com.dynokore.gst.access.adapters.http.AuthorityIncarnationOperation
 import com.dynokore.gst.access.adapters.http.GatewayCaller
+import com.dynokore.gst.access.adapters.http.IssueFlowContextOperation
 import com.dynokore.gst.access.application.authorise.AuthoriseGate
 import com.dynokore.gst.access.application.authorise.AuthorisePlatform
 import com.dynokore.gst.access.application.authorise.MachineAuthorise
@@ -44,6 +45,7 @@ class TokenKit(
             context.getBean(RevocationList::class.java),
             GatewayCaller { true },
             context.getBean(AuthorityIncarnationOperation::class.java),
+            context.getBean(IssueFlowContextOperation::class.java),
         )
 
     private val appender =

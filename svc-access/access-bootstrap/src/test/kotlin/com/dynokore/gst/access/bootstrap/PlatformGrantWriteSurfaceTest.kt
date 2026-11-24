@@ -231,6 +231,7 @@ class PlatformGrantWriteSurfaceTest {
                 "requestConsultantGrant" to false,
                 "decideConsultantGrant" to false,
                 "bumpAuthorityIncarnation" to false, // raises access.authority_incarnation, no role_grant row
+                "issueFlowContext" to false, // signs a flow context, stores nothing (INV-T-24991)
                 "provisionFirstAdministrator" to true, // ProvisionFirstAdministrator: a PENDING tenant.admin grant
                 "provisionInstallationFirstAdministrator" to true, // the same use case
                 "reissueFirstAdministratorInvitation" to false,

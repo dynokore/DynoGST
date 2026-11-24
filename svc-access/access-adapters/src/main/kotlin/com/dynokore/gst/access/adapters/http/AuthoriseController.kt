@@ -5,12 +5,17 @@ import com.dynokore.gst.access.application.authorise.AuthoriseOutcome
 import com.dynokore.gst.access.application.authorise.AuthorisePlatform
 import com.dynokore.gst.access.application.authorise.MachineAuthorise
 import com.dynokore.gst.access.application.authorise.MachineDecision
+import com.dynokore.gst.access.application.flowcontext.FlowEntityKind
+import com.dynokore.gst.access.application.flowcontext.FlowPrincipalKind
 import com.dynokore.gst.access.application.keys.RevocationList
 import com.dynokore.gst.access.application.keys.RevocationListOutcome
 import com.dynokore.gst.access.application.keys.VerificationKeys
 import com.dynokore.gst.access.contract.api.AuthoriseApi
 import com.dynokore.gst.access.contract.model.AuthoriseResponse
 import com.dynokore.gst.access.contract.model.AuthorityIncarnationResponse
+import com.dynokore.gst.access.contract.model.IssueFlowContextRequest
+import com.dynokore.gst.access.contract.model.IssueFlowContextRequestEntity
+import com.dynokore.gst.access.contract.model.IssueFlowContextResponse
 import com.dynokore.gst.access.contract.model.RevocationEntry
 import com.dynokore.gst.access.contract.model.RevocationListResponse
 import com.dynokore.gst.access.contract.model.VerificationKeysResponse
@@ -44,9 +49,26 @@ open class AuthoriseController(
     private val revocations: RevocationList,
     private val gateway: GatewayCaller,
     private val incarnation: AuthorityIncarnationOperation,
+    private val flowContext: IssueFlowContextOperation,
 ) : AuthoriseApi {
     override fun bumpAuthorityIncarnation(idempotencyKey: UUID): ResponseEntity<AuthorityIncarnationResponse> =
         incarnation.bump(idempotencyKey)
+
+    /**
+     * `issueFlowContext`: the generated enums become the application enums by one exhaustive `when` each, with no
+     * `else`, no `valueOf` and no default, so a member added to the contract does not compile (RFC 8725, closed
+     * vocabulary). The caller is not read here: [IssueFlowContextOperation] reads the verified calling service.
+     */
+    override fun issueFlowContext(
+        issueFlowContextRequest: IssueFlowContextRequest,
+    ): ResponseEntity<IssueFlowContextResponse> =
+        flowContext.issue(
+            tenant = issueFlowContextRequest.tenant,
+            entityKind = entityKindOf(issueFlowContextRequest.entity.kind),
+            entityRef = issueFlowContextRequest.entity.ref,
+            principalKind = principalKindOf(issueFlowContextRequest.principalKind),
+            flowId = issueFlowContextRequest.flowId,
+        )
 
     override fun authorise(
         principalRef: String,
@@ -197,3 +219,19 @@ open class AuthoriseController(
         const val BAD_PERMISSION = "BAD_PERMISSION"
     }
 }
+
+/** The generated enums become the application enums by one exhaustive `when` each: no `else`, no `valueOf`. */
+private fun entityKindOf(kind: IssueFlowContextRequestEntity.Kind): FlowEntityKind =
+    when (kind) {
+        IssueFlowContextRequestEntity.Kind.ENTITY -> FlowEntityKind.ENTITY
+        IssueFlowContextRequestEntity.Kind.TENANT_WIDE -> FlowEntityKind.TENANT_WIDE
+    }
+
+private fun principalKindOf(kind: IssueFlowContextRequest.PrincipalKind): FlowPrincipalKind =
+    when (kind) {
+        IssueFlowContextRequest.PrincipalKind.HUMAN -> FlowPrincipalKind.HUMAN
+        IssueFlowContextRequest.PrincipalKind.CONSENT_AGENT -> FlowPrincipalKind.CONSENT_AGENT
+        IssueFlowContextRequest.PrincipalKind.MACHINE -> FlowPrincipalKind.MACHINE
+        IssueFlowContextRequest.PrincipalKind.OPERATOR_SESSION -> FlowPrincipalKind.OPERATOR_SESSION
+        IssueFlowContextRequest.PrincipalKind.SIGNATORY_LINK -> FlowPrincipalKind.SIGNATORY_LINK
+    }

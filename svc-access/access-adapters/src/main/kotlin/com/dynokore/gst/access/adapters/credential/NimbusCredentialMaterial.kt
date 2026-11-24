@@ -1,5 +1,6 @@
 package com.dynokore.gst.access.adapters.credential
 
+import com.dynokore.gst.access.adapters.token.NimbusFlowContextSigner
 import com.dynokore.gst.access.application.principal.CredentialMaterial
 import com.dynokore.gst.access.domain.principal.Credential
 import com.dynokore.gst.access.domain.principal.CredentialMethod
@@ -72,7 +73,9 @@ class NimbusCredentialMaterial(
         at: Instant,
     ): Boolean {
         val jwt = SignedJWT.parse(proof)
-        val key = publicKeyOf(JWK.parse(jwkJson)) ?: return false
+        val key = publicKeyOf(JWK.parse(jwkJson))
+        // a flow context is never a proof (RFC 8725 section 3.11): the typ of another token kind is refused first
+        if (key == null || jwt.header.type?.type == NimbusFlowContextSigner.FLOW_CONTEXT_TYPE) return false
         val verifier = DefaultJWSVerifierFactory().createJWSVerifier(jwt.header, key)
         val claims = jwt.jwtClaimsSet
         val expires = claims.expirationTime?.toInstant()
