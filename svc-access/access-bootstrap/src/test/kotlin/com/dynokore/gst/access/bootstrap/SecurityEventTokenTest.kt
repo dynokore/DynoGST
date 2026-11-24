@@ -142,9 +142,7 @@ class SecurityEventTokenTest {
             assertThat(records).hasSize(1)
             assertRecord(records.single(), subject.ref, t)
             assertThat(records.single()).doesNotContain(subject.proof).doesNotContain(issued.accessToken!!)
-            assertThat(
-                t.logLines().joinToString("\n"),
-            ).doesNotContain(subject.proof).doesNotContain(issued.accessToken!!)
+            assertThat(t.logLines().joinToString("\n")).doesNotContain(subject.proof).doesNotContain(issued.accessToken!!)
         }
 
     @Test
