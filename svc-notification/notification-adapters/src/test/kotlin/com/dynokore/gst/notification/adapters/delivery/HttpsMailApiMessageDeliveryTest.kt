@@ -144,7 +144,7 @@ class HttpsMailApiMessageDeliveryTest {
         server.answer = 503
         failedReason(a) shouldBe "API_UNAVAILABLE"
         server.answer = 202
-        server.delayMs = (REQUEST_MS * 4).toLong()
+        server.delayMs = (REQUEST_MS * 2).toLong()
         failedReason(a) shouldBe "API_UNAVAILABLE"
         server.delayMs = 0
         server.requests.clear()
@@ -192,7 +192,7 @@ class HttpsMailApiMessageDeliveryTest {
             failedReason(a)
         }
         server.answer = 202
-        server.delayMs = (REQUEST_MS * 4).toLong()
+        server.delayMs = (REQUEST_MS * 2).toLong()
         failedReason(a)
         server.delayMs = 0
         failedReason(adapter(server.untrustedClientContext))
@@ -209,6 +209,6 @@ class HttpsMailApiMessageDeliveryTest {
 
     private companion object {
         const val CONNECT_MS = 2000
-        const val REQUEST_MS = 400
+        const val REQUEST_MS = 1500
     }
 }
