@@ -8,12 +8,14 @@ import com.dynokore.platform.tenancykernel.TenantContext
 import java.time.LocalDate
 
 /**
- * The members of an `EntityProfileChanged` event the consumer reads. [obligationStartDate] is null when no changed
- * attribute is named exactly `obligationStartDate`.
+ * The members of an `EntityProfileChanged` event the consumer reads. [obligationStartDate] and
+ * [migrationCutoverDate] are null when no changed attribute is named exactly `obligationStartDate` or
+ * `migrationCutoverDate`.
  */
 data class EntityProfileChangedData(
     val entityRef: String,
     val obligationStartDate: LocalDate?,
+    val migrationCutoverDate: LocalDate?,
     val effectiveDate: LocalDate,
 )
 
@@ -24,22 +26,25 @@ fun interface EntityProfileChangedDataReader {
 }
 
 /**
- * Keeps the obligation start date of an entity from `EntityProfileChanged` (INV-REQ-335, INV-T-22201). The latest
- * `effectiveDate` wins; an older or equal one, or an event without the attribute, is IGNORED. A malformed event is a
+ * Keeps the obligation start date (INV-REQ-335, INV-T-22201) and the migration cutover date (INV-REQ-1109,
+ * INV-T-28452) of an entity from `EntityProfileChanged`. Each is recorded independently; the latest `effectiveDate`
+ * wins, an older or equal one is not applied, and an event with neither attribute is IGNORED. A malformed event is a
  * [ContractViolation] and writes nothing. No message carries a field value.
  */
 class EntityProfileChangedHandler(
     private val tenants: TenantContext,
     private val reader: EntityProfileChangedDataReader,
     private val startDates: ObligationStartDates,
+    private val cutoverDates: MigrationCutoverDates,
 ) : EventHandler {
     override fun handle(event: Envelope): HandleOutcome {
         val data = reader.read(event.dataJson)
-        val startDate = data.obligationStartDate ?: return HandleOutcome.IGNORED
-        return if (startDates.record(tenants.current(), data.entityRef, startDate, data.effectiveDate)) {
-            HandleOutcome.APPLIED
-        } else {
-            HandleOutcome.IGNORED
-        }
+        val tenant = tenants.current()
+        val startApplied =
+            data.obligationStartDate?.let { startDates.record(tenant, data.entityRef, it, data.effectiveDate) } ?: false
+        val cutoverApplied =
+            data.migrationCutoverDate?.let { cutoverDates.record(tenant, data.entityRef, it, data.effectiveDate) }
+                ?: false
+        return if (startApplied || cutoverApplied) HandleOutcome.APPLIED else HandleOutcome.IGNORED
     }
 }

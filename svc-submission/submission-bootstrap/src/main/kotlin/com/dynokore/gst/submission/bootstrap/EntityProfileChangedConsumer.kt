@@ -1,6 +1,7 @@
 package com.dynokore.gst.submission.bootstrap
 
 import com.dynokore.gst.submission.adapters.events.JacksonEntityProfileChangedDataReader
+import com.dynokore.gst.submission.adapters.persistence.JooqMigrationCutoverDateStore
 import com.dynokore.gst.submission.adapters.persistence.JooqObligationStartDateStore
 import com.dynokore.gst.submission.application.startdate.EntityProfileChangedDataReader
 import com.dynokore.gst.submission.application.startdate.EntityProfileChangedHandler
@@ -39,11 +40,18 @@ class EntityProfileChangedConsumer {
     ): JooqObligationStartDateStore = JooqObligationStartDateStore(dsl, runner)
 
     @Bean
+    fun migrationCutoverDateStore(
+        dsl: DSLContext,
+        runner: TransactionRunner,
+    ): JooqMigrationCutoverDateStore = JooqMigrationCutoverDateStore(dsl, runner)
+
+    @Bean
     fun entityProfileChangedHandler(
         tenants: TenantContext,
         reader: EntityProfileChangedDataReader,
         store: JooqObligationStartDateStore,
-    ): EntityProfileChangedHandler = EntityProfileChangedHandler(tenants, reader, store)
+        cutoverStore: JooqMigrationCutoverDateStore,
+    ): EntityProfileChangedHandler = EntityProfileChangedHandler(tenants, reader, store, cutoverStore)
 
     @Bean
     @Suppress("LongParameterList")

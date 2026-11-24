@@ -12,8 +12,8 @@ import java.time.format.DateTimeParseException
 /**
  * [EntityProfileChangedDataReader] over Jackson. Reads `entityRef`, `effectiveDate` and, from the item of
  * `changedAttributes` whose `attribute` equals exactly `obligationStartDate` (the first if several), its `newValue`
- * as an ISO local date. A missing or malformed member is a [ContractViolation] whose message names the member,
- * never its value.
+ * as an ISO local date; `migrationCutoverDate` is read the same way. A missing or malformed member is a
+ * [ContractViolation] whose message names the member, never its value.
  */
 class JacksonEntityProfileChangedDataReader : EntityProfileChangedDataReader {
     private val mapper = ObjectMapper()
@@ -30,20 +30,27 @@ class JacksonEntityProfileChangedDataReader : EntityProfileChangedDataReader {
         }
         return EntityProfileChangedData(
             entityRef = data.text("entityRef"),
-            obligationStartDate = startDateOf(data),
+            obligationStartDate = dateAttributeOf(data, START_DATE),
+            migrationCutoverDate = dateAttributeOf(data, CUTOVER_DATE),
             effectiveDate = dateOf(data.text("effectiveDate"), "effectiveDate"),
         )
     }
 
-    private fun startDateOf(data: JsonNode): LocalDate? {
+    private fun dateAttributeOf(
+        data: JsonNode,
+        name: String,
+    ): LocalDate? {
         val changed = data.get("changedAttributes")
-        val item = if (changed != null && changed.isArray) changed.firstOrNull { isStartDate(it) } else null
+        val item = if (changed != null && changed.isArray) changed.firstOrNull { isAttribute(it, name) } else null
         return item?.let { dateOf(it.text("newValue"), "newValue") }
     }
 
-    private fun isStartDate(item: JsonNode): Boolean {
+    private fun isAttribute(
+        item: JsonNode,
+        name: String,
+    ): Boolean {
         val attribute = item.get("attribute")
-        return item.isObject && attribute != null && attribute.isString && attribute.asString() == ATTRIBUTE
+        return item.isObject && attribute != null && attribute.isString && attribute.asString() == name
     }
 
     private fun JsonNode.text(name: String): String {
@@ -65,6 +72,7 @@ class JacksonEntityProfileChangedDataReader : EntityProfileChangedDataReader {
         }
 
     private companion object {
-        const val ATTRIBUTE = "obligationStartDate"
+        const val START_DATE = "obligationStartDate"
+        const val CUTOVER_DATE = "migrationCutoverDate"
     }
 }

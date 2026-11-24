@@ -73,4 +73,37 @@ class JacksonEntityProfileChangedDataReaderTest {
     fun `INV-AC-22202 data that is not a JSON object is a ContractViolation`() {
         listOf("[]", "\"x\"", "{").forEach { shouldThrow<ContractViolation> { reader.read(it) } }
     }
+
+    @Test
+    fun `INV-AC-28451 the cutover date is read from the exact attribute and the first item wins`() {
+        val changed =
+            "[{\"attribute\":\"migrationCutoverDate\",\"newValue\":\"2026-03-01\"}," +
+                "{\"attribute\":\"migrationCutoverDate\",\"newValue\":\"2026-03-09\"}]"
+        val d = reader.read(json(changed = changed))
+        d.migrationCutoverDate shouldBe LocalDate.of(2026, 3, 1)
+        d.obligationStartDate shouldBe null
+        reader.read(json(attribute = "obligationStartDate")).migrationCutoverDate shouldBe null
+    }
+
+    @Test
+    fun `INV-AC-28451 a look-alike attribute name is not read as the cutover date`() {
+        listOf(
+            "migrationCutoverDates",
+            "MigrationCutoverDate",
+            "migrationcutoverdate",
+            "migrationCutoverDate ",
+        ).forEach {
+            reader.read(json(attribute = it)).migrationCutoverDate shouldBe null
+        }
+    }
+
+    @Test
+    fun `INV-AC-28451 a malformed cutover newValue is a ContractViolation naming the member and not the value`() {
+        listOf("\"SECRET-X\"", "null", "20260301", "\"\"").forEach {
+            val e =
+                shouldThrow<ContractViolation> { reader.read(json(attribute = "migrationCutoverDate", newValue = it)) }
+            e.message.orEmpty().contains("SECRET-X") shouldBe false
+            e.message.orEmpty().contains("newValue") shouldBe true
+        }
+    }
 }

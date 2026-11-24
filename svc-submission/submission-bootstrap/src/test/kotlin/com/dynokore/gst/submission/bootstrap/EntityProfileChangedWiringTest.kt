@@ -1,6 +1,8 @@
 package com.dynokore.gst.submission.bootstrap
 
+import com.dynokore.gst.submission.adapters.persistence.JooqMigrationCutoverDateStore
 import com.dynokore.gst.submission.adapters.persistence.JooqObligationStartDateStore
+import com.dynokore.gst.submission.application.startdate.MigrationCutoverDates
 import com.dynokore.gst.submission.application.startdate.ObligationStartDates
 import com.dynokore.platform.outboxandqueue.CatalogueEntry
 import com.dynokore.platform.outboxandqueue.ConsumerSubscription
@@ -80,6 +82,7 @@ class EntityProfileChangedWiringTest {
         PeriodRecordsConsumer.subscription().topic shouldBe "gst.tenancy.period-records-changed.v1"
         context.getBean("entityProfileChangedHandler").shouldBeInstanceOf<EventHandler>()
         context.getBean(JooqObligationStartDateStore::class.java).shouldBeInstanceOf<ObligationStartDates>()
+        context.getBean(JooqMigrationCutoverDateStore::class.java).shouldBeInstanceOf<MigrationCutoverDates>()
     }
 
     @Test
