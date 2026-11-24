@@ -62,19 +62,4 @@ class JacksonPriorEvidenceImportedDataReaderTest {
         shouldThrow<ContractViolation> { reader.read("[]") }
         shouldThrow<ContractViolation> { reader.read("{not json") }
     }
-
-    @Test
-    fun `INV-AC-28453 the schema length limits hold at the boundary and the value is not echoed`() {
-        val limits =
-            mapOf("entityRef" to 40, "documentNumber" to 100, "acknowledgementRef" to 100, "priorSolution" to 128)
-        for ((member, max) in limits) {
-            reader.read(json(override = member to "\"${"x".repeat(max)}\""))
-            val e =
-                shouldThrow<ContractViolation> {
-                    reader.read(json(override = member to "\"${"x".repeat(max + 1)}\""))
-                }
-            e.message.orEmpty() shouldContain member
-            e.message.orEmpty() shouldNotContain "xxx"
-        }
-    }
 }

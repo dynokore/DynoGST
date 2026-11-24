@@ -20,11 +20,11 @@ class JacksonPriorEvidenceImportedDataReader : PriorEvidenceImportedDataReader {
     override fun read(dataJson: String): PriorEvidenceImportedData {
         val data = parse(dataJson)
         return PriorEvidenceImportedData(
-            entityRef = data.text("entityRef", maxLength = 40),
-            documentNumber = data.text("documentNumber", maxLength = 100),
+            entityRef = data.text("entityRef"),
+            documentNumber = data.text("documentNumber"),
             transactionDate = dateOf(data.text("transactionDate")),
-            acknowledgementRef = data.text("acknowledgementRef", maxLength = 100),
-            priorSolution = data.text("priorSolution", maxLength = 128),
+            acknowledgementRef = data.text("acknowledgementRef"),
+            priorSolution = data.text("priorSolution"),
         )
     }
 
@@ -48,20 +48,13 @@ class JacksonPriorEvidenceImportedDataReader : PriorEvidenceImportedDataReader {
             throw ContractViolation("PriorSubmissionEvidenceImported transactionDate is not a date", e)
         }
 
-    private fun JsonNode.text(
-        name: String,
-        maxLength: Int = Int.MAX_VALUE,
-    ): String {
+    private fun JsonNode.text(name: String): String {
         val node = get(name)
         if (node == null || !node.isString || node.asString().isBlank()) {
             throw ContractViolation(
                 "PriorSubmissionEvidenceImported data member $name is missing or not a non-blank string",
             )
         }
-        val text = node.asString()
-        if (text.codePointCount(0, text.length) > maxLength) {
-            throw ContractViolation("PriorSubmissionEvidenceImported data member $name is too long")
-        }
-        return text
+        return node.asString()
     }
 }

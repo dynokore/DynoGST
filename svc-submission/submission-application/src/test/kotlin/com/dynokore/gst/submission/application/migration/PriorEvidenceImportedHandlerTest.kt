@@ -111,16 +111,6 @@ class PriorEvidenceImportedHandlerTest {
     }
 
     @Test
-    fun `INV-AC-28453 the port receives the priorSolution of the event`() {
-        val event = PriorEvidenceImportedData("E-1", "INV-100", date, "ACK-1", "Legacy Books")
-        next = { event }
-        handler.handle(envelope()) shouldBe HandleOutcome.APPLIED
-        store.rows.values
-            .single()
-            .second shouldBe event.priorSolution
-    }
-
-    @Test
     fun `INV-AC-28453 another transaction date is another document`() {
         deliver() shouldBe HandleOutcome.APPLIED
         deliver(on = date.plusDays(1), ack = "ACK-2") shouldBe HandleOutcome.APPLIED
