@@ -64,7 +64,7 @@ class ScopeRulesTest {
     ) = r.verdictOf(f)
 
     @Test
-    fun `INV-AC-404 INV-AC-386 INV-AC-400 the day before the obligation start is PRE_OBLIGATION`() {
+    fun `INV-AC-404,INV-AC-386,INV-AC-400,the,day,before,the,obligation,start,is,PRE_OBLIGATION`() {
         v(facts(Case(date = start.minusDays(1)))) shouldBe ScopeVerdict.PRE_OBLIGATION
     }
 
@@ -88,7 +88,7 @@ class ScopeRulesTest {
     }
 
     @Test
-    fun `INV-AC-1557 INV-AC-387 a document after the registration end is NOT_SUBMITTABLE`() {
+    fun `INV-AC-1557,INV-AC-387,a,document,after,the,registration,end,is,NOT_SUBMITTABLE`() {
         v(facts(Case(date = end.plusDays(1), regEnd = end))) shouldBe ScopeVerdict.NOT_SUBMITTABLE
         v(facts(Case(date = end.minusDays(1), regEnd = end))) shouldBe ScopeVerdict.IN_SCOPE
         v(facts(Case(date = end.plusDays(1), regEnd = null))) shouldBe ScopeVerdict.IN_SCOPE

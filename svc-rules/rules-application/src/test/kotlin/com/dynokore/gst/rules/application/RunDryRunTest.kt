@@ -308,7 +308,7 @@ class RunDryRunTest {
     }
 
     @Test
-    fun `INV-AC-748 byPeriod counts 2 and 1 with the page identities, and the straddler is listed apart`() {
+    fun `INV-AC-748,byPeriod,counts,2,and,1,with,the,page,identities,,and,the,straddler,is,listed,apart`() {
         val r =
             rig(
                 page(

@@ -183,7 +183,7 @@ class RateStraddleTest {
 
     @Test
     @Suppress("MaxLineLength", "ktlint:standard:max-line-length") // INV-T-26036: the task fixes this long test name
-    fun `INV-AC-747 a blank-linked credit note after the change resolves by its own date and notes the straddle INV-AC-14486`() {
+    fun `INV-AC-747,a,blank-linked,credit,note,after,the,change,resolves,by,its,own,date,and,notes,the,straddle,INV-AC-14486`() {
         val result = creditNote(creditDate).coded()
         result.document.lines
             .single()

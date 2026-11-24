@@ -150,7 +150,7 @@ class DocumentCodingTest {
     }
 
     @Test
-    fun `INV-AC-744 SR SR and ZR give two groups with correct totals`() {
+    fun `INV-AC-744,SR,SR,and,ZR,give,two,groups,with,correct,totals`() {
         val doc =
             coded(
                 coder().code(
@@ -170,7 +170,7 @@ class DocumentCodingTest {
     }
 
     @Test
-    fun `INV-AC-1555 each line gets its code and lines in another order give the same groups`() {
+    fun `INV-AC-1555,each,line,gets,its,code,and,lines,in,another,order,give,the,same,groups`() {
         val a = line("1", "100.00", "STD")
         val b = line("2", "200.00", "STD")
         val c = line("3", "400.00", "EXP")
@@ -182,13 +182,13 @@ class DocumentCodingTest {
     }
 
     @Test
-    fun `an unmapped internal code is refused and never defaulted to SR`() {
+    fun `INV-AC-389,an,unmapped,internal,code,is,refused,and,never,defaulted,to,SR`() {
         val result = coder().code(command(changeDate, line("1", "10.00", "NOPE")))
         result.shouldBeInstanceOf<DocumentCodingResult.LinesRefused>().refusals shouldBe mapOf("1" to ErrorCode.RUL_001)
     }
 
     @Test
-    fun `INV-AC-390 supplier SRCA-S at 0 and customer TXCA at the prevailing rate with no divergence finding`() {
+    fun `INV-AC-390,supplier,SRCA-S,at,0,and,customer,TXCA,at,the,prevailing,rate,with,no,divergence,finding`() {
         val date = LocalDate.of(2026, 3, 1)
         val supplier = coded(coder().code(command(date, line("1", "100.00", "CA", Direction.SALE))))
         val customer = coded(coder().code(command(date, line("1", "100.00", "CA", Direction.PURCHASE, tax = "9.00"))))
@@ -242,7 +242,7 @@ class DocumentCodingTest {
     }
 
     @Test
-    fun `INV-AC-391 supplier NA and customer TXNA both at rate 0 with no divergence finding`() {
+    fun `INV-AC-391,supplier,NA,and,customer,TXNA,both,at,rate,0,with,no,divergence,finding`() {
         val date = LocalDate.of(2026, 3, 1)
         val supplier = coded(coder().code(command(date, line("1", "100.00", "GMS"))))
         val customer = coded(coder().code(command(date, line("1", "100.00", "GMSC", Direction.PURCHASE))))

@@ -76,7 +76,7 @@ class PackLifecycleTest {
 
     @Test
     @Suppress("MaxLineLength", "ktlint:standard:max-line-length") // INV-T-25804: the task fixes this long test name
-    fun `INV-AC-755 INV-AC-15993 INV-AC-15994 signing off a mapping pack with a SECONDARY entry is blocked with RUL-007`() {
+    fun `INV-AC-755,INV-AC-15993,INV-AC-15994,signing,off,a,mapping,pack,with,a,SECONDARY,entry,is,blocked,with,RUL-007`() {
         val secondary = PackEntry("ENT-8", null, SourceClass.SECONDARY)
         val blocked =
             MappingSignOff

@@ -108,7 +108,7 @@ class ClassifyDocumentTest {
     }
 
     @Test
-    fun `INV-AC-385 a journal-only supply is invoice data dated by its posting date`() {
+    fun `INV-AC-385,a,journal-only,supply,is,invoice,data,dated,by,its,posting,date`() {
         val posting = TransactionDate(LocalDate.of(2026, 7, 31))
         val c =
             service
@@ -122,7 +122,7 @@ class ClassifyDocumentTest {
     }
 
     @Test
-    fun `INV-AC-401 a negative-total invoice is normalised to 381 and the mapping is traced`() {
+    fun `INV-AC-401,a,negative-total,invoice,is,normalised,to,381,and,the,mapping,is,traced`() {
         val c =
             classify(
                 bill,
@@ -147,7 +147,7 @@ class ClassifyDocumentTest {
     }
 
     @Test
-    fun `INV-AC-402 a debit note maps to 380 with the preceding-document reference`() {
+    fun `INV-AC-402,a,debit,note,maps,to,380,with,the,preceding-document,reference`() {
         val prev = TransactionDate(LocalDate.of(2026, 7, 1))
         val c =
             classify(adj, "DEBIT_NOTE", "50.00", prevNumber = "INV-9", prevDate = prev)
@@ -196,7 +196,7 @@ class ClassifyDocumentTest {
     }
 
     @Test
-    fun `INV-AC-403 an adjustment with mixed-sign lines is held with ING-015 and not split`() {
+    fun `INV-AC-403,an,adjustment,with,mixed-sign,lines,is,held,with,ING-015,and,not,split`() {
         val c = classify(adj, "CREDIT_NOTE", "10.00", "-4.00", "0.00")
         val held = c.shouldBeInstanceOf<Classification.HeldMixedSign>()
         held.code shouldBe ErrorCode.ING_015
