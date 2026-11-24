@@ -7,16 +7,15 @@ import com.dynokore.gst.payload.application.preissuance.RegisterStatusSource
 import com.dynokore.gst.payload.contract.model.DraftDocument
 import com.dynokore.gst.payload.contract.model.PreIssuanceVerdict
 import com.dynokore.gst.payload.contract.model.ReasonItem
-import com.dynokore.platform.serviceruntime.http.BindingFailureAdvice
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
+import com.dynokore.platform.serviceruntime.http.BindingFailureAdvice
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import tools.jackson.databind.json.JsonMapper
-import tools.jackson.databind.node.ObjectNode
 import java.math.BigDecimal
 import java.time.LocalDate
 
@@ -132,7 +131,6 @@ class PreIssuanceControllerTest {
         val complete =
             """{"entityRef":"E-1","currency":"SGD","totalIncludingTax":"109.00","submissionType":"TYPE_1A",""" +
                 """"supplierGstn":"M90054321K","invoiceDate":"2026-03-20","gstAmount":"9.00"}"""
-
         fun post(body: String) =
             mvc.perform(
                 MockMvcRequestBuilders
