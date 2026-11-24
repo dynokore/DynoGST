@@ -3,8 +3,8 @@ package com.dynokore.gst.notification.bootstrap
 import com.dynokore.gst.notification.adapters.delivery.FakeSmtpServer
 import com.dynokore.gst.notification.adapters.delivery.SmtpDeliveryProperties
 import com.dynokore.gst.notification.adapters.delivery.SmtpMessageDelivery
-import com.dynokore.gst.notification.adapters.persistence.jooq.tables.MessageDelivery.Companion.MESSAGE_DELIVERY
 import com.dynokore.gst.notification.adapters.events.MessageRequestedHandler
+import com.dynokore.gst.notification.adapters.persistence.jooq.tables.MessageDelivery.Companion.MESSAGE_DELIVERY
 import com.dynokore.platform.outboxandqueue.CausationId
 import com.dynokore.platform.outboxandqueue.ConsumerSubscription
 import com.dynokore.platform.outboxandqueue.CorrelationId
@@ -51,7 +51,8 @@ import java.util.UUID
  * the delivery chain wired as in production (the real bean of [MessageDeliveryConfiguration], the real
  * `MessageChannels`, the real handler) against an SMTP server double. The one substitution is the trust anchor: the
  * double's certificate is self-signed, so a post-processor rebuilds the bean with the double's socket factory from the
- * properties read back from the production bean (the adapter's own private-CA hook); everything else is the production wiring.
+ * properties read back from the production bean (the adapter's own private-CA hook); everything else is the
+ * production wiring.
  */
 class SmtpBindingIT {
     private val actor = "svc:notification-svc"
@@ -93,7 +94,9 @@ class SmtpBindingIT {
         private val records = mutableListOf<com.dynokore.platform.outboxandqueue.LogRecord>()
 
         fun add(envelopeJson: String) {
-            records += com.dynokore.platform.outboxandqueue.LogRecord(records.size + 1L, envelopeJson)
+            records +=
+                com.dynokore.platform.outboxandqueue
+                    .LogRecord(records.size + 1L, envelopeJson)
         }
 
         override fun read(
@@ -196,7 +199,9 @@ class SmtpBindingIT {
     private fun deliveries(context: ApplicationContext) = context.getBeansOfType(MessageDelivery::class.java).values
 
     @Test
-    @DisplayName("INV-AC-26568 with no key set no MessageDelivery bean exists and both records are FAILED CHANNEL_NOT_BOUND")
+    @DisplayName(
+        "INV-AC-26568 with no key set no MessageDelivery bean exists and both records are FAILED CHANNEL_NOT_BOUND",
+    )
     fun noKeySet(
         @TempDir dir: Path,
     ) {
@@ -212,7 +217,9 @@ class SmtpBindingIT {
     }
 
     @Test
-    @DisplayName("INV-AC-26568 with all keys set one EMAIL bean exists, the EMAIL record is SENT and the SMS record FAILED")
+    @DisplayName(
+        "INV-AC-26568 with all keys set one EMAIL bean exists, the EMAIL record is SENT and the SMS record FAILED",
+    )
     fun allKeysSet(
         @TempDir dir: Path,
     ) {
