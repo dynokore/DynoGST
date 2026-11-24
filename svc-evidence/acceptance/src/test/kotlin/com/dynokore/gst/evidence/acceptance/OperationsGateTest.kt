@@ -74,6 +74,23 @@ class OperationsGateTest {
     }
 
     @Test
+    fun `INV-AC-27603 the pinned contract holds listRenditionSampleChecks and the table lists it`() {
+        val op = "listRenditionSampleChecks"
+        OperationsGate.contractOperations(openapi) shouldContain op
+        val rows = OperationsGate.parse(tsv).filter { it.id == op }
+        rows.size shouldBe 1
+        rows.single().kind shouldBe "operation"
+        rows.single().task shouldBe "INV-T-27618"
+        run(done = doneText).shouldBeEmpty()
+        // probes that must fail
+        val other = tsv.replace("$op\tINV-T-27618", "$op\tINV-T-27619")
+        OperationsGate.parse(other).single { it.id == op }.task shouldBe "INV-T-27619" // not the key of the criterion
+        run(table = tsv.replace("$op\tINV-T-27618", "$op\tunassigned")).shouldNotBeEmpty()
+        run(table = tsv.trimEnd() + "\noperation\t$op\tINV-T-27618\n").shouldNotBeEmpty()
+        run(table = tsv.lines().filterNot { it.contains("\t$op\t") }.joinToString("\n")).shouldNotBeEmpty()
+    }
+
+    @Test
     fun `every operation of the real contract is a stub until the task assigned to it overrides it`() {
         val assigned =
             tsv
@@ -83,7 +100,8 @@ class OperationsGateTest {
                 .map { it[1] }
                 .toSet()
         assigned shouldContain "getMaxEvidenceRetention"
-        stubs shouldBe OperationsGate.contractOperations(openapi) - assigned
+        // listRenditionSampleChecks is assigned (INV-T-27618) but stays a stub until the controller slice wires it
+        stubs shouldBe OperationsGate.contractOperations(openapi) - assigned + "listRenditionSampleChecks"
     }
 
     @Test
