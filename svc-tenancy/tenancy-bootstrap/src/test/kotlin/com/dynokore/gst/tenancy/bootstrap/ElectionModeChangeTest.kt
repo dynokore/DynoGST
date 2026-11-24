@@ -141,7 +141,7 @@ class ElectionModeChangeTest {
     }
 
     @Test
-    fun `INV-AC-394 a mode change is 202 pending and changes nothing, an approval without permission is 403`() {
+    fun `INV-AC-394,a,mode,change,is,202,pending,and,changes,nothing,,an,approval,without,permission,is,403`() {
         run { e, env ->
             env.withEntity { tenant, entity ->
                 ready(e, tenant, entity)
