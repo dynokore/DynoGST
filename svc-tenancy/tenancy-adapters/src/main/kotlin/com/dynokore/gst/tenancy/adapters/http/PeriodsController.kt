@@ -127,10 +127,19 @@ open class PeriodsController(
         val user = caller.actor()
         val after = cursor?.let { renditionCursors.open(it, entityRef, user, now) }
         return when (val outcome = listRenditionAttestations.list(entityRef, limit, after)) {
-            is ListRenditionOutcome.Forbidden -> forbidden(outcome.reason)
-            is ListRenditionOutcome.Invalid -> invalid(outcome.reason)
-            ListRenditionOutcome.NotFound -> notFound()
-            is ListRenditionOutcome.Page ->
+            is ListRenditionOutcome.Forbidden -> {
+                forbidden(outcome.reason)
+            }
+
+            is ListRenditionOutcome.Invalid -> {
+                invalid(outcome.reason)
+            }
+
+            ListRenditionOutcome.NotFound -> {
+                notFound()
+            }
+
+            is ListRenditionOutcome.Page -> {
                 ResponseEntity.ok(
                     RenditionAttestationRecordList(
                         items =
@@ -146,6 +155,7 @@ open class PeriodsController(
                         nextCursor = outcome.page.last?.let { renditionCursors.issue(entityRef, user, it, now) },
                     ),
                 )
+            }
         }
     }
 
