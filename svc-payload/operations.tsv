@@ -14,3 +14,5 @@ channel	gst.payload.payload-rejected.v1	UNASSIGNED
 channel	gst.payload.rendition-finding-changed.v1	UNASSIGNED
 channel	gst.payload.example-happened.v1	UNASSIGNED
 operation	getLatestDocumentVersion	INV-T-21139
+operation	getRenditionSampleCheck	INV-T-27775
+operation	getRenditionSampleCheckMetadata	INV-T-27775

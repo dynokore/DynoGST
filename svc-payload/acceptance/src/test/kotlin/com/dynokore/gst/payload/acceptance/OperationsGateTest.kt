@@ -38,17 +38,17 @@ class OperationsGateTest {
     ) = OperationsGate.findings(table, spec, asyncapi, stubSet, done)
 
     @Test
-    fun `the real table covers the real contract`() {
-        OperationsGate.contractOperations(openapi).size shouldBe 11
+    fun `INV-AC-27770 the real table covers the real contract`() {
+        OperationsGate.contractOperations(openapi).size shouldBe 13
         OperationsGate.contractOperations(openapi) shouldContain "getValidationOverrides"
         OperationsGate.contractOperations(openapi) shouldContain "approveValidationOverride"
         OperationsGate.contractChannels(asyncapi).size shouldBe 4
         run(done = doneText).shouldBeEmpty()
-        doneText shouldBe "INV-T-10713\nINV-T-21139\nINV-T-26310\n"
+        doneText shouldBe "INV-T-10713\nINV-T-21139\nINV-T-26310\nINV-T-27775\n"
     }
 
     @Test
-    fun `every operation of the real contract is a stub except the three override operations`() {
+    fun `INV-AC-27770 every operation of the real contract is a stub except the implemented ones`() {
         val overridden =
             setOf(
                 "overrideValidation",
@@ -56,11 +56,22 @@ class OperationsGateTest {
                 "getValidationOverrides",
                 "getLatestDocumentVersion",
                 "checkPreIssuance",
+                "getRenditionSampleCheck",
+                "getRenditionSampleCheckMetadata",
             )
         stubs shouldBe OperationsGate.contractOperations(openapi) - overridden
         stubs shouldContain "validateIssuance"
         stubs shouldContain "getPayload"
         overridden.forEach { stubs shouldNotContain it }
+    }
+
+    @Test
+    fun `INV-AC-27770 the done line without the table row fails`() {
+        val without = tsv.lines().filterNot { it.contains("getRenditionSampleCheck\t") }.joinToString("\n")
+        run(table = without, done = doneText).shouldNotBeEmpty()
+        run(done = doneText).shouldBeEmpty()
+        tsv.lines() shouldContain "operation\tgetRenditionSampleCheck\tINV-T-27775"
+        tsv.lines() shouldContain "operation\tgetRenditionSampleCheckMetadata\tINV-T-27775"
     }
 
     @Test
@@ -120,7 +131,7 @@ class OperationsGateTest {
     fun `INV-AC-17268 the three override operations name INV-T-10713, are done and answer no 501`() {
         val overridden = listOf("overrideValidation", "approveValidationOverride", "getValidationOverrides")
         overridden.forEach { tsv.lines() shouldContain "operation\t$it\tINV-T-10713" }
-        doneText shouldBe "INV-T-10713\nINV-T-21139\nINV-T-26310\n"
+        doneText shouldBe "INV-T-10713\nINV-T-21139\nINV-T-26310\nINV-T-27775\n"
         overridden.forEach { stubs shouldNotContain it }
         run(done = doneText).shouldBeEmpty()
         // one changed cell: a row cell that is no task key
