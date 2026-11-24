@@ -134,7 +134,7 @@ class FlowEnv(
         return """{"tenant":"$tenantText","entity":$entity,"principalKind":"$principal","flowId":"FLW-1"$extra}"""
     }
 
-    /** The token binding of the call: [OWN] the request tenant, [OTHER] another tenant, [NONE], [PLATFORM]. */
+    /** The propagated token's binding of the call: [OWN] the request tenant, [OTHER] another tenant, [NONE], [PLATFORM]. */
     enum class Bound { OWN, OTHER, NONE, PLATFORM }
 
     private val tenantContext = context.getBean(TenantContext::class.java)
