@@ -30,11 +30,12 @@ import com.dynokore.platform.outboxandqueue.EventHandler
 import com.dynokore.platform.outboxandqueue.EventLogReader
 import com.dynokore.platform.outboxandqueue.JdbcInboxConsumer
 import com.dynokore.platform.outboxandqueue.JdbcReplayDelivery
+import com.dynokore.platform.outboxandqueue.JdbcWorkQueue
+import com.dynokore.platform.outboxandqueue.LaneRateLimiter
 import com.dynokore.platform.outboxandqueue.OutboxSchema
 import com.dynokore.platform.outboxandqueue.RebuildRequiredSink
 import com.dynokore.platform.outboxandqueue.ReplayDelivery
 import com.dynokore.platform.outboxandqueue.TenantScope
-import com.dynokore.platform.outboxandqueue.WorkQueue
 import com.dynokore.platform.tenancyjooq.TenancyJooq
 import com.dynokore.platform.tenancykernel.TenantContext
 import io.micrometer.core.instrument.MeterRegistry
@@ -48,8 +49,10 @@ import java.time.Clock
  * The seven inbox consumers of the document index (INV-REQ-1037, INV-AC-26810): one `JdbcInboxConsumer` per topic over
  * the index handlers and store, in schema `console_bff`, under [INDEX_CONSUMER], a name distinct from the consumer name
  * of the exception consumers, so each topic keeps one offset row per consumer and the exception queue still receives
- * its events. The replay delivery of the index is its own bean with its own dispatch (one per consumer).
+ * its events. The replay delivery of the index is its own bean with its own dispatch (one per consumer). The class
+ * has one bean per element of the composition root (seven of each kind), hence the suppression.
  */
+@Suppress("TooManyFunctions")
 @Configuration(proxyBeanMethods = false)
 class DocumentIndexConsumerConfiguration {
     @Bean
@@ -312,12 +315,13 @@ class DocumentIndexConsumerConfiguration {
 
     /**
      * The one replay delivery of the index consumers: its inbox (not a bean, so it is not polled twice) has the index
-     * consumer name and dispatches each of the seven types to its index handler, nothing else.
+     * consumer name and dispatches each of the seven types to its index handler, nothing else. It claims from its own
+     * queue named [INDEX_CONSUMER], so it never takes the items of the exception consumers.
      */
     @Bean
     @Suppress("LongParameterList")
     fun documentIndexReplayDelivery(
-        queue: WorkQueue,
+        limiter: LaneRateLimiter,
         scope: TenantScope,
         catalogue: EventCatalogue,
         reader: EventLogReader,
@@ -343,17 +347,20 @@ class DocumentIndexConsumerConfiguration {
                     ConsoleEvents.MASTER_DATA_RESOLVED_TYPE to masterData,
                 ),
             )
+        val dsl = TenancyJooq.dslContext(OutboxSchema.jooqTables(SCHEMA), scope.tenants, scope.transactions)
         val inbox =
             JdbcInboxConsumer(
                 subscription(ConsoleEvents.CANONICAL_VERSION_CREATED_TOPIC),
                 catalogue,
                 reader,
                 scope,
-                TenancyJooq.dslContext(OutboxSchema.jooqTables(SCHEMA), scope.tenants, scope.transactions),
+                dsl,
                 dispatch,
                 rebuildRequired,
                 clock,
             )
+        // not a bean: a WorkQueue bean would replace the service default and make `queue: WorkQueue` ambiguous
+        val queue = JdbcWorkQueue(scope, dsl, SCHEMA, limiter, clock, INDEX_CONSUMER)
         return JdbcReplayDelivery(queue, scope, inbox)
     }
 
