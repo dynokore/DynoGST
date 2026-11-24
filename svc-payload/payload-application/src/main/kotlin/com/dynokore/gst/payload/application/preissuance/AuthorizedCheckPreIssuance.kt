@@ -1,15 +1,31 @@
 package com.dynokore.gst.payload.application.preissuance
 
+import com.dynokore.platform.serviceruntime.replica.Principal
+import com.dynokore.platform.serviceruntime.replica.PrincipalKind
 import java.time.LocalDate
 
 /** The kind of the verified caller of the pre-issuance check. */
 enum class PreIssuanceCallerKind { HUMAN, MACHINE }
 
-/** The verified caller: its id (the recorded user id) and kind. */
+/**
+ * The verified caller: the verified [Principal] itself, passed through and never rebuilt from parts (OWASP ASVS V4,
+ * NIST SP 800-53 AC-3). The recorded user id is [Principal.id]; the permission kind is derived from [Principal.kind]
+ * (a CONSENT_AGENT is decided with the person key, INV-REQ-957).
+ */
 data class PreIssuanceCaller(
-    val id: String,
-    val kind: PreIssuanceCallerKind,
-)
+    val principal: Principal,
+) {
+    val id: String get() = principal.id
+    val kind: PreIssuanceCallerKind
+        get() =
+            if (principal.kind ==
+                PrincipalKind.MACHINE
+            ) {
+                PreIssuanceCallerKind.MACHINE
+            } else {
+                PreIssuanceCallerKind.HUMAN
+            }
+}
 
 /** The port that decides one permission key for one caller on one entity, per request. */
 fun interface PreIssuanceAuthority {
