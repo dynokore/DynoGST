@@ -8,6 +8,7 @@ import java.net.InetSocketAddress
 import java.nio.file.Files
 import java.security.KeyStore
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import javax.net.ssl.KeyManagerFactory
 import javax.net.ssl.SSLContext
@@ -38,6 +39,7 @@ class FakeHttpsApiServer : AutoCloseable {
 
     private val dir = Files.createTempDirectory("fake-https-api").toFile()
     private val server: HttpsServer
+    private val pool = Executors.newCachedThreadPool()
 
     val clientContext: SSLContext
     val untrustedClientContext: SSLContext
@@ -64,6 +66,7 @@ class FakeHttpsApiServer : AutoCloseable {
             runCatching { ex.sendResponseHeaders(code, -1) }
             ex.close()
         }
+        server.executor = pool
         server.start()
         port = server.address.port
     }
@@ -114,6 +117,7 @@ class FakeHttpsApiServer : AutoCloseable {
 
     override fun close() {
         server.stop(0)
+        pool.shutdownNow()
         dir.deleteRecursively()
     }
 
