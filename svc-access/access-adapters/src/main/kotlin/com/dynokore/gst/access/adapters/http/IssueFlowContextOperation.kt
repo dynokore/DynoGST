@@ -7,6 +7,7 @@ import com.dynokore.gst.access.application.flowcontext.IssueFlowContextUseCase
 import com.dynokore.gst.access.contract.model.IssueFlowContextResponse
 import com.dynokore.platform.serviceruntime.http.ClosedErrorCode
 import com.dynokore.platform.serviceruntime.identity.ServiceCaller
+import com.dynokore.platform.tenancykernel.TenantContext
 import com.dynokore.platform.tenancykernel.TenantId
 import org.slf4j.LoggerFactory
 import org.springframework.http.ResponseEntity
@@ -22,6 +23,7 @@ import org.springframework.http.ResponseEntity
 class IssueFlowContextOperation(
     private val issuer: IssueFlowContextUseCase,
     private val serviceCaller: ServiceCaller,
+    private val tenants: TenantContext,
 ) {
     @Suppress("LongParameterList")
     fun issue(
@@ -33,18 +35,22 @@ class IssueFlowContextOperation(
     ): ResponseEntity<IssueFlowContextResponse> {
         val caller = serviceCaller.current()
         val tenantId = runCatching { TenantId.of(tenant) }.getOrNull()
+        val bound = runCatching { tenants.current() }.getOrNull()
+        val mismatch = tenantId != null && caller != null && bound != tenantId
         val result =
-            if (tenantId == null) {
-                // a caller that is not served is refused before the request is judged, as in the use case
-                if (caller == null) {
-                    IssueFlowContextResult.CallerNotServed
-                } else {
-                    IssueFlowContextResult.InvalidRequest
+            when {
+                tenantId == null -> {
+                    // a caller that is not served is refused before the request is judged, as in the use case
+                    if (caller == null) IssueFlowContextResult.CallerNotServed else IssueFlowContextResult.InvalidRequest
                 }
-            } else {
-                issuer.issue(caller, tenantId, entityKind, entityRef, principalKind, flowId)
+
+                // the request tenant must equal the tenant of the propagated token; a token without a tenant (a platform
+                // operator, or nothing bound) never equals it (ruling INV-T-24991, OWASP ASVS V4.1 deny by default)
+                mismatch -> IssueFlowContextResult.CallerNotServed
+
+                else -> issuer.issue(caller, tenantId, entityKind, entityRef, principalKind, flowId)
             }
-        log(caller, flowId, tenant, entityKind, entityRef, principalKind, outcomeOf(result))
+        log(caller, flowId, tenant, entityKind, entityRef, principalKind, if (mismatch) TENANT_MISMATCH else outcomeOf(result))
         if (result is IssueFlowContextResult.Issued) {
             return ResponseEntity.ok(IssueFlowContextResponse(result.compact, result.expiresAt))
         }
@@ -113,6 +119,7 @@ class IssueFlowContextOperation(
 
     companion object {
         const val ISSUED = "ISSUED"
+        const val TENANT_MISMATCH = "TENANT_MISMATCH"
         const val CALLER_NOT_SERVED = "CALLER_NOT_SERVED"
         const val INVALID_REQUEST = "INVALID_REQUEST"
         const val SIGNING_UNAVAILABLE = "SIGNING_UNAVAILABLE"

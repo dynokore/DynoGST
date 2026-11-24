@@ -9,6 +9,7 @@ import com.dynokore.gst.access.application.token.VerificationKeyRegistry
 import com.dynokore.gst.access.contract.api.AuthoriseApi
 import com.dynokore.platform.serviceruntime.binding.SecretStore
 import com.dynokore.platform.serviceruntime.identity.ServiceCaller
+import com.dynokore.platform.tenancykernel.TenantContext
 import org.springframework.context.ApplicationContext
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -84,5 +85,6 @@ class FlowContextUseCases {
     fun issueFlowContextOperation(
         useCase: IssueFlowContextUseCase,
         serviceCaller: ServiceCaller,
-    ) = IssueFlowContextOperation(useCase, serviceCaller)
+        tenants: TenantContext,
+    ) = IssueFlowContextOperation(useCase, serviceCaller, tenants)
 }

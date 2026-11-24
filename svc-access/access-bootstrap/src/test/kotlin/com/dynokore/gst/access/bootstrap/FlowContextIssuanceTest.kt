@@ -180,6 +180,29 @@ class FlowContextIssuanceTest {
             refusedWith(env, response, 403, "SRT-004")
         }
 
+    @Test
+    fun `INV-AC-24990 tenant equal to the propagated token tenant is issued`() =
+        withFlowEnv { env ->
+            val response = env.call(env.body(), bound = FlowEnv.Bound.OWN)
+            assertThat(response.status).describedAs(response.contentAsString).isEqualTo(200)
+            assertThat(env.signs.signs.get()).isEqualTo(1)
+        }
+
+    @Test
+    fun `INV-AC-24990 tenant different from the propagated token tenant is refused 403 SRT-004 and nothing is signed`() =
+        withFlowEnv { env ->
+            refusedWith(env, env.call(env.body(), bound = FlowEnv.Bound.OTHER), 403, "SRT-004")
+            assertThat(env.lines().single()).containsEntry("result", "TENANT_MISMATCH")
+        }
+
+    @Test
+    fun `INV-AC-24990 a token without a tenant is refused 403 SRT-004 and nothing is signed`() =
+        withFlowEnv { env ->
+            refusedWith(env, env.call(env.body(), bound = FlowEnv.Bound.NONE), 403, "SRT-004")
+            refusedWith(env, env.call(env.body(), bound = FlowEnv.Bound.PLATFORM), 403, "SRT-004")
+            assertThat(env.lines().map { it["result"] }).containsOnly("TENANT_MISMATCH")
+        }
+
     private fun caller(env: FlowEnv) {
         env.caller.value = null
     }
