@@ -67,6 +67,7 @@ class TokenUseCases {
         clock: Clock,
     ) = IssueAccessTokenUseCase(signer, registry, sets, settings, clock)
 
+    @Suppress("LongParameterList") // one collaborator per port
     @Bean
     fun gatewayTokenIssuance(
         authentication: GatewayAuthentication,
