@@ -92,6 +92,11 @@ class ScenarioTestIdsTest {
     }
 
     @Test
+    fun `INV-AC-28284 probe the underscore form of the name has no whole-token violation, as the gate accepts it`() {
+        assertThat(probe(tuples[0].method.replace(',', '_'))).isEmpty()
+    }
+
+    @Test
     fun `INV-AC-28284 probe the same method name in another class of the package is absent`() {
         assertThat(real(tuples[0].copy(className = "$pkg.ElectionChangeTest"))).containsExactly(absent)
     }
