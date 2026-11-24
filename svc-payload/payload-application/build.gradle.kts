@@ -6,6 +6,7 @@ plugins {
 dependencies {
     implementation(platform(libs.platform.bom))
     implementation(project(":payload-domain"))
+    implementation(libs.platform.integrationCanon.api)
     implementation(libs.platform.tenancyKernel.api)
     implementation(libs.platform.outboxAndQueue.api)
     implementation(libs.platform.auditLog.api)

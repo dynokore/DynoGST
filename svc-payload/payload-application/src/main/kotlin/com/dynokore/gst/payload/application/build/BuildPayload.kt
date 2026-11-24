@@ -39,6 +39,7 @@ data class FamilyRequest(
 sealed interface Projection {
     class Built(
         val bytes: ByteArray,
+        val packVersion: String? = null,
     ) : Projection
 
     /** [packVersion] is the version of the active MDE pack the projection read; null when it read none. */
@@ -66,6 +67,7 @@ data class PayloadRejectedFacts(
     val validationTrace: String?,
     val packVersions: List<PackVersionFact>? = null,
     val decisions: List<RejectionDecision>? = null,
+    val releaseRefusal: NoAcceptedReleaseFacts? = null,
 )
 
 /**

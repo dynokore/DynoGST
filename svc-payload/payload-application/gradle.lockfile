@@ -4,7 +4,7 @@
 # To regenerate this file, run: ./gradlew :payload-application:dependencies --write-locks
 com.dynokore.platform:audit-log-api:4.0.37=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
 com.dynokore.platform:config-resolver-api:6.0.10=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
-com.dynokore.platform:integration-canon-api:1.2.0=runtimeClasspath,testRuntimeClasspath
+com.dynokore.platform:integration-canon-api:1.2.0=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
 com.dynokore.platform:outbox-and-queue-api:6.26.0=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
 com.dynokore.platform:platform-libs-bom:0.217.0=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
 com.dynokore.platform:service-runtime-api:13.20.2=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath

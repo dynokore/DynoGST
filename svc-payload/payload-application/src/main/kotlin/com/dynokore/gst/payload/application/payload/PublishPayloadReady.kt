@@ -1,5 +1,6 @@
 package com.dynokore.gst.payload.application.payload
 
+import com.dynokore.gst.payload.application.build.PackVersionFact
 import java.security.MessageDigest
 import java.util.HexFormat
 import java.util.UUID
@@ -18,6 +19,14 @@ class PayloadReadyFacts(
     val payloadBytes: ByteArray,
     val payloadSha256: String,
     val aggregateId: String?,
+    val regeneration: RegenerationFacts? = null,
+)
+
+/** The release and pack versions a regenerated payload was built with. */
+data class RegenerationFacts(
+    val canonicalVersion: Int,
+    val specificationRelease: String,
+    val packVersions: List<PackVersionFact>,
 )
 
 /** Stages a `PayloadReady` event for release; the adapter writes it to the outbox in the caller's transaction. */
