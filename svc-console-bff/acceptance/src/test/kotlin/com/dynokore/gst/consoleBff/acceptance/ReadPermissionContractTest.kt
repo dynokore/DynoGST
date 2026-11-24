@@ -192,6 +192,34 @@ class ReadPermissionContractTest {
         check(offences.size == 1) { "$offences" }
     }
 
+    @Test
+    fun `INV-AC-27605 the pinned contract and catalogue hold the route and its key`() {
+        check("getEntityRenditionEvidence" !in EXPECTED_UNMAPPED) { "still listed as unmapped" }
+        val e = CatalogueReadPermissions.ENTRIES.single { it.operationId == "getEntityRenditionEvidence" }
+        check(e.method == "GET") { "method: ${e.method}" }
+        check(e.pathTemplate == "/bff/entities/{entityRef}/rendition-evidence") { "path: ${e.pathTemplate}" }
+        check(e.permissionKey == "rendition-evidence.view") { "key: ${e.permissionKey}" }
+        check(e.entityPathVariable == "entityRef") { "entity variable: ${e.entityPathVariable}" }
+        check("rendition-evidence.view" in allKeys()) { "key not in the generated map of the pinned catalogue" }
+        check(real().isEmpty()) { "${real()}" }
+        val others = CatalogueReadPermissions.ENTRIES.filter { it.operationId != "getEntityRenditionEvidence" }
+        check(findings(getOperations(openapi), others, DOMAINS, EXPECTED_UNMAPPED, allKeys()).isNotEmpty()) {
+            "entry removed went unnoticed"
+        }
+        val variants =
+            listOf(
+                e.copy(permissionKey = "rendition-evidence.view "),
+                e.copy(permissionKey = "rendition-evidences.view"),
+                e.copy(pathTemplate = "/bff/entities/{entityRef}/rendition-evidences"),
+            )
+        for (v in variants) {
+            val table = others + v
+            check(findings(getOperations(openapi), table, DOMAINS, EXPECTED_UNMAPPED, allKeys()).isNotEmpty()) {
+                "variant passed: $v"
+            }
+        }
+    }
+
     private companion object {
         val DOMAINS: List<CatalogueReadPermissions.DomainEntry> = CatalogueReadPermissions.DOMAIN_ENTRIES
 
@@ -202,7 +230,6 @@ class ReadPermissionContractTest {
                 "getOverridePreview",
                 "searchDocuments",
                 "compareDocumentVersions",
-                "getEntityRenditionEvidence",
             )
     }
 }

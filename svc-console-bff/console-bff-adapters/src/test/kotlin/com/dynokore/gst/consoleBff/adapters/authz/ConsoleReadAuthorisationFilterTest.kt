@@ -689,7 +689,9 @@ class ConsoleReadAuthorisationEntityPathTest {
         val table = CatalogueReadPermissions()
         table.entityPathVariableFor("GET", "/v1/exceptions") shouldBe null
         table.entityPathVariableFor("GET", "/v1/portfolio") shouldBe null
-        CatalogueReadPermissions.ENTRIES.map { it.pathTemplate } shouldBe listOf("/v1/exceptions", "/v1/portfolio")
+        CatalogueReadPermissions.ENTRIES.map { it.pathTemplate } shouldBe
+            listOf("/v1/exceptions", "/v1/portfolio", "/bff/entities/{entityRef}/rendition-evidence")
+        table.entityPathVariableFor("GET", "/bff/entities/{entityRef}/rendition-evidence") shouldBe "entityRef"
     }
 
     private companion object {

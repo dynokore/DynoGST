@@ -134,6 +134,13 @@ class CatalogueReadPermissions(
             listOf(
                 Entry("GET", "/v1/exceptions", "getExceptions", "exception.view"),
                 Entry("GET", "/v1/portfolio", "getPortfolio", "period-readiness.view"),
+                Entry(
+                    "GET",
+                    "/bff/entities/{entityRef}/rendition-evidence",
+                    "getEntityRenditionEvidence",
+                    "rendition-evidence.view",
+                    entityPathVariable = "entityRef",
+                ),
             )
     }
 }
