@@ -80,8 +80,11 @@ class ConsoleReadAuthorisationFilter(
             else -> {
                 val principal = Principal(principalId, PrincipalKind.HUMAN)
                 val entityParameter = permissions.entityParameterFor("GET", request.requestURI)
+                val pathVariable = permissions.entityPathVariableFor("GET", request.requestURI)
                 val decision =
-                    if (entityParameter == null) {
+                    if (pathVariable != null) {
+                        decidePathEntity(request, tenant, principal, key)
+                    } else if (entityParameter == null) {
                         replica.decideTenant(tenant, principal, key)
                     } else {
                         decideEntity(request, tenant, principal, key, entityParameter)
@@ -95,6 +98,17 @@ class ConsoleReadAuthorisationFilter(
             }
         }
     }
+
+    /** Null (refused) when the route yields no non-blank entity segment; decided at entity scope, never tenant. */
+    private fun decidePathEntity(
+        request: HttpServletRequest,
+        tenant: TenantId,
+        principal: Principal,
+        key: String,
+    ): AuthorityDecision? =
+        permissions.entityRefFor("GET", request.requestURI)?.takeIf { it.isNotBlank() }?.let {
+            replica.decide(AuthorizationRequest(tenant, principal, it, key), Deadline.after(budget, clock))
+        }
 
     /** Null (refused) when the request carries no single non-blank value of the entity parameter. */
     private fun decideEntity(

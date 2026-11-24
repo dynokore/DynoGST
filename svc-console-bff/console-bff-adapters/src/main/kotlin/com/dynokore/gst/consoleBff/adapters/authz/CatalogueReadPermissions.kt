@@ -5,11 +5,12 @@ import com.dynokore.gst.consoleBff.application.authz.ReadPermissions
 /**
  * The permission-key source of the read authorisation filter: one table of the reads console-bff serves, each with the
  * `x-operation.permission` of its operation in the console-bff contract (the key the generated operation-to-roles map
- * is asked about). No role name is held (INV-Q-10027). Method and path template are compared by equality only; any
+ * is asked about). No role name is held (INV-Q-10027). Method is compared by equality and the path by segment equality (a `{name}` segment takes one non-blank segment); any
  * other route is unmapped (null), so the filter refuses it (OWASP ASVS V4.1.1, deny by default).
  */
 class CatalogueReadPermissions(
     private val domainEntries: List<DomainEntry> = DOMAIN_ENTRIES,
+    private val entries: List<Entry> = ENTRIES,
 ) : ReadPermissions {
     /** One served read: the route, the contract operation id and its permission key. */
     data class Entry(
@@ -19,6 +20,8 @@ class CatalogueReadPermissions(
         val permissionKey: String,
         /** The query parameter naming the entity the read is about; absent when the read names no entity. */
         val entityParameter: String? = null,
+        /** The `{name}` path variable naming the entity the read is about; absent when the entity is not in the path. */
+        val entityPathVariable: String? = null,
     )
 
     /**
@@ -55,10 +58,27 @@ class CatalogueReadPermissions(
         pathTemplate: String,
     ): String? = entryOf(method, pathTemplate)?.entityParameter
 
+    override fun entityPathVariableFor(
+        method: String,
+        pathTemplate: String,
+    ): String? = entryOf(method, pathTemplate)?.entityPathVariable
+
+    override fun entityRefFor(
+        method: String,
+        path: String,
+    ): String? {
+        val entry = entryOf(method, path) ?: return null
+        val variable = entry.entityPathVariable ?: return null
+        val t = entry.pathTemplate.split('/')
+        val p = path.split('/')
+        val index = t.indexOf("{$variable}")
+        return if (index >= 0 && index < p.size) p[index] else null
+    }
+
     private fun entryOf(
         method: String,
         pathTemplate: String,
-    ): Entry? = ENTRIES.firstOrNull { it.method == method && it.pathTemplate == pathTemplate }
+    ): Entry? = entries.firstOrNull { it.method == method && matchesSegments(it.pathTemplate, pathTemplate) }
 
     companion object {
         /**
@@ -91,6 +111,24 @@ class CatalogueReadPermissions(
                 t.indices.all { i ->
                     val seg = t[i]
                     if (seg.length > 2 && seg.startsWith("{") && seg.endsWith("}")) p[i].isNotEmpty() else seg == p[i]
+                }
+        }
+
+        /**
+         * A template matches a path when both have the same number of `/`-separated segments (an empty segment
+         * counts) and each segment is equal (case-sensitive), except that a segment of exactly `{name}` matches one
+         * non-blank request segment. No prefix or suffix matching.
+         */
+        internal fun matchesSegments(
+            template: String,
+            path: String,
+        ): Boolean {
+            val t = template.split('/')
+            val p = path.split('/')
+            return t.size == p.size &&
+                t.indices.all { i ->
+                    val seg = t[i]
+                    if (seg.length > 2 && seg.startsWith("{") && seg.endsWith("}")) p[i].isNotBlank() else seg == p[i]
                 }
         }
 

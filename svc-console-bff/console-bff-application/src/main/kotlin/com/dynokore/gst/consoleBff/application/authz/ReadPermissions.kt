@@ -30,4 +30,23 @@ fun interface ReadPermissions {
         method: String,
         pathTemplate: String,
     ): String? = null
+
+    /**
+     * The name of the path variable (a `{name}` segment of the route template) that carries the entity a read of the
+     * route names, or null when the entity is not taken from the path. [pathTemplate] may be the concrete request
+     * path; the route is matched by segment equality.
+     */
+    fun entityPathVariableFor(
+        method: String,
+        pathTemplate: String,
+    ): String? = null
+
+    /**
+     * The entity ref a read of the concrete [path] names through its path variable: the single non-blank path segment
+     * at the position of the variable, or null when the route names no path variable or does not match.
+     */
+    fun entityRefFor(
+        method: String,
+        path: String,
+    ): String? = null
 }

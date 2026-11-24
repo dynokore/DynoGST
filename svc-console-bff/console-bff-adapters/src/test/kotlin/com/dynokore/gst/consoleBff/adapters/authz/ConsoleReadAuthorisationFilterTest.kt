@@ -478,6 +478,113 @@ class ConsoleReadAuthorisationFilterTest {
         for (d in listOf("mapping-pack", "identity-triple")) refused(promo("p-viewer", "domain" to d))
     }
 
+    private val evidenceAsked = mutableListOf<String>()
+    private val evidenceReplica =
+        AuthorityReplica(
+            clock,
+            OperationRoleMap { key ->
+                evidenceAsked += key
+                if (key == "key.evidence") mapOf(FIXTURE_ROLE to CellAllowance.PERMITTED) else emptyMap()
+            },
+        )
+    private val evidenceFilter =
+        ConsoleReadAuthorisationFilter(
+            CatalogueReadPermissions(
+                entries =
+                    listOf(
+                        CatalogueReadPermissions.Entry(
+                            "GET",
+                            "/bff/entities/{entityRef}/rendition-evidence",
+                            "getEntityRenditionEvidence",
+                            "key.evidence",
+                            entityPathVariable = "entityRef",
+                        ),
+                    ),
+            ),
+            evidenceReplica,
+            clock,
+        )
+
+    private fun evidenceGrant(entity: String) {
+        evidenceReplica.onSnapshotComplete(1)
+        evidenceReplica.accept(
+            AuthorityChanged(
+                tenant,
+                "p1",
+                2,
+                AuthorityRecord.RoleGrantRecord(
+                    "g-$entity",
+                    RoleGrantState.ACTIVE,
+                    RoleGrant(FIXTURE_ROLE, GrantScope.ENTITY, entity, clock.instant().minusSeconds(60)),
+                ),
+            ),
+        )
+    }
+
+    private fun evidence(uri: String): Outcome {
+        val request = MockHttpServletRequest("GET", uri).apply { requestURI = uri }
+        request.setAttribute(ConsoleSessionFilter.PRINCIPAL_ATTRIBUTE, "p1")
+        request.setAttribute(ConsoleSessionFilter.TENANT_ATTRIBUTE, tenant.toString())
+        val response = MockHttpServletResponse()
+        val chain = MockFilterChain()
+        evidenceFilter.doFilter(request, response, chain)
+        return Outcome(response, chain)
+    }
+
+    @Test
+    fun `INV-AC-27619 the templated route is decided at entity scope with the ref of the segment and passes when allowed`() {
+        evidenceGrant("E1")
+        val out = evidence("/bff/entities/E1/rendition-evidence")
+        out.response.status shouldBe 200
+        out.called shouldBe true
+        evidenceAsked shouldBe listOf("key.evidence")
+        // the grant is for E1 only, so the decision was taken with the segment and not at tenant scope
+        refused(evidence("/bff/entities/E2/rendition-evidence"))
+    }
+
+    @Test
+    fun `INV-AC-27619 a denied decision and a replica beyond its lag bound give 403`() {
+        refused(evidence("/bff/entities/E1/rendition-evidence"))
+        evidenceGrant("E9")
+        refused(evidence("/bff/entities/E1/rendition-evidence"))
+    }
+
+    @Test
+    fun `INV-AC-27619 a blank entity segment gives no decision and 403`() {
+        evidenceGrant("E1")
+        evidenceAsked.clear()
+        refused(evidence("/bff/entities/ /rendition-evidence"))
+        evidenceAsked shouldBe emptyList()
+    }
+
+    @Test
+    fun `INV-AC-27619 the five look-alike paths and a prefix or case variant are refused without a replica call`() {
+        evidenceGrant("E1")
+        evidenceAsked.clear()
+        val lookAlikes =
+            listOf(
+                "/bff/entities//rendition-evidence",
+                "/bff/entities/E1/E2/rendition-evidence",
+                "/bff/entities/E1/rendition-evidences",
+                "/bff/entity/E1/rendition-evidence",
+                "/v1/entities/E1/rendition-evidence",
+                "/bff/entities/E1/rendition-evidence/x",
+                "/bff/entities/E1/rendition-evidence/",
+                "/BFF/entities/E1/rendition-evidence",
+                "/bff/entities/E1/Rendition-Evidence",
+            )
+        for (uri in lookAlikes) refused(evidence(uri))
+        evidenceAsked shouldBe emptyList()
+    }
+
+    @Test
+    fun `INV-AC-27619 the entity path variable is exposed by the port and absent for the existing entries`() {
+        val table = CatalogueReadPermissions()
+        table.entityPathVariableFor("GET", "/v1/exceptions") shouldBe null
+        table.entityPathVariableFor("GET", "/v1/portfolio") shouldBe null
+        CatalogueReadPermissions.ENTRIES.map { it.pathTemplate } shouldBe listOf("/v1/exceptions", "/v1/portfolio")
+    }
+
     private companion object {
         const val FIXTURE_ROLE = "fixture-holder"
         const val AUTHOR_ROLE = "fixture-author"
