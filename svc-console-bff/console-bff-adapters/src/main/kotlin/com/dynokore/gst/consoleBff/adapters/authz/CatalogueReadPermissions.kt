@@ -6,7 +6,8 @@ import com.dynokore.gst.consoleBff.application.authz.ReadPermissions
  * The permission-key source of the read authorisation filter: one table of the reads console-bff serves, each with the
  * `x-operation.permission` of its operation in the console-bff contract (the key the generated operation-to-roles map
  * is asked about). No role name is held (INV-Q-10027). The method is compared by equality and the path by segment
- * equality (a `{name}` segment takes one non-blank segment); any other route is unmapped (null), so the filter refuses it (OWASP ASVS V4.1.1, deny by default).
+ * equality (a `{name}` segment takes one non-blank segment); any other route is unmapped
+ * (null), so the filter refuses it (OWASP ASVS V4.1.1, deny by default).
  */
 class CatalogueReadPermissions(
     private val domainEntries: List<DomainEntry> = DOMAIN_ENTRIES,
