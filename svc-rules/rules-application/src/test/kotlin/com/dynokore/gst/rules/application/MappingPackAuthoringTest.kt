@@ -962,7 +962,7 @@ class MappingPackSchemeTagTest {
         e.withdraw("B", actor = "approver-2") shouldBe Forbidden(ErrorCode.SRT_004, "the action is not permitted")
         e.store.withdrawals shouldBe emptyList()
         e.store.audits shouldBe emptyList()
-        e.store.accs.getValue("P1").map { it.entryId } shouldBe listOf("B")
+        e.store.acceptances("P1").map { it.entryId } shouldBe listOf("B")
 
         e.withdraw("B") shouldBe Done(PackStatus.SUBMITTED)
         e.store.withdrawals shouldBe
