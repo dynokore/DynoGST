@@ -371,59 +371,26 @@ class DocumentIndexConsumersTest {
         ) + existingCatalogue()
     }
 
-    /** The seven rows the catalogue held before the index consumers. */
-    private fun existingCatalogue(): List<CatalogueEntry> {
-        fun entry(
-            type: String,
-            topic: String,
-            producer: String,
-            content: Boolean,
-        ) = CatalogueEntry(type, topic, setOf(producer), content, recordTopic = false, retainedWhileResolvable = false)
-        return listOf(
-            entry(
-                "com.dynokore.gst.canonical.DocumentHeld.v1",
-                "gst.canonical.document-held.v1",
-                "canonical-svc",
-                false,
-            ),
-            entry(
-                "com.dynokore.gst.canonical.DocumentReleased.v1",
-                "gst.canonical.document-released.v1",
-                "canonical-svc",
-                false,
-            ),
-            entry(
-                "com.dynokore.gst.masterdata.MasterDataResolved.v1",
-                "gst.masterdata.master-data-resolved.v1",
-                "masterdata-svc",
-                false,
-            ),
-            entry(
-                "com.dynokore.gst.tenancy.PeriodDueDateChanged.v1",
-                "gst.tenancy.period-due-date-changed.v1",
-                "tenancy-svc",
-                false,
-            ),
-            entry(
-                "com.dynokore.gst.tenancy.PeriodRecordsChanged.v1",
-                "gst.tenancy.period-records-changed.v1",
-                "tenancy-svc",
-                false,
-            ),
-            entry(
-                "com.dynokore.gst.payload.PayloadRejected.v1",
-                "gst.payload.payload-rejected.v1",
-                "payload-svc",
-                true,
-            ),
-            entry(
-                "com.dynokore.gst.submission.SubmissionFailed.v1",
-                "gst.submission.submission-failed.v1",
-                "submission-svc",
-                false,
-            ),
-        )
-    }
+    /** The seven rows the catalogue held before the index consumers: type, topic, producer, content topic. */
+    private fun existingCatalogue(): List<CatalogueEntry> =
+        listOf(
+            listOf("canonical.DocumentHeld", "canonical.document-held", "canonical-svc", false),
+            listOf("canonical.DocumentReleased", "canonical.document-released", "canonical-svc", false),
+            listOf("masterdata.MasterDataResolved", "masterdata.master-data-resolved", "masterdata-svc", false),
+            listOf("tenancy.PeriodDueDateChanged", "tenancy.period-due-date-changed", "tenancy-svc", false),
+            listOf("tenancy.PeriodRecordsChanged", "tenancy.period-records-changed", "tenancy-svc", false),
+            listOf("payload.PayloadRejected", "payload.payload-rejected", "payload-svc", true),
+            listOf("submission.SubmissionFailed", "submission.submission-failed", "submission-svc", false),
+        ).map { row ->
+            CatalogueEntry(
+                "com.dynokore.gst.${row[0]}.v1",
+                "gst.${row[1]}.v1",
+                setOf(row[2] as String),
+                row[3] as Boolean,
+                recordTopic = false,
+                retainedWhileResolvable = false,
+            )
+        }
 
     @Test
     fun `INV-AC-26810 a version event without entityRef writes no row and counts the unscoped metric once`(
