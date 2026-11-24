@@ -99,7 +99,8 @@ interface MappingPackStore {
 
     /**
      * Records the withdrawal, drops the acceptance of that entry from [acceptances] and stores [audit], in one unit of
-     * work. The default refuses (fail closed) until the adapter slice implements it.
+     * work. The default writes nothing and the use case refuses it (fail closed); the adapter change, INV-T-28440,
+     * overrides this method and removes the default.
      */
     fun withdrawAcceptance(
         withdrawal: AcceptanceWithdrawal,

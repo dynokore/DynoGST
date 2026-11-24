@@ -72,6 +72,7 @@ private class FakeStore : MappingPackStore {
     val acts = linkedMapOf<String, MappingActivation>()
     val withdrawals = mutableListOf<AcceptanceWithdrawal>()
     val audits = mutableListOf<AcceptanceWithdrawalAudit>()
+    var withdrawalAnswer = WithdrawalOutcome.RECORDED
 
     fun state() =
         StoreState(
@@ -122,6 +123,7 @@ private class FakeStore : MappingPackStore {
         withdrawal: AcceptanceWithdrawal,
         audit: AcceptanceWithdrawalAudit,
     ): WithdrawalOutcome {
+        if (withdrawalAnswer != WithdrawalOutcome.RECORDED) return withdrawalAnswer
         withdrawals += withdrawal
         audits += audit
         accs[withdrawal.packId]?.removeAll { it.entryId == withdrawal.entryId }
@@ -1030,6 +1032,16 @@ class MappingPackWithdrawalTest {
         e.heldOnly = null
         e.allowedEntity = "E-002"
         e.withdraw("B").shouldBeInstanceOf<Forbidden>()
+        e.store.state() shouldBe before
+    }
+
+    @Test
+    fun `INV-AC-28435 a store that answers UNAVAILABLE refuses the withdrawal and changes nothing`() {
+        val e = Env().submitted()
+        e.store.withdrawalAnswer = WithdrawalOutcome.UNAVAILABLE
+        val before = e.store.state()
+        e.withdraw("B") shouldBe
+            Refused(RefusalReason.DECISION_UNAVAILABLE, names = listOf("acceptance-withdrawal"))
         e.store.state() shouldBe before
     }
 }
