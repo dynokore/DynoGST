@@ -953,7 +953,9 @@ class MappingPackSchemeTagTest {
         e.authoring.mapTaxCode(command) shouldBe Refused(RefusalReason.LIFECYCLE, status = PackStatus.SUBMITTED)
         e.calls.contains("scenario") shouldBe false
     }
+}
 
+class MappingPackWithdrawalTest {
     @Test
     fun `INV-AC-28435 the accepting user withdraws before approval and the entry blocks sign-off again`() {
         val e = Env().submitted()
