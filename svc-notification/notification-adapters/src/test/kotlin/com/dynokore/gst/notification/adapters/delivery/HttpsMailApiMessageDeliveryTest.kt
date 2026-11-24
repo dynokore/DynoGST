@@ -7,7 +7,6 @@ import com.dynokore.platform.serviceruntime.binding.DeliveryState
 import com.dynokore.platform.serviceruntime.binding.LinkContent
 import com.dynokore.platform.serviceruntime.binding.MessageChannel
 import com.dynokore.platform.serviceruntime.binding.OutboundMessage
-import com.dynokore.platform.serviceruntime.binding.PasscodeContent
 import com.dynokore.platform.serviceruntime.binding.Secret
 import com.dynokore.platform.serviceruntime.binding.SecretRef
 import com.dynokore.platform.serviceruntime.binding.SecretStore
@@ -79,9 +78,6 @@ class HttpsMailApiMessageDeliveryTest {
 
     private fun email() = OutboundMessage(MessageChannel.EMAIL, to, "access-link", "v1", LinkContent(link))
 
-    private fun sms() =
-        OutboundMessage(MessageChannel.SMS, "+6570000000", "passcode", "v1", PasscodeContent("sealed-5d1e"))
-
     /** Sends one message and returns the failed reason, recording every text the adapter produced. */
     private fun failedReason(
         a: HttpsMailApiMessageDelivery,
@@ -144,7 +140,7 @@ class HttpsMailApiMessageDeliveryTest {
         server.answer = 503
         failedReason(a) shouldBe "API_UNAVAILABLE"
         server.answer = 202
-        server.delayMs = (REQUEST_MS * 2).toLong()
+        server.delayMs = (REQUEST_MS * 4).toLong()
         failedReason(a) shouldBe "API_UNAVAILABLE"
         server.delayMs = 0
         server.requests.clear()
@@ -155,7 +151,7 @@ class HttpsMailApiMessageDeliveryTest {
     @Test
     fun `INV-AC-27588 SMS message refused - IllegalArgumentException and nothing received`() {
         val a = adapter()
-        val sms = sms()
+        val sms = OutboundMessage(MessageChannel.SMS, "+6570000000", "passcode", "v1", LinkContent(link))
         assertThrows<IllegalArgumentException> { a.send(sms) }
         server.requests.size shouldBe 0
     }
@@ -192,15 +188,15 @@ class HttpsMailApiMessageDeliveryTest {
             failedReason(a)
         }
         server.answer = 202
-        server.delayMs = (REQUEST_MS * 2).toLong()
+        server.delayMs = (REQUEST_MS * 4).toLong()
         failedReason(a)
         server.delayMs = 0
         failedReason(adapter(server.untrustedClientContext))
-        val sms = sms()
-        seen += assertThrows<IllegalArgumentException> { a.send(sms) }.message.orEmpty()
-        seen +=
-            assertThrows<IllegalArgumentException> { adapter(url = "http://$to/$credential/$link") }.message.orEmpty()
-        seen += logback.list.map { it.formattedMessage + (it.throwableProxy?.message.orEmpty()) }
+        seen += assertThrows<IllegalArgumentException> {
+            a.send(OutboundMessage(MessageChannel.SMS, to, "passcode", "v1", LinkContent(link)))
+        }.message.orEmpty()
+        seen += assertThrows<IllegalArgumentException> { adapter(url = "http://$to/$credential/$link") }.message.orEmpty()
+        seen += logback.list.map { it.formattedMessage + (it.throwableProxy?.message ?: "") }
         (logback.list.isNotEmpty()) shouldBe true
         seen.forEach { text ->
             listOf(to, credential, link).forEach { secret -> text shouldNotContain secret }
@@ -209,6 +205,6 @@ class HttpsMailApiMessageDeliveryTest {
 
     private companion object {
         const val CONNECT_MS = 2000
-        const val REQUEST_MS = 1500
+        const val REQUEST_MS = 400
     }
 }
