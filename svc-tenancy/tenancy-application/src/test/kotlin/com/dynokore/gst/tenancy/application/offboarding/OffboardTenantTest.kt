@@ -206,6 +206,25 @@ class OffboardTenantTest {
         assertNull(store.rows.single().handoverStatementRef)
     }
 
+    @Test
+    fun `INV-AC-26712 the export order carries the custody holder and notice window of the request`() {
+        val orders = mutableListOf<ExportOrder>()
+        port =
+            TenantExport {
+                orders += it
+                manifest
+            }
+        val full = holder.copy(contactMobile = "+6591234567")
+        accepted(person(entityRequest(holder = full).copy(noticeWindowDays = 45)))
+        assertEquals(full, orders.single().retentionCustodyHolder)
+        assertEquals(45, orders.single().noticeWindowDays)
+        store.rows.clear()
+        orders.clear()
+        accepted(person(entityRequest(), "k2"))
+        assertEquals(holder, orders.single().retentionCustodyHolder)
+        assertNull(orders.single().noticeWindowDays)
+    }
+
     // ---- unsubmitted documents ----
 
     @Test
