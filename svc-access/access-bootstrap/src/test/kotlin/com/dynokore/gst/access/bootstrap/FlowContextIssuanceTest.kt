@@ -189,7 +189,7 @@ class FlowContextIssuanceTest {
         }
 
     @Test
-    fun `INV-AC-24990 tenant different from the propagated token tenant is refused 403 SRT-004 and nothing is signed`() =
+    fun `INV-AC-24990 tenant other than the token tenant is refused 403 SRT-004 and nothing is signed`() =
         withFlowEnv { env ->
             refusedWith(env, env.call(env.body(), bound = FlowEnv.Bound.OTHER), 403, "SRT-004")
             assertThat(env.lines().single()).containsEntry("result", "TENANT_MISMATCH")
@@ -201,6 +201,31 @@ class FlowContextIssuanceTest {
             refusedWith(env, env.call(env.body(), bound = FlowEnv.Bound.NONE), 403, "SRT-004")
             refusedWith(env, env.call(env.body(), bound = FlowEnv.Bound.PLATFORM), 403, "SRT-004")
             assertThat(env.lines().map { it["result"] }).containsOnly("TENANT_MISMATCH")
+        }
+
+    @Test
+    fun `INV-AC-24990 tenant look-alikes - last digit 403, leading space and platform tenant 400`() =
+        withFlowEnv { env ->
+            val lastDigit = env.tenant.dropLast(1) + (if (env.tenant.last() == 'f') '0' else 'f')
+            refusedWith(env, env.call(env.body(tenantText = lastDigit)), 403, "SRT-004")
+            refusedWith(env, env.call(env.body(tenantText = " " + env.tenant)), 400, "SRT-001")
+            val platform = "ffffffff-ffff-ffff-ffff-ffffffffffff"
+            refusedWith(env, env.call(env.body(tenantText = platform), bound = FlowEnv.Bound.OWN), 400, "SRT-001")
+            refusedWith(env, env.call(env.body(tenantText = platform), bound = FlowEnv.Bound.PLATFORM), 400, "SRT-001")
+        }
+
+    @Test
+    fun `INV-AC-24990 a caller outside the set with a mismatching tenant gets the body of the tenant refusal`() =
+        withFlowEnv { env ->
+            val mismatch = env.call(env.body(), bound = FlowEnv.Bound.OTHER)
+            val outside = env.call(env.body(), "submission-svc", bound = FlowEnv.Bound.OTHER)
+            refusedWith(env, outside, 403, "SRT-004")
+            // the bodies are equal except for the per-request correlation id
+            val withoutId = { r: MockHttpServletResponse ->
+                r.contentAsString.replace(Regex("\"correlationId\":\"[^\"]*\""), "")
+            }
+            assertThat(withoutId(outside)).isEqualTo(withoutId(mismatch))
+            assertThat(env.lines().map { it["result"] }).containsExactly("TENANT_MISMATCH", "TENANT_MISMATCH")
         }
 
     private fun caller(env: FlowEnv) {
