@@ -139,7 +139,7 @@ class CodeCatalogueSeedCodesTest {
     }
 
     @Test
-    fun `INV-AC-2431 the shipped catalogue holds the 35 Annex E codes, PRIMARY, complete`() {
+    fun `INV-AC-2431,the,shipped,catalogue,holds,the,35,Annex,E,codes,,PRIMARY,,complete`() {
         CodeCatalogueSeedFiles.codeProblems(CodeCatalogueSeedFiles.contents).shouldBeEmpty()
         val root = CodeCatalogueSeedFiles.mapper.readTree(CodeCatalogueSeedFiles.contents)
         codeList(root).toSet() shouldBe CodeCatalogueSeedFiles.EXPECTED_CODES
