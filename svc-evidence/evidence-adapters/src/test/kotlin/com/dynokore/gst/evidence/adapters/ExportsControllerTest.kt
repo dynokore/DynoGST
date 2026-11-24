@@ -4,21 +4,38 @@ import com.dynokore.gst.evidence.adapters.http.ExportNotReady
 import com.dynokore.gst.evidence.adapters.http.ExportsController
 import com.dynokore.gst.evidence.adapters.http.ExportsRefusal
 import com.dynokore.gst.evidence.adapters.http.ExportsRefusalAdvice
+import com.dynokore.gst.evidence.application.auditedread.AuditedReads
+import com.dynokore.gst.evidence.application.export.AuditPackClassSources
+import com.dynokore.gst.evidence.application.export.AuditPackJobs
+import com.dynokore.gst.evidence.application.export.ExportAuditPack
+import com.dynokore.gst.evidence.application.export.ExportChainIntegrity
 import com.dynokore.gst.evidence.application.export.ExportJob
 import com.dynokore.gst.evidence.application.export.ExportJobs
 import com.dynokore.gst.evidence.application.export.ExportRequest
+import com.dynokore.gst.evidence.application.export.ExportPackageStore
 import com.dynokore.gst.evidence.application.export.ExportScope
 import com.dynokore.gst.evidence.application.export.ExportState
+import com.dynokore.gst.evidence.application.integrity.IntegrityStatusQueryHandler
+import com.dynokore.gst.evidence.application.integrity.IntegrityStore
 import com.dynokore.gst.evidence.contract.model.ExportManifest
+import com.dynokore.platform.auditlog.AuditedOperations
+import com.dynokore.platform.serviceruntime.replica.AuthorityReplica
+import com.dynokore.platform.serviceruntime.replica.AuthorityVerdict
+import com.dynokore.platform.serviceruntime.replica.AuthorizationRequest
+import com.dynokore.platform.serviceruntime.replica.FallbackResult
+import com.dynokore.platform.serviceruntime.replica.OperationRoleMap
+import com.dynokore.platform.serviceruntime.replica.ReplicaFallback
 import com.dynokore.platform.serviceruntime.identity.EndUserPrincipal
 import com.dynokore.platform.serviceruntime.identity.EndUserPrincipalBindingFilter
 import com.dynokore.platform.tenancykernel.TenantId
+import com.dynokore.platform.tenancykernel.TransactionRunner
 import io.kotest.matchers.shouldBe
 import jakarta.servlet.http.HttpServletRequest
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.http.ResponseEntity
 import java.lang.reflect.Proxy
+import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
 import java.util.UUID
@@ -86,8 +103,36 @@ class ExportsControllerTest {
             object : ObjectProvider<HttpServletRequest> {
                 override fun getObject(): HttpServletRequest = request
             },
+            unused(AuditPackJobs::class.java),
+            ExportAuditPack(
+                AuditPackClassSources(emptyMap()),
+                unused(AuditPackJobs::class.java),
+                unused(ExportPackageStore::class.java),
+                unused(IntegrityStore::class.java),
+                unused(ExportChainIntegrity::class.java),
+                clock,
+            ),
+            AuthorityReplica(
+                clock,
+                OperationRoleMap { emptyMap() },
+                fallback = ReplicaFallback<AuthorizationRequest, AuthorityVerdict> { _, _ -> FallbackResult.Unavailable },
+            ),
+            AuditedReads(unused(AuditedOperations::class.java)),
+            IntegrityStatusQueryHandler(unused(IntegrityStore::class.java)),
+            clock,
+            unused(TransactionRunner::class.java),
         )
     }
+
+    private val clock = Clock.fixed(finished, ZoneOffset.UTC)
+
+    /** A port the getEvidenceExport tests never reach: any call fails the test (INV-T-25920 adapts the constructor only). */
+    private fun <T> unused(type: Class<T>): T =
+        type.cast(
+            Proxy.newProxyInstance(javaClass.classLoader, arrayOf(type)) { _, method, _ ->
+                throw AssertionError("unexpected call of ${type.simpleName}.${method.name}")
+            },
+        )
 
     private fun code(body: String) =
         Regex("\"code\"\\s*:\\s*\"([^\"]*)\"")

@@ -9,8 +9,8 @@ operation	placeLegalHold	UNASSIGNED
 operation	releaseLegalHold	UNASSIGNED
 operation	getIntegrityStatus	UNASSIGNED
 operation	getEvidenceRetrieval	UNASSIGNED
-operation	createAuditPackExport	UNASSIGNED
-operation	getAuditPackExport	UNASSIGNED
+operation	createAuditPackExport	INV-T-25920
+operation	getAuditPackExport	INV-T-25920
 operation	deleteAtRetentionEnd	INV-T-22971
 operation	getPartitionDeletion	INV-T-22971
 operation	recordSecurityCase	INV-T-11694
