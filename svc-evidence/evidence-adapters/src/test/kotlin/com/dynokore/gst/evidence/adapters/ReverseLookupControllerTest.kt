@@ -145,15 +145,7 @@ class ReverseLookupControllerTest {
 
     /** A reader that hands the entity set, the filter and the limit of `readScoped` to [serve]. */
     private fun scopedReader(serve: (Set<String>, ReverseLookupFilter, Int) -> List<ReverseLookupRow>) =
-        object : SubmissionIndexReader {
-            override fun readScoped(
-                tenant: TenantId,
-                entities: Set<String>,
-                filter: ReverseLookupFilter,
-                after: ReverseLookupKey?,
-                limit: Int,
-            ): List<ReverseLookupRow> = serve(entities, filter, limit)
-        }
+        SubmissionIndexReader { _, entities, filter, _, limit -> serve(entities, filter, limit) }
 
     private fun controller(
         caller: EndUserPrincipal?,
