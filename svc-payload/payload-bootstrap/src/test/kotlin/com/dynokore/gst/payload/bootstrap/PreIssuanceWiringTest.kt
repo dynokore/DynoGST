@@ -3,6 +3,7 @@ package com.dynokore.gst.payload.bootstrap
 import com.dynokore.gst.payload.adapters.clients.MasterdataRegisterStatusSource
 import com.dynokore.gst.payload.application.preissuance.CheckPreIssuance
 import com.dynokore.gst.payload.application.preissuance.RegisterStatusSource
+import com.dynokore.platform.serviceruntime.replica.AuthorityReplica
 import com.sun.net.httpserver.HttpServer
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -13,6 +14,7 @@ import java.net.InetSocketAddress
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import java.nio.file.Path
+import java.time.Clock
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
@@ -68,7 +70,7 @@ class PreIssuanceWiringTest : OverrideWiringBase() {
         amount: String? = "9.00",
     ): String =
         listOfNotNull(
-            "\"entityRef\":\"E-1\"",
+            "\"entityRef\":\"E-001\"",
             "\"currency\":\"SGD\"",
             "\"totalIncludingTax\":\"109.00\"",
             type?.let { "\"submissionType\":\"$it\"" },
@@ -82,7 +84,11 @@ class PreIssuanceWiringTest : OverrideWiringBase() {
     private fun <T> served(block: (ServedService, MasterdataStub) -> T): T =
         MasterdataStub().use { md ->
             AccessStub().use { access ->
-                withService(localReplica(), access, masterdataUrl = md.url) { service -> block(service, md) }
+                withService(
+                    localReplica("u-1" to "transaction.ingest"),
+                    access,
+                    masterdataUrl = md.url,
+                ) { service -> block(service, md) }
             }
         }
 
@@ -108,7 +114,7 @@ class PreIssuanceWiringTest : OverrideWiringBase() {
             md.requests.forEach {
                 it["counterpartyUen"] shouldBe "M90054321K"
                 it["transactionDate"] shouldBe "2026-03-20"
-                it["entityRef"] shouldBe "E-1"
+                it["entityRef"] shouldBe "E-001"
                 it["currency"] shouldBe "SGD"
             }
             service.state() shouldBe rows
@@ -163,7 +169,7 @@ class PreIssuanceWiringTest : OverrideWiringBase() {
             val dead = md.url
             md.close()
             AccessStub().use { access ->
-                withService(localReplica(), access, masterdataUrl = dead) { service ->
+                withService(localReplica("u-1" to "transaction.ingest"), access, masterdataUrl = dead) { service ->
                     val answer = service.check(draft())
                     answer.status shouldBe 200
                     answer.body shouldContain "\"verdict\":\"WARN\""
@@ -223,6 +229,71 @@ class PreIssuanceWiringTest : OverrideWiringBase() {
     }
 
     private val property = "payload.masterdata-svc-url"
+
+    private val ingest = "transaction.ingest"
+
+    private fun ServedService.checkAs(
+        authorization: String,
+        body: String = draft(),
+    ): Answer = send("POST", path, "W:subject-ingestion-svc", authorization, body)
+
+    private fun servedWith(
+        replica: AuthorityReplica,
+        block: (ServedService, MasterdataStub) -> Unit,
+    ) {
+        MasterdataStub().use { md ->
+            AccessStub().use { access ->
+                withService(replica, access, masterdataUrl = md.url) { service -> block(service, md) }
+            }
+        }
+    }
+
+    @Test
+    fun `INV-AC-27312 the holder of the key gets 200 and the verdict and no row is written`() {
+        servedWith(localReplica("u-1" to ingest)) { service, md ->
+            val rows = service.state()
+            val answer = service.checkAs("Bearer U-u-1")
+            answer.status shouldBe 200
+            answer.body shouldContain "\"verdict\":\"BLOCK\""
+            md.requests.size shouldBe 1
+            service.state() shouldBe rows
+        }
+    }
+
+    @Test
+    fun `INV-AC-27312 a caller whose roles hold no cell of the key gets 403 SRT-004 and the stub gets 0 requests`() {
+        servedWith(localReplica("u-1" to "validation.override")) { service, md ->
+            val rows = service.state()
+            val answer = service.checkAs("Bearer U-u-1")
+            answer.status shouldBe 403
+            answer.body shouldContain "SRT-004"
+            md.requests.size shouldBe 0
+            service.state() shouldBe rows
+        }
+    }
+
+    @Test
+    fun `INV-AC-27312 a request with no principal is 401 and the stub gets 0 requests`() {
+        servedWith(localReplica("u-1" to ingest)) { service, md ->
+            val rows = service.state()
+            service.send("POST", path, "W:subject-ingestion-svc", "", draft()).status shouldBe 401
+            md.requests.size shouldBe 0
+            service.state() shouldBe rows
+        }
+    }
+
+    @Test
+    fun `INV-AC-27312 a DEGRADED decision is 403 and the stub gets 0 requests`() {
+        // no snapshot and no fallback: the replica cannot decide, the source is DEGRADED
+        servedWith(AuthorityReplica(Clock.systemUTC(), roleMap)) { service, md ->
+            val rows = service.state()
+            val answer = service.checkAs("Bearer U-u-1")
+            answer.status shouldBe 403
+            answer.body shouldContain "SRT-004"
+            md.requests.size shouldBe 0
+            service.state() shouldBe rows
+        }
+    }
 
     @Test
     fun `INV-AC-26694 W1 with the property set the context holds exactly one CheckPreIssuance bean`(

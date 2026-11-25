@@ -1,17 +1,35 @@
 package com.dynokore.gst.payload.adapters.http
 
+import com.dynokore.gst.payload.application.preissuance.AuthorizedCheckPreIssuance
 import com.dynokore.gst.payload.application.preissuance.CheckPreIssuance
+import com.dynokore.gst.payload.application.preissuance.PreIssuanceAuthority
+import com.dynokore.gst.payload.application.preissuance.PreIssuanceCaller
+import com.dynokore.gst.payload.application.preissuance.PreIssuanceCallerKind
 import com.dynokore.gst.payload.application.preissuance.RegisterLookup
 import com.dynokore.gst.payload.application.preissuance.RegisterQuery
 import com.dynokore.gst.payload.application.preissuance.RegisterStatusSource
 import com.dynokore.gst.payload.contract.model.DraftDocument
 import com.dynokore.gst.payload.contract.model.PreIssuanceVerdict
 import com.dynokore.gst.payload.contract.model.ReasonItem
+import com.dynokore.platform.outboxandqueue.EntityRef
 import com.dynokore.platform.serviceruntime.http.BindingFailureAdvice
+import com.dynokore.platform.serviceruntime.identity.EndUserPrincipal
+import com.dynokore.platform.serviceruntime.identity.EndUserPrincipalBindingFilter
+import com.dynokore.platform.serviceruntime.identity.MachineTokenFilter
+import com.dynokore.platform.serviceruntime.replica.MachineEntityCoverage
+import com.dynokore.platform.serviceruntime.replica.MachinePrincipalFixtures
+import com.dynokore.platform.serviceruntime.replica.Principal
+import com.dynokore.platform.serviceruntime.replica.PrincipalKind
+import com.dynokore.platform.tenancykernel.TenantId
 import io.kotest.matchers.shouldBe
+import jakarta.servlet.http.HttpServletRequest
+import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Test
+import org.springframework.beans.factory.ObjectProvider
+import org.springframework.beans.factory.support.DefaultListableBeanFactory
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
+import org.springframework.mock.web.MockHttpServletRequest
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
@@ -19,21 +37,52 @@ import tools.jackson.databind.json.JsonMapper
 import tools.jackson.databind.node.ObjectNode
 import java.math.BigDecimal
 import java.time.LocalDate
+import java.util.UUID
 
 class PreIssuanceControllerTest {
     private val date = LocalDate.of(2026, 3, 20)
     private val queries = mutableListOf<RegisterQuery>()
     private val json = JsonMapper.builder().build()
 
-    private fun controller(answer: RegisterLookup) =
-        PreIssuanceController(
+    private val tenant1 = TenantId(UUID.nameUUIDFromBytes("t1".toByteArray()))
+    private val endUser = EndUserPrincipal("user-1", tenant1, setOf(EntityRef("E-1")))
+    private val callers = mutableListOf<PreIssuanceCaller>()
+
+    private fun machinePrincipal(tenant: TenantId? = tenant1) =
+        MachinePrincipalFixtures.machine("machine-1", tenant, MachineEntityCoverage.Entity("E-1"), "INGESTION")
+
+    private fun requestWith(
+        machine: Any? = null,
+        user: EndUserPrincipal? = endUser,
+    ) = MockHttpServletRequest().apply {
+        machine?.let { setAttribute(MachineTokenFilter.PRINCIPAL_ATTRIBUTE, it) }
+        user?.let { setAttribute(EndUserPrincipalBindingFilter.PRINCIPAL_ATTRIBUTE, it) }
+    }
+
+    private fun providerOf(request: HttpServletRequest): ObjectProvider<HttpServletRequest> =
+        DefaultListableBeanFactory()
+            .apply { registerSingleton("request", request) }
+            .getBeanProvider(HttpServletRequest::class.java)
+
+    private fun controller(
+        answer: RegisterLookup,
+        request: HttpServletRequest = requestWith(),
+        held: Boolean = true,
+    ) = PreIssuanceController(
+        AuthorizedCheckPreIssuance(
             CheckPreIssuance(
                 RegisterStatusSource {
                     queries += it
                     answer
                 },
             ),
-        )
+            PreIssuanceAuthority { caller, _, _ ->
+                callers += caller
+                held
+            },
+        ),
+        providerOf(request),
+    )
 
     private fun draft(
         type: DraftDocument.SubmissionType = DraftDocument.SubmissionType.TYPE_1A,
@@ -231,5 +280,90 @@ class PreIssuanceControllerTest {
         response.statusCode.value() shouldBe 200
         queries.size shouldBe 1
         queries.single().supplierGstn shouldBe " 27AAA "
+    }
+
+    private fun callWith(
+        request: HttpServletRequest,
+        held: Boolean = true,
+    ) = controller(notRegistered, request, held).checkPreIssuance("flow", draft())
+
+    private fun codeOf(response: ResponseEntity<*>) = json.readTree(textOf(response))["code"].asString()
+
+    @Test
+    fun `INV-AC-27312 a held permission is 200 with the verdict`() {
+        val response = callWith(requestWith())
+        response.statusCode.value() shouldBe 200
+        (response.body as PreIssuanceVerdict).verdict shouldBe PreIssuanceVerdict.Verdict.BLOCK
+        queries.size shouldBe 1
+    }
+
+    @Test
+    fun `INV-AC-27312 Forbidden is 403 with the code SRT-004 and no register lookup`() {
+        val response = callWith(requestWith(), held = false)
+        response.statusCode.value() shouldBe 403
+        codeOf(response) shouldBe "SRT-004"
+        queries shouldBe emptyList()
+    }
+
+    @Test
+    fun `INV-AC-27312 no principal is 401 UNAUTHENTICATED and the delegate has zero calls`() {
+        val response = callWith(requestWith(user = null))
+        response.statusCode.value() shouldBe 401
+        codeOf(response) shouldBe "SRT-003"
+        callers shouldBe emptyList()
+        queries shouldBe emptyList()
+    }
+
+    @Test
+    fun `INV-AC-27312 a machine attribute is the MACHINE caller, the same instance, and the end user is not read`() {
+        val machine = machinePrincipal()
+        callWith(requestWith(machine = machine, user = null)).statusCode.value() shouldBe 200
+        assertSame(machine, callers.single().principal)
+        callers.single().kind shouldBe PreIssuanceCallerKind.MACHINE
+    }
+
+    @Test
+    fun `INV-AC-27312 an end user alone is a HUMAN caller equal to Principal of the actor`() {
+        callWith(requestWith()).statusCode.value() shouldBe 200
+        callers.single().principal shouldBe Principal("user-1", PrincipalKind.HUMAN)
+        callers.single().kind shouldBe PreIssuanceCallerKind.HUMAN
+    }
+
+    @Test
+    fun `INV-AC-27312 both attributes present give the MACHINE caller`() {
+        val machine = machinePrincipal()
+        callWith(requestWith(machine = machine)).statusCode.value() shouldBe 200
+        assertSame(machine, callers.single().principal)
+        callers.single().id shouldBe "machine-1"
+    }
+
+    @Test
+    fun `INV-AC-27312 a machine attribute of kind HUMAN is 401 and never turned into HUMAN`() {
+        val response = callWith(requestWith(machine = Principal("human-1", PrincipalKind.HUMAN)))
+        response.statusCode.value() shouldBe 401
+        codeOf(response) shouldBe "SRT-003"
+        callers shouldBe emptyList()
+    }
+
+    @Test
+    fun `INV-AC-27312 a machine attribute that is no Principal is 401 with zero calls`() {
+        callWith(requestWith(machine = "not a principal")).statusCode.value() shouldBe 401
+        callers shouldBe emptyList()
+    }
+
+    @Test
+    fun `INV-AC-27312 a MACHINE principal with no tenant is 401 with zero calls`() {
+        callWith(requestWith(machine = machinePrincipal(tenant = null))).statusCode.value() shouldBe 401
+        callers shouldBe emptyList()
+    }
+
+    @Test
+    fun `INV-AC-27312 an end user with a null tenant is 401 and the same user with a tenant is HUMAN`() {
+        val operator = EndUserPrincipal("operator-1", null, emptySet())
+        callWith(requestWith(user = operator)).statusCode.value() shouldBe 401
+        callers shouldBe emptyList()
+        callWith(requestWith(user = EndUserPrincipal("operator-1", tenant1, emptySet()))).statusCode.value() shouldBe
+            200
+        callers.single().kind shouldBe PreIssuanceCallerKind.HUMAN
     }
 }

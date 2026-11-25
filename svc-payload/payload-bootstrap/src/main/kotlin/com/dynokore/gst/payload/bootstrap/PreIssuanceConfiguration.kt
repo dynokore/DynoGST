@@ -1,9 +1,13 @@
 package com.dynokore.gst.payload.bootstrap
 
 import com.dynokore.gst.payload.adapters.clients.MasterdataRegisterStatusSource
+import com.dynokore.gst.payload.application.preissuance.AuthorizedCheckPreIssuance
 import com.dynokore.gst.payload.application.preissuance.CheckPreIssuance
+import com.dynokore.gst.payload.application.preissuance.PreIssuanceAuthority
 import com.dynokore.gst.payload.application.preissuance.RegisterStatusSource
+import com.dynokore.platform.serviceruntime.replica.AuthorityReplica
 import com.dynokore.platform.serviceruntime.resilience.ResilienceRegistry
+import com.dynokore.platform.tenancykernel.TenantContext
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -28,4 +32,17 @@ class PreIssuanceConfiguration {
 
     @Bean
     fun checkPreIssuance(register: RegisterStatusSource): CheckPreIssuance = CheckPreIssuance(register)
+
+    @Bean
+    fun preIssuanceAuthority(
+        replica: AuthorityReplica,
+        tenants: TenantContext,
+        clock: Clock,
+    ): PreIssuanceAuthority = ReplicaPreIssuanceAuthority(replica, tenants, clock)
+
+    @Bean
+    fun authorizedCheckPreIssuance(
+        check: CheckPreIssuance,
+        authority: PreIssuanceAuthority,
+    ): AuthorizedCheckPreIssuance = AuthorizedCheckPreIssuance(check, authority)
 }

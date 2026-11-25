@@ -94,6 +94,10 @@ dependencies {
     testImplementation(libs.platform.konsistRules)
     testImplementation(libs.testcontainers.postgresql)
     testImplementation(libs.postgresql)
+    // INV-T-27316: MachinePrincipalFixtures builds the MACHINE Principal the controller test needs (test only).
+    testImplementation(libs.platform.serviceRuntime.api) {
+        capabilities { requireCapability("com.dynokore.platform:service-runtime-test-fixtures") }
+    }
 }
 
 // --- INV-T-7113, INV-Q-7106 A: the vendored UBL XSD sets, their checks and the xjc generation ------------------------
