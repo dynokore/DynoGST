@@ -574,6 +574,9 @@ class RetentionPartitionsDbTest {
                 "detach_expired_partition" to EvidenceDb.MIGRATE,
                 "drop_detached_partition" to EvidenceDb.MIGRATE,
                 "mark_partition_archived" to EvidenceDb.SYS,
+                "lock_retention_partition" to EvidenceDb.SYS,
+                "hold_retention_partition" to EvidenceDb.SYS,
+                "lock_import_unit" to EvidenceDb.SYS,
             )
         superuser { c ->
             c

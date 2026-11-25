@@ -94,6 +94,10 @@ class DeleteAtRetentionEndTest {
                 }
             },
             object : PartitionLifecycle {
+                override fun lock(partitionId: String) {
+                    calls += "lock"
+                }
+
                 override fun detach(
                     partitionId: String,
                     auditRef: String,
@@ -123,7 +127,7 @@ class DeleteAtRetentionEndTest {
         vararg reads: String,
     ) {
         run() shouldBe expected
-        calls shouldBe listOf("find") + reads.toList()
+        calls shouldBe listOf("lock", "find") + reads.toList()
     }
 
     private val activeHold = LegalHold("H1", "E1", period, "dispute", HoldStatus.ACTIVE)
@@ -194,6 +198,7 @@ class DeleteAtRetentionEndTest {
         run() shouldBe DeleteAtRetentionEndResult.DELETED
         calls shouldBe
             listOf(
+                "lock",
                 "find",
                 "retentionEnd",
                 "holds",
@@ -213,7 +218,7 @@ class DeleteAtRetentionEndTest {
         run() shouldBe DeleteAtRetentionEndResult.DELETED
         calls.clear()
         run() shouldBe DeleteAtRetentionEndResult.ALREADY_DELETED
-        calls shouldBe listOf("find")
+        calls shouldBe listOf("lock", "find")
     }
 
     @Test

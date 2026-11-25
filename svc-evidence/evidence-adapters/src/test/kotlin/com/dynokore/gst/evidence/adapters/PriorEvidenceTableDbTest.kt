@@ -307,13 +307,15 @@ class PriorEvidenceTableDbTest {
     }
 
     @Test
-    fun `INV-AC-24306 a unit missing a chain member is not archived`() {
-        val u = built(listOf("decision_trace", "evidence_payload", "acknowledgement", "prior_evidence"))
+    fun `INV-AC-24306 INV-AC-28694 a unit without all chain members is archived once every member is detached`() {
+        val members = listOf("decision_trace", "evidence_payload", "acknowledgement", "prior_evidence")
+        val u = built(members)
         ready(u)
-        listOf("decision_trace", "evidence_payload", "acknowledgement", "prior_evidence").forEach {
-            detach(u, it) shouldBe null
-        }
+        members.dropLast(1).forEach { detach(u, it) shouldBe null }
         archive(u) shouldBe "55000"
+        detach(u, members.last()) shouldBe null
+        archive(u) shouldBe null
+        unitState(u) shouldBe "ARCHIVED"
     }
 
     @Test
