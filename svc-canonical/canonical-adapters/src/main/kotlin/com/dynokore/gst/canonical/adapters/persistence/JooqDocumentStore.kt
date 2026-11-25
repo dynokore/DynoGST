@@ -5,6 +5,7 @@ import com.dynokore.gst.canonical.adapters.persistence.jooq.tables.references.DO
 import com.dynokore.gst.canonical.adapters.persistence.jooq.tables.references.DOCUMENT_PARTY
 import com.dynokore.gst.canonical.adapters.persistence.jooq.tables.references.DOCUMENT_SUBTOTAL
 import com.dynokore.gst.canonical.adapters.persistence.jooq.tables.references.DOCUMENT_VERSION
+import com.dynokore.gst.canonical.application.document.DocumentIdentityConflict
 import com.dynokore.gst.canonical.application.document.DocumentStore
 import com.dynokore.gst.canonical.domain.document.DerivedRows
 import com.dynokore.gst.canonical.domain.document.NewDocument
@@ -13,8 +14,10 @@ import com.dynokore.gst.canonical.domain.document.SubtotalCoverage
 import com.dynokore.gst.canonical.domain.document.WindowDocument
 import com.dynokore.platform.serviceruntime.persistence.UpdateOutcome
 import org.jooq.DSLContext
+import org.jooq.exception.DataAccessException
 import org.jooq.impl.DSL
 import org.jooq.impl.SQLDataType
+import org.postgresql.util.PSQLException
 import java.time.LocalDate
 import java.util.UUID
 import com.dynokore.gst.canonical.application.document.VersionKey as ApplicationVersionKey
@@ -29,6 +32,20 @@ class JooqDocumentStore(
     private val dsl: DSLContext,
 ) : DocumentStore {
     override fun insert(document: NewDocument) {
+        try {
+            insertRow(document)
+        } catch (failure: DataAccessException) {
+            val server = causes(failure).filterIsInstance<PSQLException>().firstOrNull()
+            if (isIdentityViolation(server?.sqlState, server?.serverErrorMessage?.constraint)) {
+                throw DocumentIdentityConflict(failure)
+            }
+            throw failure
+        }
+    }
+
+    private fun causes(failure: Throwable): Sequence<Throwable> = generateSequence(failure) { it.cause }
+
+    private fun insertRow(document: NewDocument) {
         dsl
             .insertInto(DOCUMENT)
             .set(DOCUMENT.DOC_UUID, document.docUuid)
@@ -241,7 +258,15 @@ class JooqDocumentStore(
                 )
             }
 
-    private companion object {
+    internal companion object {
         const val FIRST_VERSION = 1
+        const val UNIQUE_VIOLATION = "23505"
+        const val IDENTITY_CONSTRAINT = "document_identity_key"
+
+        /** SQLSTATE and constraint name of the server error, each by whole-string equality; never message text. */
+        fun isIdentityViolation(
+            sqlState: String?,
+            constraint: String?,
+        ): Boolean = sqlState == UNIQUE_VIOLATION && constraint == IDENTITY_CONSTRAINT
     }
 }

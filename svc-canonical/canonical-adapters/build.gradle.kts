@@ -51,6 +51,7 @@ dependencies {
     implementation(libs.swagger.annotations)
     implementation(libs.jooq)
     implementation(libs.flyway.core)
+    implementation(libs.postgresql)
     implementation(libs.flyway.databasePostgresql)
     testFixturesImplementation(platform(libs.platform.bom))
     testFixturesImplementation(libs.platform.tenancyKernel.api)
