@@ -46,17 +46,11 @@ object AuditPackWriter {
     private const val REPORT_SIGNATURE = "verification-report.p7s"
     private const val VERIFICATION_KEY = "verification-key.pem"
 
-    fun write(
-        scope: PackageScope,
-        items: List<PackageItem>,
-        generatedAt: Instant,
-        verificationReport: String?,
-    ): PackageFiles = write(scope, items, generatedAt, verificationReport, null, null)
-
     /**
-     * As the four-argument form, and with both [reportSignature] (the DER detached CMS over the report) and
-     * [verificationKeyPem] also writes the root tag files `verification-report.p7s` and `verification-key.pem`.
-     * Both or neither; either needs a non-blank report. The writer signs nothing.
+     * An entity-and-period package needs a non-blank [verificationReport], a non-empty [reportSignature] (the DER
+     * detached CMS over the report) and a non-blank [verificationKeyPem]; they become the root tag files
+     * `verification-report.txt`, `verification-report.p7s` and `verification-key.pem`. A whole-tenant package takes
+     * null for all three. Anything else throws [IllegalArgumentException]. The writer signs nothing.
      */
     @Suppress("LongMethod")
     fun write(
@@ -67,25 +61,7 @@ object AuditPackWriter {
         reportSignature: ByteArray?,
         verificationKeyPem: String?,
     ): PackageFiles {
-        require((reportSignature == null) == (verificationKeyPem == null)) {
-            "the report signature and the verification key are written together or not at all"
-        }
-        if (reportSignature != null) {
-            require(!verificationReport.isNullOrBlank()) { "a report signature needs a non-blank verification report" }
-            require(reportSignature.isNotEmpty()) { "the report signature must not be empty" }
-            require(!verificationKeyPem.isNullOrBlank()) { "the verification key must not be blank" }
-        }
-        when (scope) {
-            is PackageScope.EntityPeriod -> {
-                require(!verificationReport.isNullOrBlank()) {
-                    "an entity-and-period package needs a non-blank verification report"
-                }
-            }
-
-            is PackageScope.WholeTenant -> {
-                require(verificationReport == null) { "a whole-tenant package holds no verification report" }
-            }
-        }
+        requireSigningArguments(scope, verificationReport, reportSignature, verificationKeyPem)
         val payload = TreeMap<String, ByteArray>()
         for (item in items) {
             val path = "data/${item.contentClass.directory}/${item.name}"
@@ -119,6 +95,39 @@ object AuditPackWriter {
         all.putAll(tagged)
         all[TAG_MANIFEST] = text(tagManifest)
         return PackageFiles(all)
+    }
+
+    private fun requireSigningArguments(
+        scope: PackageScope,
+        verificationReport: String?,
+        reportSignature: ByteArray?,
+        verificationKeyPem: String?,
+    ) {
+        when (scope) {
+            is PackageScope.EntityPeriod -> {
+                require(!verificationReport.isNullOrBlank()) {
+                    "verificationReport: an entity-and-period package needs a non-blank verification report"
+                }
+                require(reportSignature != null && reportSignature.isNotEmpty()) {
+                    "reportSignature: an entity-and-period package needs a non-empty report signature"
+                }
+                require(!verificationKeyPem.isNullOrBlank()) {
+                    "verificationKeyPem: an entity-and-period package needs a non-blank verification key"
+                }
+            }
+
+            is PackageScope.WholeTenant -> {
+                require(verificationReport == null) {
+                    "verificationReport: a whole-tenant package holds no verification report"
+                }
+                require(reportSignature == null) {
+                    "reportSignature: a whole-tenant package holds no report signature"
+                }
+                require(verificationKeyPem == null) {
+                    "verificationKeyPem: a whole-tenant package holds no verification key"
+                }
+            }
+        }
     }
 
     private fun bagInfo(

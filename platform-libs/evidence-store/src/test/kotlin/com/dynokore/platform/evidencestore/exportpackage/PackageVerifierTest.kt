@@ -20,6 +20,11 @@ import java.security.MessageDigest
 
 @Suppress("LargeClass") // one test per acceptance-criterion case of INV-AC-13402, each on its own package copy
 class PackageVerifierTest {
+    private val baseTags = listOf("bagit.txt", "bag-info.txt", "README.txt", "manifest-sha256.txt")
+    private val reportPath = "verification-report.txt"
+    private val reportBytes = "Result: PASSED\n".toByteArray()
+    private val sigPath = "verification-report.p7s"
+    private val keyPath = "verification-key.pem"
     private val dirs =
         listOf(
             "transmitted-xml",
@@ -47,12 +52,14 @@ class PackageVerifierTest {
         octets: Long = payload.values.sumOf { it.size }.toLong(),
         manifestExtra: List<String> = emptyList(),
         omitLabel: String? = null,
+        kind: String = "AUDIT_PACK",
+        signing: Boolean = true,
     ): MutableMap<String, ByteArray> {
         val files = linkedMapOf<String, ByteArray>()
         files["bagit.txt"] = "BagIt-Version: 1.0\nTag-File-Character-Encoding: UTF-8\n".toByteArray()
         val info =
             buildList {
-                add("Package-Kind: AUDIT_PACK")
+                add("Package-Kind: $kind")
                 add("Tenant: 00000000-0000-0000-0000-000000000001")
                 add("Generated-At: 2026-10-30T00:00:00Z")
                 add("Payload-Oxum: $octets.${payload.size}")
@@ -63,12 +70,24 @@ class PackageVerifierTest {
         files.putAll(payload)
         val lines = payload.toSortedMap().map { (p, b) -> "${sha(b)}  $p" } + manifestExtra
         files["manifest-sha256.txt"] = (lines.joinToString("") { it + "\n" }).toByteArray()
+        if (signing) {
+            files[reportPath] = reportBytes
+            files[sigPath] = byteArrayOf(0x30, 3, 1, 2, 3)
+            files[keyPath] = "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n".toByteArray()
+        }
         retag(files)
         return files
     }
 
     private fun retag(files: MutableMap<String, ByteArray>) {
-        val tags = listOf("bagit.txt", "bag-info.txt", "README.txt", "manifest-sha256.txt")
+        val tags = baseTags + listOf(reportPath, sigPath, keyPath).filter { it in files }
+        tagManifest(files, tags)
+    }
+
+    private fun tagManifest(
+        files: MutableMap<String, ByteArray>,
+        tags: List<String>,
+    ) {
         files["tagmanifest-sha256.txt"] = tags.joinToString("") { "${sha(files.getValue(it))}  $it\n" }.toByteArray()
     }
 
@@ -536,31 +555,12 @@ class PackageVerifierTest {
 
     /** A bag with the report and the signature, listed, and no key file. */
     private fun lonePem(f: MutableMap<String, ByteArray>): MutableMap<String, ByteArray> {
-        f["verification-report.txt"] = "Result: PASSED\n".toByteArray()
-        f["verification-report.p7s"] = byteArrayOf(0x30, 3, 1, 2, 3)
-        val tags =
-            listOf(
-                "bagit.txt",
-                "bag-info.txt",
-                "README.txt",
-                "manifest-sha256.txt",
-                "verification-report.txt",
-                "verification-report.p7s",
-            )
-        f["tagmanifest-sha256.txt"] = tags.joinToString("") { "${sha(f.getValue(it))}  $it\n" }.toByteArray()
+        f.remove(keyPath)
+        retag(f)
         return f
     }
 
-    private val reportPath = "verification-report.txt"
-    private val reportBytes = "Result: PASSED\n".toByteArray()
-
-    private fun withReport(): MutableMap<String, ByteArray> {
-        val f = bag(full())
-        f[reportPath] = reportBytes
-        val tags = listOf("bagit.txt", "bag-info.txt", "README.txt", "manifest-sha256.txt", reportPath)
-        f["tagmanifest-sha256.txt"] = tags.joinToString("") { "${sha(f.getValue(it))}  $it\n" }.toByteArray()
-        return f
-    }
+    private fun withReport(): MutableMap<String, ByteArray> = bag(full())
 
     @Test
     fun `INV-AC-24773 a bag with the report listed and intact is valid`() {
@@ -595,7 +595,7 @@ class PackageVerifierTest {
 
     @Test
     fun `INV-AC-24773 a bag with neither the report nor its line is valid`() {
-        assertIs<PackageVerification.Valid>(verify(bag(full())))
+        assertIs<PackageVerification.Valid>(verify(bag(full(), kind = "OFFBOARDING", signing = false)))
     }
 
     @Test
@@ -605,26 +605,24 @@ class PackageVerifierTest {
         assertIs<PackageVerification.Valid>(verify(f))
     }
 
-    private val sigPath = "verification-report.p7s"
-    private val keyPath = "verification-key.pem"
-
     private fun signed(
         withSig: Boolean = true,
         withKey: Boolean = true,
         listSig: Boolean = withSig,
         listKey: Boolean = withKey,
         withRep: Boolean = true,
+        kind: String = "AUDIT_PACK",
     ): MutableMap<String, ByteArray> {
-        val f = bag(full())
-        if (withRep) f[reportPath] = reportBytes
-        if (withSig) f[sigPath] = byteArrayOf(0x30, 3, 1, 2, 3)
-        if (withKey) f[keyPath] = "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n".toByteArray()
+        val f = bag(full(), kind = kind)
         val tags =
-            listOf("bagit.txt", "bag-info.txt", "README.txt", "manifest-sha256.txt") +
+            baseTags +
                 (if (withRep) listOf(reportPath) else emptyList()) +
                 (if (listSig) listOf(sigPath) else emptyList()) +
                 (if (listKey) listOf(keyPath) else emptyList())
-        f["tagmanifest-sha256.txt"] = tags.joinToString("") { "${sha(f.getValue(it))}  $it\n" }.toByteArray()
+        tagManifest(f, tags)
+        if (!withRep) f.remove(reportPath)
+        if (!withSig) f.remove(sigPath)
+        if (!withKey) f.remove(keyPath)
         return f
     }
 
@@ -647,7 +645,8 @@ class PackageVerifierTest {
         val g = signed()
         g[sigPath] = g.getValue(sigPath).also { it[4] = (it[4] + 1).toByte() }
         single(verify(g), TAG_DIGEST_MISMATCH, sigPath)
-        val h = signed()
+        // OFFBOARDING: an AUDIT_PACK bag would also report the two removed files as REPORT_SIGNATURE_INCOMPLETE.
+        val h = signed(kind = "OFFBOARDING")
         h.remove(sigPath)
         h.remove(keyPath)
         assertEquals(
@@ -690,5 +689,69 @@ class PackageVerifierTest {
         h["x-$sigPath"] = byteArrayOf(1)
         h["x-$keyPath"] = byteArrayOf(1)
         assertIs<PackageVerification.Valid>(verify(h))
+    }
+
+    private fun missing(path: String) = PackageProblem(PackageProblemCode.REPORT_SIGNATURE_INCOMPLETE, path)
+
+    /** A bag of [kind] with no report and neither signing file. */
+    private fun unsigned(kind: String) = bag(full(), kind = kind, signing = false)
+
+    /** A bag of [kind] with the report listed and neither signing file. */
+    private fun reportOnly(kind: String) = signed(withSig = false, withKey = false, kind = kind)
+
+    @Test
+    fun `INV-AC-27779 an AUDIT_PACK bag without the p7s is REPORT_SIGNATURE_INCOMPLETE with the p7s path`() {
+        single(verify(signed(withSig = false)), PackageProblemCode.REPORT_SIGNATURE_INCOMPLETE, sigPath)
+    }
+
+    @Test
+    fun `INV-AC-27779 an AUDIT_PACK bag without the key is REPORT_SIGNATURE_INCOMPLETE with the key path`() {
+        single(verify(signed(withKey = false)), PackageProblemCode.REPORT_SIGNATURE_INCOMPLETE, keyPath)
+    }
+
+    @Test
+    fun `INV-AC-27779 an AUDIT_PACK bag without both files reports one problem per path`() {
+        val expected = listOf(missing(keyPath), missing(sigPath))
+        assertEquals(expected, problems(verify(unsigned("AUDIT_PACK"))))
+        assertEquals(expected, problems(verify(reportOnly("AUDIT_PACK"))))
+        // The first Package-Kind label decides, after the trim.
+        assertEquals(expected, problems(verify(unsigned("  AUDIT_PACK  \nPackage-Kind: OFFBOARDING"))))
+        assertIs<PackageVerification.Valid>(verify(unsigned("OFFBOARDING\nPackage-Kind: AUDIT_PACK")))
+        // The requirement comes from bag-info.txt, so it holds without a tag manifest too.
+        val noTagManifest = unsigned("AUDIT_PACK").also { it.remove("tagmanifest-sha256.txt") }
+        assertTrue(problems(verify(noTagManifest)).containsAll(expected))
+    }
+
+    @Test
+    fun `INV-AC-27779 an OFFBOARDING bag without the files is valid`() {
+        assertIs<PackageVerification.Valid>(verify(unsigned("OFFBOARDING")))
+        assertIs<PackageVerification.Valid>(verify(reportOnly("OFFBOARDING")))
+    }
+
+    @Test
+    fun `INV-AC-27779 a Package-Kind that only looks like AUDIT_PACK requires nothing`() {
+        listOf("audit_pack", "Audit_Pack", "AUDIT_PACKS", "XAUDIT_PACK", "AUDIT_PACK,OFFBOARDING", "*", "")
+            .forEach { kind ->
+                listOf(unsigned(kind), reportOnly(kind)).forEach {
+                    val v = verify(it)
+                    assertTrue(v is PackageVerification.Valid) { "'$kind': $v" }
+                }
+            }
+        // A look-alike label is no Package-Kind: the missing field is the only problem.
+        val f = unsigned("AUDIT_PACK")
+        f["bag-info.txt"] =
+            String(f.getValue("bag-info.txt")).replace("Package-Kind:", "package-kind:").toByteArray()
+        retag(f)
+        single(verify(f), MISSING_BAG_INFO_FIELD, "Package-Kind")
+        single(verify(bag(full(), omitLabel = "Package-Kind", signing = false)), MISSING_BAG_INFO_FIELD, "Package-Kind")
+    }
+
+    @Test
+    fun `INV-AC-27779 a lone file is reported once`() {
+        assertEquals(listOf(missing(sigPath)), problems(verify(signed(withSig = false))))
+        assertEquals(listOf(missing(keyPath)), problems(verify(signed(withKey = false))))
+        // Files present without the report, one of them also missing: still one problem for each path.
+        val noReport = problems(verify(signed(withKey = false, withRep = false)))
+        assertEquals(listOf(missing(keyPath), missing(sigPath)), noReport)
     }
 }

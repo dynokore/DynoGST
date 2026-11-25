@@ -35,14 +35,7 @@ sealed interface AssemblyResult {
  * It has no clock, store or file access; the instant is an argument.
  */
 object AuditPackAssembler {
-    fun assemble(
-        scope: PackageScope,
-        candidates: List<PackageCandidate>,
-        generatedAt: Instant,
-        verificationReport: String?,
-    ): AssemblyResult = assemble(scope, candidates, generatedAt, verificationReport, null, null)
-
-    /** As the four-argument form, with the detached report signature and verification key of [AuditPackWriter]. */
+    /** The report, signature and key arguments go to [AuditPackWriter.write] unchanged; its rules apply. */
     fun assemble(
         scope: PackageScope,
         candidates: List<PackageCandidate>,

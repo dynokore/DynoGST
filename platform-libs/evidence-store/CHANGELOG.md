@@ -6,6 +6,10 @@ train is its own (README.md: "own version and changelog").
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-11-25
+### Changed
+- Breaking: the four-argument forms of `AuditPackWriter.write` and `AuditPackAssembler.assemble` are removed (no shim); only the six-argument forms remain, with no default values. An entity-and-period package requires all three of a non-blank verification report, a non-empty report signature and a non-blank verification key; a whole-tenant package requires all three to be null; otherwise `IllegalArgumentException` naming the argument. `PackageVerifier` requires `verification-report.p7s` and `verification-key.pem` when the bag-info `Package-Kind` is exactly `AUDIT_PACK` and reports each missing one once as `REPORT_SIGNATURE_INCOMPLETE`; other kinds require neither. It still does not check the signature cryptographically (INV-REQ-663, INV-T-27780; INV-AC-27779).
+
 ## [2.7.0] - 2026-11-22
 ### Added
 - Tag files `verification-report.p7s` (the DER detached CMS signature over the report, given as bytes) and `verification-key.pem` (the verification certificate, UTF-8, one final LF) at the bag root, listed in `tagmanifest-sha256.txt` and named in README.txt. `AuditPackWriter.write` and `AuditPackAssembler.assemble` gain second overloads with `reportSignature: ByteArray?` and `verificationKeyPem: String?`; the four-argument forms delegate with two nulls and are byte-identical. Both or neither, only with a non-blank report on an entity-and-period package (otherwise `IllegalArgumentException`). `PackageVerifier` checks both by exact path (`TAG_FILE_NOT_LISTED`, `TAG_DIGEST_MISMATCH`) and the new last `PackageProblemCode` member `REPORT_SIGNATURE_INCOMPLETE` reports a lone file; it does not check the signature cryptographically (INV-REQ-663, INV-T-27740; INV-AC-27739).

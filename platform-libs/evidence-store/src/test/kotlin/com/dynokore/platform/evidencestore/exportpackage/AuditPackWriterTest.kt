@@ -17,12 +17,23 @@ import java.security.MessageDigest
 import java.time.Instant
 import java.util.UUID
 
+@Suppress("LargeClass") // one test per case of the package criteria, each on its own written package
 class AuditPackWriterTest {
     private val tenant = TenantId(UUID.fromString("11111111-2222-3333-4444-555555555555"))
     private val entity = PackageScope.EntityPeriod(tenant, EntityRef("entity-1"), PeriodRef("2026-Q3"))
     private val at = Instant.parse("2026-10-30T23:59:58.123Z")
+    private val sig = byteArrayOf(0x30, 0x03, 1, 2, 3)
+    private val pem = "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----"
     private val tagNames =
-        listOf("bagit.txt", "bag-info.txt", "README.txt", "manifest-sha256.txt", "verification-report.txt")
+        listOf(
+            "bagit.txt",
+            "bag-info.txt",
+            "README.txt",
+            "manifest-sha256.txt",
+            "verification-report.txt",
+            "verification-report.p7s",
+            "verification-key.pem",
+        )
     private val report = "Result: PASSED\nChain-Length: 12\n"
 
     private fun onePerClass() =
@@ -65,7 +76,7 @@ class AuditPackWriterTest {
         @TempDir dir: Path,
     ) {
         val items = onePerClass()
-        val root = disk(dir, AuditPackWriter.write(entity, items, at, report))
+        val root = disk(dir, AuditPackWriter.write(entity, items, at, report, sig, pem))
         (tagNames + "tagmanifest-sha256.txt").forEach { assertTrue(Files.isRegularFile(root.resolve(it)), it) }
         assertEquals(
             listOf("BagIt-Version: 1.0", "Tag-File-Character-Encoding: UTF-8"),
@@ -103,12 +114,13 @@ class AuditPackWriterTest {
         @TempDir a: Path,
         @TempDir b: Path,
     ) {
-        val ep = info(disk(a, AuditPackWriter.write(entity, onePerClass(), at, report)))
+        val ep = info(disk(a, AuditPackWriter.write(entity, onePerClass(), at, report, sig, pem)))
         assertEquals("AUDIT_PACK", ep["Package-Kind"])
         assertEquals("entity-1", ep["Entity"])
         assertEquals("2026-Q3", ep["Period"])
         assertEquals(tenant.value.toString(), ep["Tenant"])
-        val wt = info(disk(b, AuditPackWriter.write(PackageScope.WholeTenant(tenant), onePerClass(), at, null)))
+        val whole = AuditPackWriter.write(PackageScope.WholeTenant(tenant), onePerClass(), at, null, null, null)
+        val wt = info(disk(b, whole))
         assertEquals("OFFBOARDING", wt["Package-Kind"])
         assertFalse(wt.containsKey("Entity") || wt.containsKey("Period"))
         assertEquals(tenant.value.toString(), wt["Tenant"])
@@ -123,7 +135,7 @@ class AuditPackWriterTest {
                 PackageItem(PackageContentClass.AUDIT_LOG, "a.log", byteArrayOf(1)),
                 PackageItem(PackageContentClass.AUDIT_LOG, "b.log", byteArrayOf(2, 3)),
             )
-        val i = info(disk(dir, AuditPackWriter.write(entity, items, at, report)))
+        val i = info(disk(dir, AuditPackWriter.write(entity, items, at, report, sig, pem)))
         PackageContentClass.entries.forEach {
             assertEquals(if (it == PackageContentClass.AUDIT_LOG) "2" else "0", i["Item-Count-${it.directory}"])
         }
@@ -134,13 +146,13 @@ class AuditPackWriterTest {
     fun `INV-AC-13401 zero items`(
         @TempDir dir: Path,
     ) {
-        val files = AuditPackWriter.write(entity, emptyList(), at, report)
+        val files = AuditPackWriter.write(entity, emptyList(), at, report, sig, pem)
         val root = disk(dir, files)
         val i = info(root)
         assertEquals("0.0", i["Payload-Oxum"])
         PackageContentClass.entries.forEach { assertEquals("0", i["Item-Count-${it.directory}"]) }
         assertEquals(0, Files.size(root.resolve("manifest-sha256.txt")))
-        assertEquals(6, files.paths.size)
+        assertEquals(8, files.paths.size)
     }
 
     @Test
@@ -156,6 +168,8 @@ class AuditPackWriterTest {
                     listOf(PackageItem(PackageContentClass.TRANSMITTED_XML, "x.xml", bad)),
                     at,
                     report,
+                    sig,
+                    pem,
                 ),
             )
         assertArrayEquals(bad, Files.readAllBytes(root.resolve("data/transmitted-xml/x.xml")))
@@ -165,9 +179,9 @@ class AuditPackWriterTest {
     @Test
     fun `INV-AC-13401 same input gives same bytes in any item order`() {
         val items = onePerClass()
-        val a = AuditPackWriter.write(entity, items, at, report)
-        val b = AuditPackWriter.write(entity, items, at, report)
-        val c = AuditPackWriter.write(entity, items.reversed(), at, report)
+        val a = AuditPackWriter.write(entity, items, at, report, sig, pem)
+        val b = AuditPackWriter.write(entity, items, at, report, sig, pem)
+        val c = AuditPackWriter.write(entity, items.reversed(), at, report, sig, pem)
         assertEquals(a.paths, b.paths)
         assertEquals(a.paths, c.paths)
         a.paths.forEach {
@@ -194,22 +208,31 @@ class AuditPackWriterTest {
                 PackageItem(PackageContentClass.AUDIT_LOG, "a.log", byteArrayOf(1)),
                 PackageItem(PackageContentClass.AUDIT_LOG, "a.log", byteArrayOf(2)),
             )
-        val e = assertThrows(IllegalArgumentException::class.java) { AuditPackWriter.write(entity, items, at, report) }
+        val e =
+            assertThrows(IllegalArgumentException::class.java) {
+                AuditPackWriter.write(entity, items, at, report, sig, pem)
+            }
         assertTrue(e.message!!.contains("a.log"))
         AuditPackWriter.write(
             entity,
             listOf(items[0], PackageItem(PackageContentClass.TRANSMITTED_XML, "a.log", byteArrayOf())),
             at,
             report,
+            sig,
+            pem,
         )
     }
 
     @Test
     fun `a line feed in a bag-info value is refused`() {
         val s = PackageScope.EntityPeriod(tenant, EntityRef("a\nb"), PeriodRef("p"))
-        assertThrows(IllegalArgumentException::class.java) { AuditPackWriter.write(s, emptyList(), at, report) }
+        assertThrows(IllegalArgumentException::class.java) {
+            AuditPackWriter.write(s, emptyList(), at, report, sig, pem)
+        }
         val r = PackageScope.EntityPeriod(tenant, EntityRef("a"), PeriodRef("p\rq"))
-        assertThrows(IllegalArgumentException::class.java) { AuditPackWriter.write(r, emptyList(), at, report) }
+        assertThrows(IllegalArgumentException::class.java) {
+            AuditPackWriter.write(r, emptyList(), at, report, sig, pem)
+        }
     }
 
     @Test
@@ -221,7 +244,7 @@ class AuditPackWriterTest {
         assertArrayEquals(byteArrayOf(1, 2, 3), out)
         out[1] = 9
         assertArrayEquals(byteArrayOf(1, 2, 3), item.bytes())
-        val files = AuditPackWriter.write(entity, listOf(item), at, report)
+        val files = AuditPackWriter.write(entity, listOf(item), at, report, sig, pem)
         files.bytes("data/audit-log/a.log")!![0] = 7
         assertArrayEquals(byteArrayOf(1, 2, 3), files.bytes("data/audit-log/a.log"))
     }
@@ -231,7 +254,7 @@ class AuditPackWriterTest {
 
     @Test
     fun `INV-AC-24773 report is a root tag file with its bytes and its checksum in the tag manifest`() {
-        val f = AuditPackWriter.write(entity, onePerClass(), at, report)
+        val f = AuditPackWriter.write(entity, onePerClass(), at, report, sig, pem)
         assertArrayEquals(report.toByteArray(Charsets.UTF_8), f.bytes("verification-report.txt"))
         assertTrue(tagLines(f).contains("${sha(report.toByteArray(Charsets.UTF_8))}  verification-report.txt"))
         val readme = String(f.bytes("README.txt")!!, Charsets.UTF_8)
@@ -240,7 +263,7 @@ class AuditPackWriterTest {
 
     @Test
     fun `INV-AC-24773 report is exactly at the root and not under data`() {
-        val f = AuditPackWriter.write(entity, onePerClass(), at, report)
+        val f = AuditPackWriter.write(entity, onePerClass(), at, report, sig, pem)
         assertEquals(listOf("verification-report.txt"), f.paths.filter { it.endsWith("verification-report.txt") })
         assertTrue(f.paths.none { it.startsWith("data/") && it.contains("verification") })
         assertNull(f.bytes("Verification-Report.txt"))
@@ -249,22 +272,22 @@ class AuditPackWriterTest {
 
     @Test
     fun `INV-AC-24773 a final newline is added when missing and kept when present`() {
-        val a = AuditPackWriter.write(entity, emptyList(), at, "Result: PASSED")
-        val b = AuditPackWriter.write(entity, emptyList(), at, "Result: PASSED\n")
+        val a = AuditPackWriter.write(entity, emptyList(), at, "Result: PASSED", sig, pem)
+        val b = AuditPackWriter.write(entity, emptyList(), at, "Result: PASSED\n", sig, pem)
         assertArrayEquals("Result: PASSED\n".toByteArray(), a.bytes("verification-report.txt"))
         assertArrayEquals("Result: PASSED\n".toByteArray(), b.bytes("verification-report.txt"))
     }
 
     @Test
     fun `INV-AC-24773 report text is written in UTF-8`() {
-        val f = AuditPackWriter.write(entity, emptyList(), at, "Digest: caf\u00e9\n")
+        val f = AuditPackWriter.write(entity, emptyList(), at, "Digest: caf\u00e9\n", sig, pem)
         assertArrayEquals("Digest: caf\u00e9\n".toByteArray(Charsets.UTF_8), f.bytes("verification-report.txt"))
     }
 
     @Test
     fun `INV-AC-24773 the report leaves bag-info and the six directories as before`() {
-        val a = AuditPackWriter.write(entity, onePerClass(), at, "one\n")
-        val b = AuditPackWriter.write(entity, onePerClass(), at, "two two\n")
+        val a = AuditPackWriter.write(entity, onePerClass(), at, "one\n", sig, pem)
+        val b = AuditPackWriter.write(entity, onePerClass(), at, "two two\n", sig, pem)
         assertArrayEquals(a.bytes("bag-info.txt"), b.bytes("bag-info.txt"))
         assertEquals(PackageContentClass.entries.size, 6)
         assertEquals(
@@ -282,7 +305,7 @@ class AuditPackWriterTest {
 
     @Test
     fun `INV-AC-24773 the written package passes the verifier`() {
-        val f = AuditPackWriter.write(entity, onePerClass(), at, report)
+        val f = AuditPackWriter.write(entity, onePerClass(), at, report, sig, pem)
         val src =
             object : PackageSource {
                 override fun paths(): Set<String> = f.paths.toSet()
@@ -295,18 +318,24 @@ class AuditPackWriterTest {
     @Test
     fun `INV-AC-24773 a whole-tenant package has no report and refuses one`() {
         val w = PackageScope.WholeTenant(tenant)
-        assertNull(AuditPackWriter.write(w, onePerClass(), at, null).bytes("verification-report.txt"))
-        assertThrows(IllegalArgumentException::class.java) { AuditPackWriter.write(w, onePerClass(), at, report) }
-        assertThrows(IllegalArgumentException::class.java) { AuditPackWriter.write(w, onePerClass(), at, "") }
+        assertNull(AuditPackWriter.write(w, onePerClass(), at, null, null, null).bytes("verification-report.txt"))
+        assertThrows(IllegalArgumentException::class.java) {
+            AuditPackWriter.write(w, onePerClass(), at, report, null, null)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            AuditPackWriter.write(w, onePerClass(), at, "", null, null)
+        }
     }
 
     @Test
     fun `INV-AC-24773 an entity-and-period package refuses a null and a blank report`() {
-        assertThrows(IllegalArgumentException::class.java) { AuditPackWriter.write(entity, onePerClass(), at, null) }
+        assertThrows(IllegalArgumentException::class.java) {
+            AuditPackWriter.write(entity, onePerClass(), at, null, sig, pem)
+        }
         listOf("", " ", "\n", " \t\r\n").forEach {
             assertThrows(
                 IllegalArgumentException::class.java,
-                { AuditPackWriter.write(entity, onePerClass(), at, it) },
+                { AuditPackWriter.write(entity, onePerClass(), at, it, sig, pem) },
                 "'$it'",
             )
         }
@@ -314,15 +343,15 @@ class AuditPackWriterTest {
 
     @Test
     fun `INV-AC-24773 same input gives byte-identical output`() {
-        val a = AuditPackWriter.write(entity, onePerClass(), at, report)
-        val b = AuditPackWriter.write(entity, onePerClass(), at, report)
+        val a = AuditPackWriter.write(entity, onePerClass(), at, report, sig, pem)
+        val b = AuditPackWriter.write(entity, onePerClass(), at, report, sig, pem)
         assertEquals(a.paths, b.paths)
         a.paths.forEach { assertArrayEquals(a.bytes(it), b.bytes(it), it) }
     }
 
     @Test
     fun `INV-AC-24773 one changed byte of the report is a tag digest mismatch`() {
-        val f = AuditPackWriter.write(entity, onePerClass(), at, report)
+        val f = AuditPackWriter.write(entity, onePerClass(), at, report, sig, pem)
         val m = f.paths.associateWith { f.bytes(it)!! }.toMutableMap()
         m["verification-report.txt"]!![0] = (m["verification-report.txt"]!![0] + 1).toByte()
         val src =
@@ -339,9 +368,6 @@ class AuditPackWriterTest {
             },
         )
     }
-
-    private val sig = byteArrayOf(0x30, 0x03, 1, 2, 3)
-    private val pem = "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----"
 
     private fun src(f: Map<String, ByteArray>) =
         object : PackageSource {
@@ -368,16 +394,6 @@ class AuditPackWriterTest {
             val g = AuditPackWriter.write(entity, onePerClass(), at, report, sig, pem + it)
             assertArrayEquals(keyBytes, g.bytes("verification-key.pem"))
         }
-    }
-
-    @Test
-    fun `INV-AC-27739 the four-argument form is unchanged`() {
-        val a = AuditPackWriter.write(entity, onePerClass(), at, report)
-        val b = AuditPackWriter.write(entity, onePerClass(), at, report, null, null)
-        assertEquals(a.paths, b.paths)
-        a.paths.forEach { assertArrayEquals(a.bytes(it), b.bytes(it), it) }
-        assertNull(a.bytes("verification-report.p7s"))
-        assertNull(a.bytes("verification-key.pem"))
     }
 
     @Test
@@ -416,6 +432,74 @@ class AuditPackWriterTest {
         }
         assertThrows(IllegalArgumentException::class.java) {
             AuditPackWriter.write(entity, onePerClass(), at, report, ByteArray(0), pem)
+        }
+    }
+
+    private fun refusal(
+        scope: PackageScope,
+        verificationReport: String?,
+        reportSignature: ByteArray?,
+        verificationKeyPem: String?,
+    ): String =
+        assertThrows(IllegalArgumentException::class.java) {
+            AuditPackWriter.write(scope, onePerClass(), at, verificationReport, reportSignature, verificationKeyPem)
+        }.message!!
+
+    private fun assertNames(
+        message: String,
+        argument: String,
+    ) = assertTrue(message.startsWith("$argument: "), message)
+
+    @Test
+    fun `INV-AC-27779 an entity-and-period package without a signature is refused`() {
+        assertNames(refusal(entity, report, null, pem), "reportSignature")
+    }
+
+    @Test
+    fun `INV-AC-27779 an empty signature is refused`() {
+        assertNames(refusal(entity, report, ByteArray(0), pem), "reportSignature")
+    }
+
+    @Test
+    fun `INV-AC-27779 a package without a key is refused`() {
+        assertNames(refusal(entity, report, sig, null), "verificationKeyPem")
+    }
+
+    @Test
+    fun `INV-AC-27779 a blank key is refused`() {
+        listOf("", " ", "\n", " \t\r\n").forEach {
+            assertNames(refusal(entity, report, sig, it), "verificationKeyPem")
+        }
+    }
+
+    @Test
+    fun `INV-AC-27779 a whole-tenant package with a signature, a key or a report is refused`() {
+        val w = PackageScope.WholeTenant(tenant)
+        listOf(report, "").forEach { assertNames(refusal(w, it, null, null), "verificationReport") }
+        listOf(sig, ByteArray(0)).forEach { assertNames(refusal(w, null, it, null), "reportSignature") }
+        listOf(pem, "").forEach { assertNames(refusal(w, null, null, it), "verificationKeyPem") }
+        refusal(w, report, sig, pem)
+    }
+
+    @Test
+    fun `INV-AC-27779 a whole-tenant package with three nulls is written`() {
+        val f = AuditPackWriter.write(PackageScope.WholeTenant(tenant), onePerClass(), at, null, null, null)
+        assertEquals(
+            listOf("README.txt", "bag-info.txt", "bagit.txt", "manifest-sha256.txt", "tagmanifest-sha256.txt"),
+            f.paths.filterNot { it.startsWith("data/") },
+        )
+        assertTrue(PackageVerifier.verify(src(f.paths.associateWith { f.bytes(it)!! })) is PackageVerification.Valid)
+    }
+
+    @Test
+    fun `INV-AC-27779 write and assemble have exactly one six-parameter form`() {
+        listOf(
+            AuditPackWriter::class.java to "write",
+            AuditPackAssembler::class.java to "assemble",
+        ).forEach { (type, name) ->
+            val methods = type.declaredMethods
+            assertEquals(listOf(6), methods.filter { it.name == name }.map { it.parameterCount }, name)
+            assertEquals(emptyList<String>(), methods.map { it.name }.filter { it.startsWith("$name$") }, name)
         }
     }
 }

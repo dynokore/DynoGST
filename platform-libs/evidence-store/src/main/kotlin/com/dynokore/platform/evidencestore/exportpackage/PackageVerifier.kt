@@ -17,6 +17,8 @@ object PackageVerifier {
     private const val TAG_MANIFEST = "tagmanifest-sha256.txt"
     private const val PAYLOAD_ROOT = "data"
     private const val OXUM = "Payload-Oxum"
+    private const val PACKAGE_KIND = "Package-Kind"
+    private const val SIGNED_KIND = "AUDIT_PACK"
     private const val COUNT_LABEL = "Item-Count-"
     private const val SHA_256_HEX = 64
     private const val MIN_PAYLOAD_SEGMENTS = 3
@@ -30,7 +32,7 @@ object PackageVerifier {
             "audit-log",
         )
     private val REQUIRED_LABELS =
-        listOf("Package-Kind", "Tenant", "Generated-At", OXUM) + DIRECTORIES.map { COUNT_LABEL + it }
+        listOf(PACKAGE_KIND, "Tenant", "Generated-At", OXUM) + DIRECTORIES.map { COUNT_LABEL + it }
     private const val VERIFICATION_REPORT = "verification-report.txt"
     private const val REPORT_SIGNATURE = "verification-report.p7s"
     private const val VERIFICATION_KEY = "verification-key.pem"
@@ -309,6 +311,7 @@ object PackageVerifier {
         val bytes = files.read(BAG_INFO)
         if (bytes == null && files.has(BAG_INFO)) return // read failure already recorded
         val fields = bagInfoFields(bytes?.let { Format.text(it) }.orEmpty())
+        checkSignedKind(files, fields[PACKAGE_KIND])
         for (label in REQUIRED_LABELS.filter { it !in fields }) {
             files.add(
                 PackageProblemCode.MISSING_BAG_INFO_FIELD,
@@ -325,6 +328,20 @@ object PackageVerifier {
             ) {
                 files.add(PackageProblemCode.CLASS_COUNT_MISMATCH, label)
             }
+        }
+    }
+
+    /**
+     * A package whose kind is exactly `AUDIT_PACK` holds both signing files (INV-REQ-663). A path the lone-file rule
+     * already reported stays one problem, since the collector is a set.
+     */
+    private fun checkSignedKind(
+        files: Files,
+        kind: String?,
+    ) {
+        if (kind != SIGNED_KIND) return
+        for (file in SIGNING_FILES.filterNot { files.has(it) }) {
+            files.add(PackageProblemCode.REPORT_SIGNATURE_INCOMPLETE, file)
         }
     }
 }
