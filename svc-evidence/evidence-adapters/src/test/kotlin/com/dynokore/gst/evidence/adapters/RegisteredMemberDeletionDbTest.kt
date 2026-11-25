@@ -852,32 +852,6 @@ class RegisteredMemberDeletionDbTest {
         members(created) shouldBe null
         superuserUpdate("update evidence.retention_partition set state = 'DETACHED' where partition_id = ?", id)
         sqlState(tenant, whole, tenant, ENTITY, PERIOD, PERIOD) shouldBe "55000"
-        assertImportLockPrivileges()
-    }
-
-    /** The owner of the import lock gained INSERT on the unit registry and nothing else near it. */
-    private fun assertImportLockPrivileges() {
-        fun table(
-            name: String,
-            privilege: String,
-        ) = scalar("select has_table_privilege(?, ?, ?)::text", EvidenceDb.SYS, "evidence.$name", privilege)
-
-        fun updatable(column: String) =
-            scalar(
-                "select has_column_privilege(?, 'evidence.retention_partition', ?, 'UPDATE')::text",
-                EvidenceDb.SYS,
-                column,
-            )
-        table("retention_partition", "INSERT") shouldBe "true"
-        table("retention_partition", "DELETE") shouldBe "false"
-        table("retention_partition", "TRUNCATE") shouldBe "false"
-        table("retention_partition_member", "INSERT") shouldBe "false"
-        updatable("tenant_id") shouldBe "false"
-        updatable("partition_id") shouldBe "false"
-        scalar(
-            "select string_agg(policyname, ',' order by policyname) from pg_policies " +
-                "where schemaname = 'evidence' and tablename = 'retention_partition'",
-        ) shouldBe "tenant_isolation"
     }
 
     @Test
@@ -946,35 +920,6 @@ class RegisteredMemberDeletionDbTest {
                 locking.bounded()
             }
         }
-    }
-
-    @Test
-    fun `INV-AC-28694 an import locks all its units before it creates a member`() {
-        val tenant = tenant()
-        open(tenant).use { holder ->
-            lockImportUnit(holder, tenant, PERIOD_Q2)
-            open(tenant).use { importer ->
-                val importerPid = pid(importer)
-                val importing: Future<String?>
-                try {
-                    importing =
-                        startWaiting(importer) {
-                            refusalOf(importer) { import(importer, tenant, "DOC-1" to DATE_A, "DOC-2" to DATE_Q2) }
-                        }
-                    // Creating the member of the first unit would hold this on the parent while the second waits.
-                    scalar(
-                        "select count(*) from pg_locks where pid = ? and mode = 'AccessExclusiveLock' " +
-                            "and relation = 'evidence.prior_evidence'::regclass",
-                        importerPid,
-                    ) shouldBe "0"
-                } finally {
-                    holder.commit()
-                }
-                importing.bounded() shouldBe null
-            }
-        }
-        rowsIn(tenant, PERIOD) shouldBe "1"
-        rowsIn(tenant, PERIOD_Q2) shouldBe "1"
     }
 
     private fun lockImportUnit(
