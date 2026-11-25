@@ -6,6 +6,7 @@ import com.dynokore.gst.submission.domain.ordering.LifecycleState
 import com.dynokore.platform.tenancykernel.TenantId
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
+import org.jooq.Result
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
 import org.jooq.tools.jdbc.MockConnection
@@ -116,8 +117,10 @@ class ArrivingDocumentFactsDbTest {
         version(t1, d5, 1, "READY", txDate = null)
         entry(t1, Reg(d6, "INVOICE", null, date))
         version(t1, d6, 1, "READY")
-        // Tenant T2 holds the same Doc UUID D1, and a credit note whose preceding entry exists only under T1.
-        // Both tables key the Doc UUID globally, so D1 under T2 is the T1 row read by the wrong tenant.
+        // Tenant T2 holds the same Doc UUID D1 under another version number (submission keys Doc UUID and version;
+        // the register keys the Doc UUID alone, so T2 has no entry for D1).
+        version(t2, d1, 3, "CANCELLED")
+        // A T2 credit note whose preceding entry exists only under T1.
         entry(t2, Reg(d7, "CREDIT_NOTE", "T2-7", date, d0))
         version(t2, d7, 1, "READY")
     }
@@ -203,6 +206,12 @@ class ArrivingDocumentFactsDbTest {
     }
 
     @Test
+    fun `INV-AC-28666 a version row of the same Doc UUID under another tenant gives null`() {
+        seed()
+        read(t2, d1, 3) shouldBe null
+    }
+
+    @Test
     fun `INV-AC-28666 the same Doc UUID with another version number gives null`() {
         seed()
         read(t1, d1, 9) shouldBe null
@@ -227,36 +236,74 @@ class ArrivingDocumentFactsDbTest {
             val admin = JooqArrivingDocumentFacts(DSL.using(c, SQLDialect.POSTGRES))
             admin.of(TenantId(t2), d2, 1) shouldBe null
             admin.of(TenantId(t2), d7, 1)?.precedingDocumentNumber shouldBe null
+            admin.of(TenantId(t2), d1, 3) shouldBe null
+            // The T2 version 3 of D1 is not one of the T1 version states.
+            admin.of(TenantId(t1), d1, 1)?.versions shouldBe
+                listOf(LifecycleState.SUPERSEDED, LifecycleState.QUEUED)
         }
+    }
+
+    /** Answers each of the three reads apart: the register entry, the arriving version row and the version states. */
+    private fun mocked(
+        kind: String,
+        state: String,
+    ) = DSL.using(
+        MockConnection { ctx ->
+            val rows =
+                when {
+                    ctx.sql().contains("obligation_register_entry") -> registerResult(kind)
+                    ctx.sql().contains("entity_ref") -> versionResult()
+                    else -> statesResult(state)
+                }
+            arrayOf(MockResult(rows.size, rows))
+        },
+        SQLDialect.POSTGRES,
+    )
+
+    private fun registerResult(kind: String): Result<*> {
+        val n = DSL.field("document_number", String::class.java)
+        val k = DSL.field("kind", String::class.java)
+        val p = DSL.field("preceding_doc_uuid", String::class.java)
+        val d = DSL.field("transaction_date", java.sql.Date::class.java)
+        val create = DSL.using(SQLDialect.POSTGRES)
+        return create
+            .newResult(
+                n,
+                k,
+                p,
+                d,
+            ).also { it.add(create.newRecord(n, k, p, d).values("N-1", kind, null, null)) }
+    }
+
+    private fun versionResult(): Result<*> {
+        val e = DSL.field("entity_ref", String::class.java)
+        val d = DSL.field("transaction_date", java.sql.Date::class.java)
+        val create = DSL.using(SQLDialect.POSTGRES)
+        return create.newResult(e, d).also {
+            it.add(create.newRecord(e, d).values("E-1", java.sql.Date.valueOf(date)))
+        }
+    }
+
+    private fun statesResult(state: String): Result<*> {
+        val s = DSL.field("state", String::class.java)
+        val create = DSL.using(SQLDialect.POSTGRES)
+        return create.newResult(s).also { it.add(create.newRecord(s).values(state)) }
     }
 
     @Test
     fun `INV-AC-28666 a kind that is no member name throws`() {
-        val mock =
-            DSL.using(
-                MockConnection { ctx ->
-                    val create = DSL.using(SQLDialect.POSTGRES)
-                    val str = String::class.java
-                    val rows =
-                        if (ctx.sql().contains("obligation_register_entry")) {
-                            val n = DSL.field("n", str)
-                            val k = DSL.field("k", str)
-                            val p = DSL.field("p", str)
-                            val d = DSL.field("d", java.sql.Date::class.java)
-                            create.newResult(n, k, p, d).also {
-                                it.add(create.newRecord(n, k, p, d).values("N-1", "BOGUS", null, null))
-                            }
-                        } else {
-                            val e = DSL.field("e", str)
-                            val d = DSL.field("d", java.sql.Date::class.java)
-                            create.newResult(e, d).also {
-                                it.add(create.newRecord(e, d).values("E-1", java.sql.Date.valueOf(date)))
-                            }
-                        }
-                    arrayOf(MockResult(rows.size, rows))
-                },
-                SQLDialect.POSTGRES,
-            )
-        shouldThrow<IllegalStateException> { JooqArrivingDocumentFacts(mock).of(TenantId(t1), d2, 1) }
+        shouldThrow<IllegalStateException> {
+            JooqArrivingDocumentFacts(mocked("BOGUS", "READY")).of(TenantId(t1), d2, 1)
+        }.message shouldBe "Unmapped kind"
+    }
+
+    @Test
+    fun `INV-AC-28666 a version state that is no member name throws`() {
+        // Control: the same mock with a member name is read.
+        JooqArrivingDocumentFacts(mocked("INVOICE", "READY")).of(TenantId(t1), d2, 1) shouldBe
+            ArrivingDocument("E-1", "N-1", date, false, null, null, listOf(LifecycleState.READY))
+        shouldThrow<IllegalStateException> {
+            JooqArrivingDocumentFacts(mocked("INVOICE", "BOGUS")).of(TenantId(t1), d2, 1)
+        }.message shouldBe "Unmapped lifecycle state"
     }
 }
