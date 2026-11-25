@@ -54,17 +54,7 @@ class ImportPriorEvidenceTest {
 
     private class RecordingStore : PriorEvidenceStore {
         val calls = mutableListOf<String>()
-        val lockedPeriods = mutableListOf<List<String>>()
         val rows = mutableListOf<Pair<TenantId, PriorEvidenceRow>>()
-
-        override fun lockUnits(
-            tenant: TenantId,
-            entityRef: String,
-            periodRefs: Collection<String>,
-        ) {
-            calls += "lockUnits $tenant $entityRef $periodRefs"
-            lockedPeriods += periodRefs.toList()
-        }
 
         override fun lock(
             tenant: TenantId,
@@ -177,7 +167,6 @@ class ImportPriorEvidenceTest {
 
         store.calls shouldBe
             listOf(
-                "lockUnits $tenant E1 [2026-Q1, 2026-Q1]",
                 "lock $tenant E1 D1 2026-01-15",
                 "find $tenant E1 D1 2026-01-15",
                 "lock $tenant E1 D2 2026-01-15",
@@ -185,15 +174,6 @@ class ImportPriorEvidenceTest {
                 "insert D1",
                 "insert D2",
             )
-    }
-
-    @Test
-    fun `INV-AC-28694 the units of all records are locked once, before every lock and find`() {
-        run(record("D1", "2026-04-01"), record("D2", "2026-01-15"), record("D3", "2026-05-02"))
-
-        store.calls.count { it.startsWith("lockUnits ") } shouldBe 1
-        store.calls.first().startsWith("lockUnits $tenant E1 ") shouldBe true
-        store.lockedPeriods.single().toSet() shouldBe setOf("2026-Q1", "2026-Q2")
     }
 
     @Test

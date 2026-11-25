@@ -15,58 +15,10 @@ import java.time.ZoneOffset
  * `evidence.prior_evidence` over the caller's tenant-bound [DSLContext] (jOOQ only; RLS applies). Insert-only: the
  * runtime login holds select and insert, and this store offers no update or delete. Each insert first creates the
  * `prior_evidence` member of the quarter's retention unit (V21 function), as [ChainWiring.appendLedgers] does.
- * [lockUnits] does that for every unit of an import before anything is read, in the one lock order (V31).
  */
 class JooqPriorEvidenceStore(
     private val dsl: DSLContext,
 ) : PriorEvidenceStore {
-    /**
-     * Two phases over the distinct periods in ascending order, whatever order the caller gave. Phase A locks every
-     * unit row (`lock_import_unit`); only after the last one, phase B creates the missing members. Creating a member
-     * locks the parent table until commit, so doing it while a later unit row is still to be locked would close a
-     * cycle between two imports.
-     */
-    override fun lockUnits(
-        tenant: TenantId,
-        entityRef: String,
-        periodRefs: Collection<String>,
-    ) {
-        val units = periodRefs.distinct().sorted()
-        units.forEach { period ->
-            dsl
-                .select(
-                    DSL.function(
-                        DSL.name(SCHEMA, "lock_import_unit"),
-                        SQLDataType.OTHER,
-                        DSL.`val`(tenant.value),
-                        DSL.`val`(entityRef),
-                        DSL.`val`(period),
-                        DSL.`val`(period + UNIT_END),
-                    ),
-                ).fetch()
-        }
-        units.forEach { createMember(tenant, entityRef, it) }
-    }
-
-    private fun createMember(
-        tenant: TenantId,
-        entityRef: String,
-        periodRef: String,
-    ) {
-        dsl
-            .select(
-                DSL.function(
-                    DSL.name(SCHEMA, "create_retention_partition"),
-                    SQLDataType.VARCHAR,
-                    DSL.inline("$SCHEMA.prior_evidence"),
-                    DSL.`val`(tenant.value),
-                    DSL.`val`(entityRef),
-                    DSL.`val`(periodRef),
-                    DSL.`val`(periodRef + UNIT_END),
-                ),
-            ).fetch()
-    }
-
     override fun lock(
         tenant: TenantId,
         entityRef: String,
@@ -115,7 +67,18 @@ class JooqPriorEvidenceStore(
         tenant: TenantId,
         row: PriorEvidenceRow,
     ) {
-        createMember(tenant, row.entityRef, row.periodRef)
+        dsl
+            .select(
+                DSL.function(
+                    DSL.name(SCHEMA, "create_retention_partition"),
+                    SQLDataType.VARCHAR,
+                    DSL.inline("$SCHEMA.prior_evidence"),
+                    DSL.`val`(tenant.value),
+                    DSL.`val`(row.entityRef),
+                    DSL.`val`(row.periodRef),
+                    DSL.`val`(row.periodRef + UNIT_END),
+                ),
+            ).fetch()
         dsl
             .insertInto(PRIOR_EVIDENCE)
             .set(PRIOR_EVIDENCE.ID, row.id)
