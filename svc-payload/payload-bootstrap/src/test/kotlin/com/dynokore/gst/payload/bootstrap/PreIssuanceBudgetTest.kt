@@ -4,6 +4,7 @@ import com.dynokore.platform.serviceruntime.identity.FlowContextTestSupport
 import com.dynokore.platform.serviceruntime.identity.FlowEntity
 import com.dynokore.platform.serviceruntime.resilience.Deadline
 import com.sun.net.httpserver.HttpServer
+import io.kotest.assertions.withClue
 import io.kotest.matchers.comparables.shouldBeLessThan
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -63,7 +64,7 @@ class PreIssuanceBudgetTest : OverrideWiringBase() {
 
     private fun draft(gstn: String? = "M90054321K"): String =
         listOfNotNull(
-            "\"entityRef\":\"E-1\"",
+            "\"entityRef\":\"E-001\"",
             "\"currency\":\"SGD\"",
             "\"totalIncludingTax\":\"109.00\"",
             "\"submissionType\":\"TYPE_1A\"",
@@ -79,7 +80,8 @@ class PreIssuanceBudgetTest : OverrideWiringBase() {
     ): T =
         SlowMasterdata(delayMs).use { md ->
             AccessStub().use { access ->
-                withService(localReplica(), access, masterdataUrl = md.url) { service ->
+                val replica = localReplica("u-1" to "transaction.ingest")
+                withService(replica, access, masterdataUrl = md.url) { service ->
                     val context = checkNotNull(service.context)
                     val filters =
                         context
@@ -138,8 +140,12 @@ class PreIssuanceBudgetTest : OverrideWiringBase() {
     private fun MockMvc.warmUp(md: SlowMasterdata) {
         val delay = md.delayMs
         md.delayMs = 0
-        check(draft(WARM_GSTN), BUDGET_MS)
+        // A cold first call can itself exceed the 300 ms deadline and degrade; repeat until the path answers PASS, so
+        // the timed call is on the warm path and a slow answer is the only reason for a WARN.
+        val warmed =
+            (1..WARM_ATTEMPTS).any { check(draft(WARM_GSTN), BUDGET_MS).body.contains("\"verdict\":\"PASS\"") }
         md.delayMs = delay
+        warmed shouldBe true
     }
 
     @Test
@@ -147,10 +153,12 @@ class PreIssuanceBudgetTest : OverrideWiringBase() {
         served(SLOW_REGISTER_MS) { mvc, md ->
             mvc.warmUp(md)
             val answer = mvc.check(draft(), BUDGET_MS)
-            answer.status shouldBe 200
-            answer.body shouldContain "\"verdict\":\"WARN\""
-            flagsOf(answer.body) shouldBe listOf("REGISTER_UNAVAILABLE")
-            answer.millis shouldBeLessThan BUDGET_MS + MARGIN_MS
+            withClue("status ${answer.status}, ${answer.millis} ms, body ${answer.body}") {
+                answer.status shouldBe 200
+                answer.millis shouldBeLessThan BUDGET_MS + MARGIN_MS
+                flagsOf(answer.body) shouldBe listOf("REGISTER_UNAVAILABLE")
+                answer.body shouldContain "\"verdict\":\"WARN\""
+            }
         }
     }
 
@@ -193,6 +201,7 @@ class PreIssuanceBudgetTest : OverrideWiringBase() {
         /** The request deadline of the criterion: the pre-issuance budget. */
         const val BUDGET_MS = 300L
         const val WARM_GSTN = "M90054322L"
+        const val WARM_ATTEMPTS = 10
 
         /** The register of the criterion answers in 2 s. */
         const val SLOW_REGISTER_MS = 2000L
