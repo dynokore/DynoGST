@@ -20,6 +20,9 @@ import com.dynokore.gst.evidence.application.lookup.DecisionTraceLookup
 import com.dynokore.gst.evidence.application.lookup.DecisionTraceReader
 import com.dynokore.gst.evidence.application.lookup.ENQUIRY_LOOKUP_BY_ACKNOWLEDGEMENT
 import com.dynokore.gst.evidence.application.lookup.ReverseLookup
+import com.dynokore.gst.evidence.application.lookup.ReverseLookupFilter
+import com.dynokore.gst.evidence.application.lookup.ReverseLookupKey
+import com.dynokore.gst.evidence.application.lookup.ReverseLookupRow
 import com.dynokore.gst.evidence.application.lookup.SubmissionIndexReader
 import com.dynokore.gst.evidence.application.lookup.TransmittedVersionLookup
 import com.dynokore.gst.evidence.application.lookup.TransmittedVersionReader
@@ -230,7 +233,23 @@ class LookupControllerTest {
         )
     }
 
-    private val unusedIndex = SubmissionIndexReader { _, _, _, _ -> error("not used") }
+    private val unusedIndex =
+        object : SubmissionIndexReader {
+            override fun read(
+                tenant: TenantId,
+                filter: ReverseLookupFilter,
+                after: ReverseLookupKey?,
+                limit: Int,
+            ): List<ReverseLookupRow> = error("not used")
+
+            override fun readScoped(
+                tenant: TenantId,
+                entities: Set<String>,
+                filter: ReverseLookupFilter,
+                after: ReverseLookupKey?,
+                limit: Int,
+            ): List<ReverseLookupRow> = error("not used")
+        }
 
     private fun user(tenant: TenantId? = this.tenant) = EndUserPrincipal("user-42", tenant, emptySet())
 

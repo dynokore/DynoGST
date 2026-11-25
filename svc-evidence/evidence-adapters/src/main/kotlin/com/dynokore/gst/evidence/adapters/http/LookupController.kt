@@ -132,6 +132,8 @@ open class LookupController(
     /**
      * `reverseLookup` (INV-T-20725; INV-REQ-724): tenant 401, then the use case: Page 200, InvalidRequest 400 SRT-001,
      * Forbidden 403 SRT-004. No filter is ever refused (round h ruling 1, 5). The 202 tier answer is not produced.
+     * The lookup is entity-scoped (INV-REQ-710 behavior 3): only rows of the entities the caller's grants of the key
+     * cover are read, and a caller whose grants cover none is Forbidden.
      */
     @Suppress("LongParameterList") // the generated operation signature
     override fun reverseLookup(
@@ -152,7 +154,7 @@ open class LookupController(
             ReverseLookupFilter(counterparty, dateFrom, dateTo, documentNumber, docUuid, periodRef, categoryCode)
         return when (
             val result =
-                reverseLookup.lookup(
+                reverseLookup.lookupScoped(
                     tenant,
                     Principal(caller.actor, PrincipalKind.HUMAN),
                     filter,

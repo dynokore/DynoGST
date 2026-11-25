@@ -39,6 +39,8 @@ import com.dynokore.platform.serviceruntime.replica.CellAllowance
 import com.dynokore.platform.serviceruntime.replica.FallbackResult
 import com.dynokore.platform.serviceruntime.replica.GrantScope
 import com.dynokore.platform.serviceruntime.replica.OperationRoleMap
+import com.dynokore.platform.serviceruntime.replica.Principal
+import com.dynokore.platform.serviceruntime.replica.PrincipalKind
 import com.dynokore.platform.serviceruntime.replica.ReplicaFallback
 import com.dynokore.platform.serviceruntime.replica.RoleGrant
 import com.dynokore.platform.serviceruntime.replica.RoleGrantState
@@ -73,26 +75,42 @@ class ReverseLookupControllerTest {
             )
         }
 
-    private fun replica(granted: Boolean): AuthorityReplica {
+    private fun replica(granted: Boolean): AuthorityReplica =
+        replica(if (granted) listOf(entityGrant("ENT-1")) else emptyList())
+
+    private fun entityGrant(
+        entity: String,
+        role: String = "auditor",
+    ) = RoleGrant(role, GrantScope.ENTITY, entity, Instant.parse("2026-01-01T00:00:00Z"), null)
+
+    /** The role `auditor` holds the key; `preparer` holds another key only. [onRolesFor] records each role question. */
+    private fun replica(
+        grants: List<RoleGrant>,
+        onRolesFor: (String) -> Unit = {},
+    ): AuthorityReplica {
         val roles =
             OperationRoleMap {
-                if (granted && it == ENQUIRY_LOOKUP_REVERSE) mapOf("auditor" to CellAllowance.PERMITTED) else emptyMap()
+                onRolesFor(it)
+                when (it) {
+                    ENQUIRY_LOOKUP_REVERSE -> mapOf("auditor" to CellAllowance.PERMITTED)
+                    OTHER_KEY -> mapOf("preparer" to CellAllowance.PERMITTED)
+                    else -> emptyMap()
+                }
             }
         val unavailable = ReplicaFallback<AuthorizationRequest, AuthorityVerdict> { _, _ -> FallbackResult.Unavailable }
         val replica = AuthorityReplica(clock, roles, fallback = unavailable)
-        val grant =
-            RoleGrant(
-                "auditor",
-                GrantScope.TENANT,
-                tenant.value.toString(),
-                Instant.parse("2026-01-01T00:00:00Z"),
-                null,
+        grants.forEachIndexed { index, grant ->
+            replica.accept(
+                AuthorityChanged(
+                    tenant,
+                    "user-42",
+                    index + 1L,
+                    AuthorityRecord.RoleGrantRecord("g$index", RoleGrantState.ACTIVE, grant),
+                ),
             )
-        replica.accept(
-            AuthorityChanged(tenant, "user-42", 1, AuthorityRecord.RoleGrantRecord("g1", RoleGrantState.ACTIVE, grant)),
-        )
-        replica.onSnapshotComplete(1)
-        replica.observeHead(1)
+        }
+        replica.onSnapshotComplete(maxOf(grants.size, 1).toLong())
+        replica.observeHead(maxOf(grants.size, 1).toLong())
         return replica
     }
 
@@ -117,16 +135,44 @@ class ReverseLookupControllerTest {
         stored: Int = 2,
         integrity: IntegrityState = IntegrityState.VERIFIED,
     ): LookupController {
+        val reader =
+            scopedReader { entities, filter, limit ->
+                reads += filter
+                rows(stored).filter { it.entityRef in entities }.take(limit)
+            }
+        return controller(caller, replica(granted), reader, integrity)
+    }
+
+    /** A reader that serves `readScoped` only: the unscoped `read` fails the test. */
+    private fun scopedReader(serve: (Set<String>, ReverseLookupFilter, Int) -> List<ReverseLookupRow>) =
+        object : SubmissionIndexReader {
+            override fun read(
+                tenant: TenantId,
+                filter: ReverseLookupFilter,
+                after: ReverseLookupKey?,
+                limit: Int,
+            ): List<ReverseLookupRow> = error("the unscoped read is not used")
+
+            override fun readScoped(
+                tenant: TenantId,
+                entities: Set<String>,
+                filter: ReverseLookupFilter,
+                after: ReverseLookupKey?,
+                limit: Int,
+            ): List<ReverseLookupRow> = serve(entities, filter, limit)
+        }
+
+    private fun controller(
+        caller: EndUserPrincipal?,
+        authority: AuthorityReplica,
+        reader: SubmissionIndexReader,
+        integrity: IntegrityState = IntegrityState.VERIFIED,
+    ): LookupController {
         val request =
             Proxy.newProxyInstance(javaClass.classLoader, arrayOf(HttpServletRequest::class.java)) { _, method, args ->
                 check(method.name == "getAttribute") { "unexpected request call ${method.name}" }
                 caller.takeIf { args[0] == EndUserPrincipalBindingFilter.PRINCIPAL_ATTRIBUTE }
             } as HttpServletRequest
-        val reader =
-            SubmissionIndexReader { _, filter, _, limit ->
-                reads += filter
-                rows(stored).take(limit)
-            }
         val chain =
             AcknowledgementChainLookup(
                 replica(false),
@@ -151,9 +197,9 @@ class ReverseLookupControllerTest {
             )
         return LookupController(
             chain,
-            ReverseLookup(replica(granted), reader, IntegrityStatusQueryHandler(runs(integrity)), AuditedReads(audit)),
-            DecisionTraceLookup(replica(granted), DecisionTraceReader { _, _, _ -> error("not used") }),
-            TransmittedVersionLookup(replica(granted), TransmittedVersionReader { _, _, _ -> error("not used") }),
+            ReverseLookup(authority, reader, IntegrityStatusQueryHandler(runs(integrity)), AuditedReads(audit)),
+            DecisionTraceLookup(replica(false), DecisionTraceReader { _, _, _ -> error("not used") }),
+            TransmittedVersionLookup(replica(false), TransmittedVersionReader { _, _, _ -> error("not used") }),
             object : ObjectProvider<HttpServletRequest> {
                 override fun getObject(): HttpServletRequest = request
             },
@@ -271,5 +317,88 @@ class ReverseLookupControllerTest {
             code shouldBe "SRT-003"
         }
         reads shouldBe emptyList()
+    }
+
+    /** One counterparty UEN with a document in each entity; "a" and "A1" are look-alikes of "A". */
+    private val stored =
+        listOf("A", "B", "C", "a", "A1").mapIndexed { index, entity ->
+            ReverseLookupRow(
+                ReverseLookupKey(LocalDate.parse("2026-03-20"), UUID(0, index + 1L), 1),
+                "SENT",
+                null,
+                null,
+                entity,
+                "2026-03",
+            )
+        }
+    private val documentOf = stored.associate { it.entityRef!! to it.key.docUuid }
+    private val scopes = mutableListOf<Set<String>>()
+
+    private fun searched(authority: AuthorityReplica): LookupController {
+        val reader =
+            scopedReader { entities, filter, limit ->
+                reads += filter
+                scopes += entities
+                stored.filter { filter.counterparty == UEN && it.entityRef in entities }.take(limit)
+            }
+        return controller(user(), authority, reader)
+    }
+
+    private fun documents(authority: AuthorityReplica): List<UUID?> =
+        call(searched(authority), counterparty = UEN).body!!.items.map { it.docUuid }
+
+    @Test
+    fun `INV-AC-1065 a caller scoped to A and B gets the documents of A and B and none of C`() {
+        val items = documents(replica(listOf(entityGrant("A"), entityGrant("B"))))
+        items shouldBe listOf(documentOf["A"], documentOf["B"])
+        (documentOf["C"] in items) shouldBe false
+        scopes shouldBe listOf(setOf("A", "B"))
+    }
+
+    @Test
+    fun `INV-AC-1065 an entity grant of another key only is 403 SRT-004 and the reader is not called`() {
+        val authority = replica(listOf(entityGrant("A", "preparer"), entityGrant("B", "preparer")))
+        refused { call(searched(authority), counterparty = UEN) } shouldBe (403 to "SRT-004")
+        reads shouldBe emptyList()
+    }
+
+    @Test
+    fun `INV-AC-1065 a caller scoped to A only gets the documents of A and none of B or C`() {
+        // an entity grant of another key on B does not widen the set
+        val authority = replica(listOf(entityGrant("A"), entityGrant("B", "preparer")))
+        documents(authority) shouldBe listOf(documentOf["A"])
+        scopes shouldBe listOf(setOf("A"))
+    }
+
+    @Test
+    fun `INV-AC-1065 a caller with no grant is 403 SRT-004 and the reader is not called`() {
+        refused { call(searched(replica(emptyList())), counterparty = UEN) } shouldBe (403 to "SRT-004")
+        reads shouldBe emptyList()
+    }
+
+    @Test
+    fun `INV-AC-1065 the controller asks no tenant decision for the key`() {
+        val asked = mutableListOf<Pair<String, Boolean>>()
+        // each role question is recorded with whether it came through decideTenant
+        val authority =
+            replica(listOf(entityGrant("A"))) { key ->
+                asked += key to Thread.currentThread().stackTrace.any(::isTenantDecision)
+            }
+        // positive control: the recorder does see a tenant decision
+        authority.decideTenant(tenant, Principal("user-42", PrincipalKind.HUMAN), ENQUIRY_LOOKUP_REVERSE)
+        asked shouldBe listOf(ENQUIRY_LOOKUP_REVERSE to true)
+        asked.clear()
+        documents(authority) shouldBe listOf(documentOf["A"])
+        asked shouldBe listOf(ENQUIRY_LOOKUP_REVERSE to false)
+    }
+
+    /** A value-class parameter mangles the JVM name to `decideTenant-<hash>`. */
+    private fun isTenantDecision(frame: StackTraceElement): Boolean =
+        frame.className == AuthorityReplica::class.java.name &&
+            frame.methodName.substringBefore('-') == "decideTenant"
+
+    private companion object {
+        const val UEN = "201912345K"
+        const val OTHER_KEY = "enquiry-lookup.by-acknowledgement"
     }
 }

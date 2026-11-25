@@ -1,12 +1,15 @@
 package com.dynokore.gst.evidence.bootstrap
 
 import com.dynokore.gst.evidence.adapters.http.LookupController
+import com.dynokore.gst.evidence.adapters.http.LookupRefusal
+import com.dynokore.gst.evidence.adapters.http.LookupRefusalAdvice
 import com.dynokore.gst.evidence.application.integrity.IntegrityStatusQueryHandler
 import com.dynokore.gst.evidence.application.integrity.IntegrityStore
 import com.dynokore.gst.evidence.application.lookup.ENQUIRY_LOOKUP_REVERSE
 import com.dynokore.platform.auditlog.AuditEntry
 import com.dynokore.platform.auditlog.AuditedOperations
 import com.dynokore.platform.outboxandqueue.EventContext
+import com.dynokore.platform.serviceruntime.http.ClosedErrorCode
 import com.dynokore.platform.serviceruntime.identity.EndUserPrincipal
 import com.dynokore.platform.serviceruntime.identity.EndUserPrincipalBindingFilter
 import com.dynokore.platform.serviceruntime.replica.AuthorityChanged
@@ -44,12 +47,14 @@ class ReverseLookupWiringTest {
     private val tenant = TenantId(UUID.fromString("00000000-0000-0000-0000-000000000001"))
     private val configuration = LookupConfiguration()
     private val sql = mutableListOf<String>()
+    private val bound = mutableListOf<List<Any?>>()
 
     private val dsl =
         DSL.using(
             MockConnection(
                 MockDataProvider { ctx ->
                     sql += ctx.sql()
+                    bound += ctx.bindings().toList()
                     arrayOf(MockResult(0, DSL.using(SQLDialect.POSTGRES).newResult()))
                 },
             ),
@@ -71,7 +76,10 @@ class ReverseLookupWiringTest {
             ): T = block()
         }
 
-    private fun replica(): AuthorityReplica {
+    private fun entityGrant(entity: String) =
+        RoleGrant("auditor", GrantScope.ENTITY, entity, Instant.parse("2026-01-01T00:00:00Z"), null)
+
+    private fun replica(grant: RoleGrant?): AuthorityReplica {
         val roles =
             OperationRoleMap {
                 if (it ==
@@ -84,17 +92,16 @@ class ReverseLookupWiringTest {
             }
         val unavailable = ReplicaFallback<AuthorizationRequest, AuthorityVerdict> { _, _ -> FallbackResult.Unavailable }
         val replica = AuthorityReplica(clock, roles, fallback = unavailable)
-        val grant =
-            RoleGrant(
-                "auditor",
-                GrantScope.TENANT,
-                tenant.value.toString(),
-                Instant.parse("2026-01-01T00:00:00Z"),
-                null,
+        grant?.let {
+            replica.accept(
+                AuthorityChanged(
+                    tenant,
+                    "user-42",
+                    1,
+                    AuthorityRecord.RoleGrantRecord("g1", RoleGrantState.ACTIVE, it),
+                ),
             )
-        replica.accept(
-            AuthorityChanged(tenant, "user-42", 1, AuthorityRecord.RoleGrantRecord("g1", RoleGrantState.ACTIVE, grant)),
-        )
+        }
         replica.onSnapshotComplete(1)
         replica.observeHead(1)
         return replica
@@ -106,9 +113,8 @@ class ReverseLookupWiringTest {
             override fun <T> inTransaction(block: () -> T): T = block()
         }
 
-    @Test
-    fun `INV-AC-20724 the controller is built with the reverse lookup bean and serves the operation`() {
-        val replica = replica()
+    /** The controller composed from the beans of [LookupConfiguration] over [replica]. */
+    private fun controller(replica: AuthorityReplica): LookupController {
         val audited = configuration.auditedReads(operations)
         val unusedStore =
             Proxy.newProxyInstance(javaClass.classLoader, arrayOf(IntegrityStore::class.java)) { _, _, _ ->
@@ -121,25 +127,67 @@ class ReverseLookupWiringTest {
                     args[0] == EndUserPrincipalBindingFilter.PRINCIPAL_ATTRIBUTE
                 }
             } as HttpServletRequest
-        val controller =
-            LookupController(
-                configuration.acknowledgementChainLookup(
-                    replica,
-                    dsl,
-                    IntegrityStatusQueryHandler(unusedStore),
-                    audited,
-                ),
-                configuration.reverseLookup(replica, dsl, IntegrityStatusQueryHandler(unusedStore), audited),
-                configuration.decisionTraceLookup(replica, dsl),
-                configuration.transmittedVersionLookup(replica, dsl, noTransaction),
-                object : ObjectProvider<HttpServletRequest> {
-                    override fun getObject(): HttpServletRequest = request
-                },
-            )
-        val response = controller.reverseLookup(null, null, null, null, null, null, null, 100, null)
+        return LookupController(
+            configuration.acknowledgementChainLookup(
+                replica,
+                dsl,
+                IntegrityStatusQueryHandler(unusedStore),
+                audited,
+            ),
+            configuration.reverseLookup(replica, dsl, IntegrityStatusQueryHandler(unusedStore), audited),
+            configuration.decisionTraceLookup(replica, dsl),
+            configuration.transmittedVersionLookup(replica, dsl, noTransaction),
+            object : ObjectProvider<HttpServletRequest> {
+                override fun getObject(): HttpServletRequest = request
+            },
+        )
+    }
+
+    private fun LookupController.search() = reverseLookup(null, null, null, null, null, null, null, 100, null)
+
+    @Test
+    fun `INV-AC-20724 the controller is built with the reverse lookup bean and serves the operation`() {
+        val response = controller(replica(entityGrant("E1"))).search()
         assertThat(response.statusCode.value()).isEqualTo(200)
         assertThat(response.body!!.items).isEmpty()
         assertThat(sql).hasSize(1)
         assertThat(sql.single()).contains("submission_index")
+    }
+
+    @Test
+    fun `INV-AC-1065 the wired operation binds the caller's entity into the submission index statement`() {
+        val response = controller(replica(entityGrant("E1"))).search()
+        assertThat(response.statusCode.value()).isEqualTo(200)
+        assertThat(sql).hasSize(1)
+        assertThat(sql.single()).contains("submission_index")
+        // entity_ref is also selected, so the predicate is looked for after `where`
+        assertThat(sql.single().substringAfter(" where ")).contains("\"entity_ref\" in (?)")
+        assertThat(bound.single()).contains("E1")
+    }
+
+    @Test
+    fun `INV-AC-1065 a caller with no entity grant is 403 and no statement is recorded`() {
+        val tenantGrant =
+            RoleGrant(
+                "auditor",
+                GrantScope.TENANT,
+                tenant.value.toString(),
+                Instant.parse("2026-01-01T00:00:00Z"),
+                null,
+            )
+        // no grant at all, and a tenant-scope grant with no structure replica to name its entities
+        listOf(null, tenantGrant).forEach { grant ->
+            val thrown = runCatching { controller(replica(grant)).search() }.exceptionOrNull()
+            assertThat(thrown).isInstanceOf(LookupRefusal::class.java)
+            val refusal = thrown as LookupRefusal
+            assertThat(refusal.code).isEqualTo(ClosedErrorCode.ACCESS_DENIED)
+            assertThat(
+                LookupRefusalAdvice()
+                    .refuse(refusal)
+                    .statusCode
+                    .value(),
+            ).isEqualTo(403)
+        }
+        assertThat(sql).isEmpty()
     }
 }
