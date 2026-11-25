@@ -22,6 +22,18 @@ fun interface PriorEvidenceAuthorizer {
  * (entityRef, documentNumber, transactionDate).
  */
 interface PriorEvidenceStore {
+    /**
+     * Locks the retention units of [entityRef] for [periodRefs] until the transaction ends, creating a missing unit
+     * or member, in the store's one order whatever order and repetition [periodRefs] has. It is called before any
+     * other call of this store, so that an import and a retention-end deletion lock in the same order. What it creates
+     * goes only with a rollback.
+     */
+    fun lockUnits(
+        tenant: TenantId,
+        entityRef: String,
+        periodRefs: Collection<String>,
+    )
+
     /** Locks the identity until the transaction ends, so that concurrent imports of it serialise. */
     fun lock(
         tenant: TenantId,

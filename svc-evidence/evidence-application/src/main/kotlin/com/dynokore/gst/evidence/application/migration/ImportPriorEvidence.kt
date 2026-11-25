@@ -48,9 +48,12 @@ sealed interface ImportResult {
 
 /**
  * Imports prior submission evidence of one entity (INV-REQ-1109 behaviour 1, INV-REQ-1112). It runs in the caller's
- * transaction. Fail closed (OWASP ASVS V1, V4): the permission is decided first, then the contract bounds, then
- * every record is classified in request order; only a call without a conflict inserts and requests events, so a
- * refused call records nothing, even without a rollback. Imported evidence is never overwritten.
+ * transaction. Fail closed (OWASP ASVS V1, V4): the permission is decided first, then the contract bounds; then the
+ * retention units of all records are locked, before anything is read (one lock order with the retention-end deletion);
+ * then every record is classified in request order. Only a call without a conflict inserts rows and requests events.
+ * A forbidden or rejected call makes no store call. A call that answers [ImportResult.Conflict] may have created empty
+ * units or members, which go only with a rollback: the caller must roll back its transaction (unit of work).
+ * Imported evidence is never overwritten.
  */
 class ImportPriorEvidence(
     private val authorizer: PriorEvidenceAuthorizer,
@@ -80,6 +83,7 @@ class ImportPriorEvidence(
         entityRef: String,
         command: ImportPriorEvidenceCommand,
     ): ImportResult {
+        store.lockUnits(tenant, entityRef, command.records.map { PriorEvidencePeriodRef.of(it.transactionDate) })
         val newRecords = classify(tenant, entityRef, command.records) ?: return ImportResult.Conflict
         val importedAt = clock.instant()
         newRecords.forEach { file(tenant, principal, entityRef, command.priorSolution, it, importedAt) }
@@ -154,7 +158,7 @@ class ImportPriorEvidence(
         max: Int,
     ): Boolean = text.codePointCount(0, text.length) in 1..max
 
-    /** The new records in request order, or null when any record conflicts. It writes nothing. */
+    /** The new records in request order, or null when any record conflicts. It inserts no row. */
     private fun classify(
         tenant: TenantId,
         entityRef: String,
