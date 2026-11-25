@@ -30,11 +30,15 @@ class JooqPriorEvidenceStore(
         dsl
             .select(
                 DSL.function(
-                    "pg_advisory_xact_lock",
-                    SQLDataType.OTHER,
-                    DSL.function("hashtext", SQLDataType.INTEGER, DSL.`val`("${tenant.value}:$entityRef")),
+                    DSL.name("pg_catalog", "pg_advisory_xact_lock"),
+                    SQLDataType.VARCHAR,
                     DSL.function(
-                        "hashtext",
+                        DSL.name("pg_catalog", "hashtext"),
+                        SQLDataType.INTEGER,
+                        DSL.`val`("${tenant.value}:$entityRef"),
+                    ),
+                    DSL.function(
+                        DSL.name("pg_catalog", "hashtext"),
                         SQLDataType.INTEGER,
                         DSL.`val`("$LOCK_PREFIX$documentNumber:$transactionDate"),
                     ),
