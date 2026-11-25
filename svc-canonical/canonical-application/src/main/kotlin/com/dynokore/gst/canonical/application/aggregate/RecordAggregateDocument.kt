@@ -261,6 +261,7 @@ class RecordAggregateDocument(
                 transactionDate = c.windowTo,
                 createdBy = CREATED_BY,
             ),
+        entityRef = input.entityRef,
     )
 
     private fun facts(

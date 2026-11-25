@@ -238,6 +238,7 @@ class RowWritingResultBuilderTest {
                 DocumentState.INGESTED,
                 uP,
                 version(),
+                "E1",
             )
         inserted.single() shouldBe expected
     }

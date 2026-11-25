@@ -38,10 +38,13 @@ class DocumentRowWriterInboundTest {
     private val calls = mutableListOf<String>()
     private val appended = mutableListOf<Triple<InboundEvent, UUID, Int>>()
 
+    private val inserted = mutableListOf<NewDocument>()
+
     private val store =
         object : DocumentStore {
             override fun insert(document: NewDocument) {
                 calls += "createFirst"
+                inserted += document
             }
 
             override fun createVersion(
@@ -198,6 +201,12 @@ class DocumentRowWriterInboundTest {
     private val sale = command(Direction.SALE, DocumentFunction.CREDIT_NOTE, PartyIdentifier("S1", "V1"), "CN-1")
     private val purchase =
         command(Direction.PURCHASE, DocumentFunction.INVOICE, PartyIdentifier("0195", "ABC-1"), "PI-9")
+
+    @Test
+    fun `INV-AC-28728 the record command path hands the command's entityRef to the store`() {
+        rowWriter.write(sale.copy(entityRef = "ENT-CMD-7"), d1, 1, facts(e1, "2026-03-05"))
+        inserted.single().entityRef shouldBe "ENT-CMD-7"
+    }
 
     @Test
     fun `INV-AC-28091 C1 a SALE version 1 appends one POSTING event, fallback key empty, after the writer`() {

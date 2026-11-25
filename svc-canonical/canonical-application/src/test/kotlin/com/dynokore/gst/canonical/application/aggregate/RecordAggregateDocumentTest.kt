@@ -208,6 +208,12 @@ class RecordAggregateDocumentTest {
     }
 
     @Test
+    fun `INV-AC-28728 the aggregate path hands the input's entityRef to the store`() {
+        useCase.record(input().copy(entityRef = "ENT-AGG-9"))
+        documents.single().entityRef shouldBe "ENT-AGG-9"
+    }
+
+    @Test
     fun `INV-AC-22850 repeat writes nothing`() {
         val first = useCase.record(input())
         val again = useCase.record(input())

@@ -105,6 +105,7 @@ class DocumentRowWriter(
             state = facts.state,
             prescribedPeriodId = facts.prescribedPeriodId,
             first = facts.version,
+            entityRef = command.entityRef,
         )
 
     private fun eventOf(
