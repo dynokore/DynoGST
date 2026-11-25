@@ -146,10 +146,8 @@ class OwningServiceEdgeTest {
         } finally {
             server.stop(0)
         }
-        assertEquals(
-            listOf("GET /probe/PAYLOAD", "GET /probe/SUBMISSION", "GET /probe/MASTERDATA", "GET /probe/EVIDENCE"),
-            seen.toList(),
-        )
+        val probed = listOf("PAYLOAD", "SUBMISSION", "MASTERDATA", "EVIDENCE", "TENANCY")
+        assertEquals(probed.map { "GET /probe/$it" }, seen.toList())
     }
 
     private class Recording : ResilienceRegistry {

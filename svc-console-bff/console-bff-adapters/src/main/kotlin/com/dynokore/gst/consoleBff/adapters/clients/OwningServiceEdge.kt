@@ -7,7 +7,7 @@ import org.springframework.web.client.RestClient
 import java.time.Duration
 import java.util.UUID
 
-/** `x-timeout` of overrideValidation and overrideFilingGate in the pinned contracts, in milliseconds. */
+/** `x-timeout` of the owner operations called, in the pinned contracts, in milliseconds. */
 private const val EDGE_TIMEOUT_MILLIS = 2000L
 private val EDGE_TIMEOUT: Duration = Duration.ofMillis(EDGE_TIMEOUT_MILLIS)
 
@@ -24,6 +24,7 @@ enum class OwningService(
     SUBMISSION("console-bff->submission-svc", "console.submission-svc-url", EDGE_TIMEOUT),
     MASTERDATA("console-bff->masterdata-svc", "console.masterdata-svc-url", EDGE_TIMEOUT),
     EVIDENCE("console-bff->evidence-svc", "console.evidence-svc-url", EDGE_TIMEOUT),
+    TENANCY("console-bff->tenancy-svc", "console.tenancy-svc-url", EDGE_TIMEOUT),
 }
 
 /** The one place that names the edges, base URLs and timeouts of the owning-service clients. */

@@ -34,7 +34,8 @@ dependencies {
 }
 
 // The services staged from the bundle; the marker covers the list, so a changed list restages.
-val stagedServices = listOf("console-bff", "canonical", "payload", "submission", "masterdata", "access", "evidence")
+val stagedServices =
+    listOf("console-bff", "canonical", "payload", "submission", "masterdata", "access", "evidence", "tenancy")
 
 // gst.contract-server resolves `platform-contracts:console-bff:+` while the task graph is built, so the layout
 // is staged while this project is configured, once per bundle version (the marker file).
