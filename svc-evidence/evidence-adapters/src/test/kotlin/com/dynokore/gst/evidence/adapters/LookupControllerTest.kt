@@ -235,13 +235,6 @@ class LookupControllerTest {
 
     private val unusedIndex =
         object : SubmissionIndexReader {
-            override fun read(
-                tenant: TenantId,
-                filter: ReverseLookupFilter,
-                after: ReverseLookupKey?,
-                limit: Int,
-            ): List<ReverseLookupRow> = error("not used")
-
             override fun readScoped(
                 tenant: TenantId,
                 entities: Set<String>,

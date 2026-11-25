@@ -143,16 +143,9 @@ class ReverseLookupControllerTest {
         return controller(caller, replica(granted), reader, integrity)
     }
 
-    /** A reader that serves `readScoped` only: the unscoped `read` fails the test. */
+    /** A reader that hands the entity set, the filter and the limit of `readScoped` to [serve]. */
     private fun scopedReader(serve: (Set<String>, ReverseLookupFilter, Int) -> List<ReverseLookupRow>) =
         object : SubmissionIndexReader {
-            override fun read(
-                tenant: TenantId,
-                filter: ReverseLookupFilter,
-                after: ReverseLookupKey?,
-                limit: Int,
-            ): List<ReverseLookupRow> = error("the unscoped read is not used")
-
             override fun readScoped(
                 tenant: TenantId,
                 entities: Set<String>,

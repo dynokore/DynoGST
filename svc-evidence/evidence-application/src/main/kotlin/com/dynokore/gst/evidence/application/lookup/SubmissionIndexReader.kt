@@ -40,19 +40,9 @@ data class ReverseLookupRow(
 /** Reads `submission_index` in the caller's tenant transaction (INV-REQ-724). */
 fun interface SubmissionIndexReader {
     /**
-     * Complete rows only (document date and state present), filters combined with AND, ordered by [ReverseLookupRow.key]
-     * ascending, strictly after [after] when given, at most [limit] rows.
-     */
-    fun read(
-        tenant: TenantId,
-        filter: ReverseLookupFilter,
-        after: ReverseLookupKey?,
-        limit: Int,
-    ): List<ReverseLookupRow>
-
-    /**
-     * As [read], restricted to rows whose entity is in [entities] (exact case-sensitive match, INV-REQ-710).
-     * The default fails closed: an implementer that has not overridden it throws and returns no rows.
+     * Complete rows only (document date and state present) whose entity is in [entities] (exact case-sensitive match,
+     * INV-REQ-710), filters combined with AND, ordered by [ReverseLookupRow.key] ascending, strictly after [after] when
+     * given, at most [limit] rows.
      */
     fun readScoped(
         tenant: TenantId,
@@ -60,5 +50,5 @@ fun interface SubmissionIndexReader {
         filter: ReverseLookupFilter,
         after: ReverseLookupKey?,
         limit: Int,
-    ): List<ReverseLookupRow> = error("readScoped is not implemented by this reader")
+    ): List<ReverseLookupRow>
 }

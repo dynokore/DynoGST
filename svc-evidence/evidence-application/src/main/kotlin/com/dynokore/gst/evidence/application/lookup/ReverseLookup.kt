@@ -51,23 +51,6 @@ class ReverseLookup(
     private val audited: AuditedReads,
     private val clock: Clock = Clock.systemUTC(),
 ) {
-    @Suppress("LongParameterList") // the request of the operation: caller, filters, page, audit context
-    fun lookup(
-        tenant: TenantId,
-        principal: Principal,
-        filter: ReverseLookupFilter,
-        limit: Int,
-        cursor: String?,
-        context: EventContext,
-    ): ReverseLookupResult {
-        val after = cursor?.let { decode(it) }
-        return when {
-            !replica.decideTenant(tenant, principal, ENQUIRY_LOOKUP_REVERSE).allowed -> ReverseLookupResult.Forbidden
-            limit !in 1..MAX_LIMIT || (cursor != null && after == null) -> ReverseLookupResult.InvalidRequest
-            else -> read(tenant, principal, filter, limit, after, context)
-        }
-    }
-
     /**
      * Entity-scoped lookup (INV-REQ-710 behavior 3): the entities held by the caller and allowed the key per request;
      * none (or any failure) is Forbidden before any read, so the answer fails closed.
@@ -93,7 +76,7 @@ class ReverseLookup(
             }
 
             else -> {
-                read(tenant, principal, filter, limit, after, context) { rows ->
+                read(tenant, principal, filter, limit, context) { rows ->
                     reader.readScoped(tenant, entities, filter, after, rows)
                 }
             }
@@ -122,9 +105,8 @@ class ReverseLookup(
         principal: Principal,
         filter: ReverseLookupFilter,
         limit: Int,
-        after: ReverseLookupKey?,
         context: EventContext,
-        fetch: (Int) -> List<ReverseLookupRow> = { rows -> reader.read(tenant, filter, after, rows) },
+        fetch: (Int) -> List<ReverseLookupRow>,
     ): ReverseLookupResult =
         audited.perform(AuditedCall.ReverseLookup(parametersOf(filter)), principal.id, context) {
             val rows = fetch(limit + 1)

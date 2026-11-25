@@ -135,7 +135,7 @@ class DecisionTraceControllerTest {
             chain,
             ReverseLookup(
                 replica(false),
-                SubmissionIndexReader { _, _, _, _ -> error("not used") },
+                SubmissionIndexReader { _, _, _, _, _ -> error("not used") },
                 IntegrityStatusQueryHandler(unused()),
                 AuditedReads(audit),
             ),

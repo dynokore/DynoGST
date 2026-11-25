@@ -128,15 +128,11 @@ class SubmissionIndexScopedReaderDbTest {
         docs(all, ReverseLookupFilter(categoryCode = "SR", periodRef = "P2")) shouldBe emptySet()
         val ordered = scoped(all).map { it.key }
         ordered shouldBe ordered.sortedWith(compareBy({ it.documentDate }, { it.docUuid }, { it.version }))
-        val unscoped =
-            EvidenceDb.connect(EvidenceDb.RUNTIME, EvidenceDb.RUNTIME_PASSWORD).use { c ->
-                c.autoCommit = false
-                SignedBindings.bind(c, tenant)
-                JooqSubmissionIndexReader(DSL.using(c, SQLDialect.POSTGRES))
-                    .read(TenantId(tenant), ReverseLookupFilter(), null, 100)
-                    .also { c.commit() }
-            }
-        unscoped.map { it.key }.filter { k -> scoped(all).any { it.key == k } } shouldBe ordered
+        // a wider scope is the reference: narrowing the scope keeps every scoped row in the same order
+        put("E9", date = "2026-01-11")
+        val wider = scoped(all + "E9")
+        wider.size shouldBe ordered.size + 1
+        wider.map { it.key }.filter { k -> scoped(all).any { it.key == k } } shouldBe ordered
     }
 
     @Test

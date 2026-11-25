@@ -35,7 +35,7 @@ class SubmissionIndexReaderDbTest {
         state: String? = "SENT",
         ack: String? = null,
         codes: List<String> = emptyList(),
-        entity: String? = null,
+        entity: String? = ENTITY,
     ) {
         fun q(v: String?) = v?.let { "'$it'" } ?: "null"
         sql(
@@ -61,7 +61,7 @@ class SubmissionIndexReaderDbTest {
             c.autoCommit = false
             SignedBindings.bind(c, tenantId)
             JooqSubmissionIndexReader(DSL.using(c, SQLDialect.POSTGRES))
-                .read(TenantId(tenantId), filter, after, limit)
+                .readScoped(TenantId(tenantId), setOf(ENTITY, "E2"), filter, after, limit)
                 .also { c.commit() }
         }
 
@@ -71,13 +71,20 @@ class SubmissionIndexReaderDbTest {
     fun `INV-AC-21950 every row carries the entity_ref and period_ref it was written with`() {
         val a = UUID.randomUUID()
         val b = UUID.randomUUID()
+        val unowned = UUID.randomUUID()
+        val noPeriod = UUID.randomUUID()
         put(doc = a, entity = "E1", period = "2026-Q1", date = "2026-01-10")
-        put(doc = b, entity = null, period = "2026-Q2", date = "2026-01-11")
+        put(doc = b, entity = "E2", period = "2026-Q2", date = "2026-01-11")
+        put(doc = unowned, entity = null, period = "2026-Q2", date = "2026-01-12")
+        put(doc = noPeriod, entity = "E1", period = null, date = "2026-01-13")
         val rows = read().associateBy { it.key.docUuid }
         rows.getValue(a).entityRef shouldBe "E1"
         rows.getValue(a).periodRef shouldBe "2026-Q1"
-        rows.getValue(b).entityRef shouldBe null
+        rows.getValue(b).entityRef shouldBe "E2"
         rows.getValue(b).periodRef shouldBe "2026-Q2"
+        rows.getValue(noPeriod).periodRef shouldBe null
+        // a row without an entity is in no scope (INV-REQ-710)
+        (unowned in rows) shouldBe false
     }
 
     @Test
@@ -220,5 +227,9 @@ class SubmissionIndexReaderDbTest {
         put(doc = d, counterparty = "201912345A")
         docs(ReverseLookupFilter(counterparty = "201912345a")) shouldBe emptySet()
         docs(ReverseLookupFilter(counterparty = "201912345A")) shouldBe setOf(d)
+    }
+
+    private companion object {
+        const val ENTITY = "E1"
     }
 }

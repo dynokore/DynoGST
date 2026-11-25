@@ -28,13 +28,16 @@ import com.dynokore.platform.serviceruntime.replica.PrincipalKind
 import com.dynokore.platform.serviceruntime.replica.ReplicaFallback
 import com.dynokore.platform.serviceruntime.replica.RoleGrant
 import com.dynokore.platform.serviceruntime.replica.RoleGrantState
+import com.dynokore.platform.serviceruntime.replica.StructureReplica
+import com.dynokore.platform.serviceruntime.resilience.Deadline
 import com.dynokore.platform.tenancykernel.TenantId
-import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 import org.junit.jupiter.api.Test
+import java.lang.reflect.Modifier
 import java.time.Clock
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
@@ -49,6 +52,7 @@ class ReverseLookupTest {
     private val user = Principal("user-42", PrincipalKind.HUMAN)
     private val noKeyUser = Principal("user-43", PrincipalKind.HUMAN)
     private val calls = mutableListOf<String>()
+    private val scopedSeen = mutableListOf<Set<String>>()
     private val row =
         ReverseLookupRow(ReverseLookupKey(LocalDate.of(2026, 1, 15), doc, 1), "SENT", null, null, null, null)
     private val seen = mutableListOf<Triple<ReverseLookupFilter, ReverseLookupKey?, Int>>()
@@ -56,13 +60,15 @@ class ReverseLookupTest {
     private inner class Rows(
         private val rows: List<ReverseLookupRow>,
     ) : SubmissionIndexReader {
-        override fun read(
+        override fun readScoped(
             tenant: TenantId,
+            entities: Set<String>,
             filter: ReverseLookupFilter,
             after: ReverseLookupKey?,
             limit: Int,
         ): List<ReverseLookupRow> {
-            calls += "read"
+            calls += "readScoped"
+            scopedSeen += entities
             seen += Triple(filter, after, limit)
             return rows.filter { after == null || it.key.version > after.version }.take(limit)
         }
@@ -151,8 +157,8 @@ class ReverseLookupTest {
     private fun replica(
         key: String = ENQUIRY_LOOKUP_REVERSE,
         current: Boolean = true,
-        scope: GrantScope = GrantScope.TENANT,
-        scopeRef: String? = null,
+        scope: GrantScope = GrantScope.ENTITY,
+        scopeRef: String? = "E1",
     ): AuthorityReplica {
         val roles = OperationRoleMap { if (it == key) mapOf("auditor" to CellAllowance.PERMITTED) else emptyMap() }
         val unavailable = ReplicaFallback<AuthorizationRequest, AuthorityVerdict> { _, _ -> FallbackResult.Unavailable }
@@ -174,15 +180,16 @@ class ReverseLookupTest {
         filter: ReverseLookupFilter = ReverseLookupFilter(),
         limit: Int = 100,
         cursor: String? = null,
-    ) = ReverseLookup(replica, Rows(rows), IntegrityStatusQueryHandler(store), AuditedReads(audit))
-        .lookup(t1, who, filter, limit, cursor, context)
+    ) = ReverseLookup(replica, Rows(rows), IntegrityStatusQueryHandler(store), AuditedReads(audit), clock)
+        .lookupScoped(t1, who, filter, limit, cursor, context)
 
     @Test
     fun `INV-AC-20722 a caller with the key gets the page with state SENT and no ack`() {
         val page = lookup().shouldBeInstanceOf<ReverseLookupResult.Page>()
         page.items shouldBe listOf(row)
         page.nextCursor shouldBe null
-        calls shouldBe listOf("read")
+        calls shouldBe listOf("readScoped")
+        scopedSeen.single() shouldBe setOf("E1")
     }
 
     @Test
@@ -349,16 +356,7 @@ class ReverseLookupTest {
     }
 
     // INV-AC-27666: the entity-scoped lookup
-    private val scopedSeen = mutableListOf<Set<String>>()
-
     private inner class ScopedRows : SubmissionIndexReader {
-        override fun read(
-            tenant: TenantId,
-            filter: ReverseLookupFilter,
-            after: ReverseLookupKey?,
-            limit: Int,
-        ): List<ReverseLookupRow> = error("unscoped read must not be used")
-
         override fun readScoped(
             tenant: TenantId,
             entities: Set<String>,
@@ -456,15 +454,6 @@ class ReverseLookupTest {
     }
 
     @Test
-    fun `INV-AC-27666 case 5 a reader of read only makes readScoped throw and no rows are returned`() {
-        val readOnly = SubmissionIndexReader { _, _, _, _ -> listOf(row) }
-        shouldThrow<IllegalStateException> {
-            readOnly.readScoped(t1, setOf("E1"), ReverseLookupFilter(), null, 1)
-        }
-        shouldThrow<IllegalStateException> { scoped(entityReplica("auditor" to "E1"), readOnly) }
-    }
-
-    @Test
     fun `INV-AC-27666 case 6 limit 0 and 501 and an undecodable cursor are InvalidRequest`() {
         val r = entityReplica("auditor" to "E1")
         scoped(r, limit = 0) shouldBe ReverseLookupResult.InvalidRequest
@@ -474,9 +463,31 @@ class ReverseLookupTest {
     }
 
     @Test
-    fun `INV-AC-27666 case 7 lookup with a tenant grant still answers a page as on main`() {
-        lookup().shouldBeInstanceOf<ReverseLookupResult.Page>().items shouldBe listOf(row)
-        calls shouldBe listOf("read")
+    fun `INV-AC-27673 case 1 a tenant grant, no entity grant and an empty structure replica is Forbidden`() {
+        val roles =
+            OperationRoleMap {
+                if (it == ENQUIRY_LOOKUP_REVERSE) mapOf("auditor" to CellAllowance.PERMITTED) else emptyMap()
+            }
+        val unavailable = ReplicaFallback<AuthorizationRequest, AuthorityVerdict> { _, _ -> FallbackResult.Unavailable }
+        val tenantOnly = AuthorityReplica(clock, roles, fallback = unavailable, structure = StructureReplica(clock))
+        tenantOnly.accept(entityGrant(1, "auditor", null))
+        tenantOnly.onSnapshotComplete(1)
+        tenantOnly.observeHead(1)
+        // positive control: the grant is live and allows the key on an entity; it only names none
+        val request = AuthorizationRequest(t1, user, "E1", ENQUIRY_LOOKUP_REVERSE)
+        tenantOnly.decide(request, Deadline.after(Duration.ofSeconds(1), clock)).allowed shouldBe true
+        scoped(tenantOnly) shouldBe ReverseLookupResult.Forbidden
+        calls shouldBe emptyList()
+        audit.entries shouldBe emptyList()
+    }
+
+    @Test
+    fun `INV-AC-27673 case 3 the reader port has one member, the abstract readScoped`() {
+        // every declared method is listed, so a default body, a kept read or a synthetic default is caught;
+        // the value-class parameter TenantId mangles the JVM name to `readScoped-<hash>`
+        val declared = SubmissionIndexReader::class.java.declaredMethods
+        declared.map { it.name.substringBefore('-') to Modifier.isAbstract(it.modifiers) } shouldBe
+            listOf("readScoped" to true)
     }
 
     private companion object {

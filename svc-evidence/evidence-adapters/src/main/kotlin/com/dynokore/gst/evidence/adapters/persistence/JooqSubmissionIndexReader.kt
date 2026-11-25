@@ -20,15 +20,8 @@ import org.jooq.impl.DSL
 class JooqSubmissionIndexReader(
     private val dsl: DSLContext,
 ) : SubmissionIndexReader {
-    override fun read(
-        tenant: TenantId,
-        filter: ReverseLookupFilter,
-        after: ReverseLookupKey?,
-        limit: Int,
-    ): List<ReverseLookupRow> = query(conditions(tenant, filter, after), limit)
-
     /**
-     * As [read] with `entity_ref in (entities)` added by AND (INV-REQ-710): exact, case-sensitive; a null
+     * The filter conditions with `entity_ref in (entities)` added by AND (INV-REQ-710): exact, case-sensitive; a null
      * `entity_ref` never matches. An empty set returns an empty list before any statement is built (fail closed).
      */
     override fun readScoped(
