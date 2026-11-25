@@ -39,7 +39,7 @@ class PriorEvidenceImportedHandler(
             try {
                 ImportedPriorRecord(data.entityRef, data.documentNumber, data.transactionDate, data.acknowledgementRef)
             } catch (e: IllegalArgumentException) {
-                throw ContractViolation("PriorSubmissionEvidenceImported has a blank member", e)
+                throw ContractViolation("PriorSubmissionEvidenceImported member is invalid: ${e.message}", e)
             }
         if (data.priorSolution.isBlank()) {
             throw ContractViolation("PriorSubmissionEvidenceImported member priorSolution is blank")

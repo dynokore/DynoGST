@@ -111,6 +111,16 @@ class PriorEvidenceImportedHandlerTest {
     }
 
     @Test
+    fun `INV-AC-28453 the port receives the priorSolution of the event`() {
+        val event = PriorEvidenceImportedData("E-1", "INV-100", date, "ACK-1", "Legacy Books")
+        next = { event }
+        handler.handle(envelope()) shouldBe HandleOutcome.APPLIED
+        store.rows.values
+            .single()
+            .second shouldBe event.priorSolution
+    }
+
+    @Test
     fun `INV-AC-28453 another transaction date is another document`() {
         deliver() shouldBe HandleOutcome.APPLIED
         deliver(on = date.plusDays(1), ack = "ACK-2") shouldBe HandleOutcome.APPLIED
@@ -134,6 +144,7 @@ class PriorEvidenceImportedHandlerTest {
     fun `INV-AC-28453 a blank member is a ContractViolation that does not echo the value`() {
         next = { PriorEvidenceImportedData(" ", "INV-100", date, "ACK-1", "P1") }
         val e = shouldThrow<ContractViolation> { handler.handle(envelope()) }
+        e.message.orEmpty() shouldContain "entityRef"
         e.message.orEmpty() shouldNotContain "INV-100"
         next = { PriorEvidenceImportedData("E-1", "INV-100", date, "ACK-1", " ") }
         shouldThrow<ContractViolation> { handler.handle(envelope()) }

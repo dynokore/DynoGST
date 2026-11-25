@@ -19,3 +19,10 @@ create policy imported_prior_evidence_tenant_isolation on submission.imported_pr
     using      (tenant_id = (select submission.bound_tenant()))
     with check (tenant_id = (select submission.bound_tenant()));
 grant select, insert on submission.imported_prior_evidence to submission_runtime;
+comment on column submission.imported_prior_evidence.tenant_id is 'class: operational';
+comment on column submission.imported_prior_evidence.entity_ref is 'class: operational';
+comment on column submission.imported_prior_evidence.document_number is 'class: operational';
+comment on column submission.imported_prior_evidence.transaction_date is 'class: operational';
+comment on column submission.imported_prior_evidence.acknowledgement_ref is 'class: operational';
+comment on column submission.imported_prior_evidence.prior_solution is 'class: operational';
+comment on column submission.imported_prior_evidence.imported_at is 'class: operational';

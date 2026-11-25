@@ -87,6 +87,18 @@ class ImportedPriorEvidenceStoreDbTest {
     }
 
     @Test
+    fun `INV-AC-28453 the stored prior_solution equals the argument and a repeat leaves it unchanged`() {
+        val t1 = UUID.randomUUID()
+        val stored = {
+            ownerStrings("select prior_solution from submission.imported_prior_evidence where tenant_id = '$t1'")
+        }
+        asTenant(t1) { store.record(TenantId(t1), rec(), "Legacy Books") } shouldBe true
+        stored() shouldBe listOf("Legacy Books")
+        asTenant(t1) { store.record(TenantId(t1), rec(), "Other Books") } shouldBe false
+        stored() shouldBe listOf("Legacy Books")
+    }
+
+    @Test
     fun `INV-AC-28453 the same document number of another entity or another date is its own record`() {
         val t1 = UUID.randomUUID()
         put(t1, rec()) shouldBe true
@@ -117,5 +129,13 @@ class ImportedPriorEvidenceStoreDbTest {
                     "and table_name = 'imported_prior_evidence' order by 1",
             )
         granted shouldBe listOf("INSERT", "SELECT")
+        // Effective privileges: these also count column-level, PUBLIC and inherited grants.
+        val table = "'submission_runtime', 'submission.imported_prior_evidence'"
+        for (p in listOf("UPDATE", "REFERENCES")) {
+            ownerStrings("select has_any_column_privilege($table, '$p')") shouldBe listOf("f")
+        }
+        for (p in listOf("DELETE", "TRUNCATE", "TRIGGER")) {
+            ownerStrings("select has_table_privilege($table, '$p')") shouldBe listOf("f")
+        }
     }
 }

@@ -229,9 +229,9 @@ class RegisterListFactsStoreDbTest {
         val names = newColumns.joinToString(",") { "'$it'" }
         val others =
             schemaColumns(
-                "table_name not in ('obligation_register_entry', 'provisional_register_entry', " +
-                    "'imported_prior_evidence') " +
-                    "and column_name in ($names)",
+                "table_name not in ('obligation_register_entry', 'provisional_register_entry') " +
+                    "and column_name in ($names) " +
+                    "and not (table_name = 'imported_prior_evidence' and column_name = 'document_number')",
             )
         others shouldBe emptyList()
     }
