@@ -144,11 +144,21 @@ class SubmissionQueue(
         rows: List<VersionState>,
     ): EnqueueResult {
         val row = rows.firstOrNull { it.version == version } ?: throw VersionNotReady(doc, version)
-        if (!isOnScheduledPath(row.submissionType)) return EnqueueResult.NotScheduled
-        if (row.priorSolutionHeld) return EnqueueResult.PriorSolutionHeld
-        if (store.moveReadyToQueued(tenants.current(), doc, version) != 1) throw VersionNotReady(doc, version)
-        queue.enqueue(QueueEntry(partitionKey = doc, lane = lane, payloadJson = itemPayload(doc, version)))
-        return EnqueueResult.Queued
+        return when {
+            !isOnScheduledPath(row.submissionType) -> {
+                EnqueueResult.NotScheduled
+            }
+
+            row.priorSolutionHeld -> {
+                EnqueueResult.PriorSolutionHeld
+            }
+
+            else -> {
+                if (store.moveReadyToQueued(tenants.current(), doc, version) != 1) throw VersionNotReady(doc, version)
+                queue.enqueue(QueueEntry(partitionKey = doc, lane = lane, payloadJson = itemPayload(doc, version)))
+                EnqueueResult.Queued
+            }
+        }
     }
 
     private companion object {
