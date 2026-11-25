@@ -250,7 +250,8 @@ internal object Assignments {
             of("INV-T-3290", "recordInstallationAction") +
             of("INV-T-7382", "recordMigrationCutover", "getMigrationCutover") +
             of("INV-T-16829", "getCalendarPackDelta") +
-            of("INV-T-27611", "listRenditionAttestations")
+            of("INV-T-27611", "listRenditionAttestations") +
+            of("INV-T-27013", "getSubmissionScope")
 
     val channels: Map<String, String> =
         of("INV-T-4925", "OrganisationStructureChanged", "ExampleHappened") +
