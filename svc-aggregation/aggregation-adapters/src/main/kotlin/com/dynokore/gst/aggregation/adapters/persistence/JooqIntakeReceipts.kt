@@ -1,6 +1,7 @@
 package com.dynokore.gst.aggregation.adapters.persistence
 
 import com.dynokore.gst.aggregation.adapters.persistence.jooq.tables.IntakeReceipt.Companion.INTAKE_RECEIPT
+import com.dynokore.gst.aggregation.application.NewAggregate
 import com.dynokore.gst.aggregation.domain.AggregateType
 import com.dynokore.platform.tenancykernel.TenantContext
 import org.jooq.DSLContext
@@ -30,6 +31,18 @@ internal class JooqIntakeReceipts(
         checkNotNull(tenants.currentActor()?.takeIf { it.isNotBlank() }) {
             "an intake is stored only with its submitting principal"
         }
+
+    /** The receipt of the batch intake for the aggregate it stored. */
+    fun recordBatch(aggregate: NewAggregate) =
+        record(
+            IntakeOperation.BATCH,
+            AcceptedIntake(
+                aggregate.entityRef,
+                aggregate.sourceKey,
+                aggregate.sourceRevision,
+                aggregate.aggregateType,
+            ),
+        )
 
     /**
      * A plain insert with no conflict clause: a second receipt of the operation and triple fails, and with it the
