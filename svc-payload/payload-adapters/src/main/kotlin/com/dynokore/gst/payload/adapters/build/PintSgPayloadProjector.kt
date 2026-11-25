@@ -73,7 +73,7 @@ class PintSgPayloadProjector(
                         literal?.takeIf { it == "POS" || it == "STI" },
                     ),
                 )
-            projection(result)
+            projection(result, pack.version)
         }
     }
 
@@ -112,10 +112,13 @@ class PintSgPayloadProjector(
             )
         }
 
-    private fun projection(result: BuildResult): Projection =
+    private fun projection(
+        result: BuildResult,
+        packVersion: String,
+    ): Projection =
         when (result) {
             is BuildResult.Built -> {
-                Projection.Built(result.xml.toByteArray(Charsets.UTF_8))
+                Projection.Built(result.xml.toByteArray(Charsets.UTF_8), packVersion = packVersion)
             }
 
             is BuildResult.Refused -> {

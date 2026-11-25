@@ -1,7 +1,9 @@
 package com.dynokore.gst.payload.adapters.build
 
+import com.dynokore.gst.payload.application.build.NoAcceptedReleaseFacts
 import com.dynokore.gst.payload.application.build.PayloadRejectedFacts
 import com.dynokore.gst.payload.application.build.PayloadRejectedPublisher
+import com.dynokore.gst.payload.application.build.ReleaseRefusal
 import com.dynokore.platform.outboxandqueue.CausationId
 import com.dynokore.platform.outboxandqueue.CorrelationId
 import com.dynokore.platform.outboxandqueue.DocUuid
@@ -22,7 +24,9 @@ import java.util.UUID
  * is a JSON object is embedded as given, any other text is wrapped as `{"reason": <text>}`, and a catalogue code
  * without a trace gives `{"code": <code>}`; `code` is written only when set.
  * `packVersions` (additive, API-41) is written only when [PayloadRejectedFacts.packVersions] is non-empty; so is
- * `decisions` for [PayloadRejectedFacts.decisions].
+ * `decisions` for [PayloadRejectedFacts.decisions]. For a [PayloadRejectedFacts.releaseRefusal] the trace is the object
+ * of the refusal facts (INV-REQ-590); it needs the code [ReleaseRefusal.CODE] and no other trace, else nothing is
+ * appended.
  */
 class OutboxPayloadRejectedPublisher(
     private val outbox: OutboxWriter,
@@ -30,6 +34,10 @@ class OutboxPayloadRejectedPublisher(
     private val mapper: ObjectMapper = ObjectMapper(),
 ) : PayloadRejectedPublisher {
     override fun stage(facts: PayloadRejectedFacts) {
+        if (facts.releaseRefusal != null) {
+            require(facts.code == ReleaseRefusal.CODE) { "a release refusal carries the code ${ReleaseRefusal.CODE}" }
+            require(facts.validationTrace == null) { "a release refusal carries no other validation trace" }
+        }
         val correlation = CorrelationContext.currentCorrelationId()?.value ?: UUID.randomUUID().toString()
         val causation = CorrelationContext.currentCausationId()?.value ?: correlation
         outbox.appendSequenced(
@@ -55,7 +63,7 @@ class OutboxPayloadRejectedPublisher(
         node.put("docUuid", facts.docUuid.toString())
         node.put("version", facts.version)
         node.put("docsequence", docSequence)
-        node.set("validationTrace", trace(facts))
+        node.set("validationTrace", facts.releaseRefusal?.let(::refusalTrace) ?: trace(facts))
         facts.code?.let { node.put("code", it) }
         facts.packVersions?.takeIf { it.isNotEmpty() }?.let { packs ->
             val array = node.putArray("packVersions")
@@ -84,6 +92,17 @@ class OutboxPayloadRejectedPublisher(
             }
         }
         return mapper.writeValueAsString(node)
+    }
+
+    private fun refusalTrace(refusal: NoAcceptedReleaseFacts): ObjectNode {
+        val trace = mapper.createObjectNode()
+        trace.put("code", ReleaseRefusal.CODE).put("reason", refusal.reason.name).put("family", refusal.family)
+        refusal.transactionDate?.let { trace.put("transactionDate", it.toString()) }
+        trace.put("submissionDate", refusal.submissionDate.toString())
+        refusal.notOlderThan?.let { trace.put("notOlderThan", it) }
+        val accepted = trace.putArray("acceptedOnDate")
+        refusal.acceptedOnDate.forEach { accepted.add(it) }
+        return trace
     }
 
     private fun trace(facts: PayloadRejectedFacts): JsonNode {
