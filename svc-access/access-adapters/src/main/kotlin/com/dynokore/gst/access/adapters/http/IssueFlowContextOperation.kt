@@ -35,27 +35,46 @@ class IssueFlowContextOperation(
     ): ResponseEntity<IssueFlowContextResponse> {
         val caller = serviceCaller.current()
         val tenantId = runCatching { TenantId.of(tenant) }.getOrNull()
-        val bound = runCatching { tenants.current() }.getOrNull()
+        val bound = boundTenant()
         val mismatch = tenantId != null && tenantId != TenantId.PLATFORM && caller != null && bound != tenantId
         val result =
             when {
                 tenantId == null -> {
                     // a caller that is not served is refused before the request is judged, as in the use case
-                    if (caller == null) IssueFlowContextResult.CallerNotServed else IssueFlowContextResult.InvalidRequest
+                    if (caller ==
+                        null
+                    ) {
+                        IssueFlowContextResult.CallerNotServed
+                    } else {
+                        IssueFlowContextResult.InvalidRequest
+                    }
                 }
 
-                // the request tenant must equal the tenant of the propagated token; a token without a tenant (a platform
-                // operator, or nothing bound) never equals it (ruling INV-T-24991, OWASP ASVS V4.1 deny by default)
-                mismatch -> IssueFlowContextResult.CallerNotServed
+                // the request tenant must equal the tenant of the propagated token; a token without a tenant
+                // (a platform operator, or nothing bound) never equals it (ruling INV-T-24991, ASVS V4.1)
+                mismatch -> {
+                    IssueFlowContextResult.CallerNotServed
+                }
 
-                else -> issuer.issue(caller, tenantId, entityKind, entityRef, principalKind, flowId)
+                else -> {
+                    issuer.issue(caller, tenantId, entityKind, entityRef, principalKind, flowId)
+                }
             }
-        log(caller, flowId, tenant, entityKind, entityRef, principalKind, if (mismatch) TENANT_MISMATCH else outcomeOf(result))
+        val outcome = if (mismatch) TENANT_MISMATCH else outcomeOf(result)
+        log(caller, flowId, tenant, entityKind, entityRef, principalKind, outcome)
         if (result is IssueFlowContextResult.Issued) {
             return ResponseEntity.ok(IssueFlowContextResponse(result.compact, result.expiresAt))
         }
         throw refusalOf(result)
     }
+
+    /** The tenant bound from the propagated token, or null when nothing is bound (it then equals no request tenant). */
+    private fun boundTenant(): TenantId? =
+        try {
+            tenants.current()
+        } catch (expected: IllegalStateException) {
+            null
+        }
 
     /** The refusal of a result that issued nothing: caller 403 SRT-004, request 400 SRT-001, signing 503 SRT-013. */
     private fun refusalOf(result: IssueFlowContextResult): ApiRefusal =
