@@ -1,19 +1,15 @@
 package com.dynokore.gst.transport.adapters.http
 
-import com.dynokore.gst.transport.adapters.persistence.ConnectionRecord
-import com.dynokore.gst.transport.adapters.persistence.JooqConnectionRecords
 import com.dynokore.gst.transport.adapters.persistence.JooqCredentialRotationLog
 import com.dynokore.gst.transport.application.AccessPointConnectionStore
 import com.dynokore.gst.transport.application.ClearAcknowledgementRoute
 import com.dynokore.gst.transport.application.ConnectionNotFound
-import com.dynokore.gst.transport.application.AdapterNotRegistered
 import com.dynokore.gst.transport.application.CredentialRef
 import com.dynokore.gst.transport.application.ElectAcknowledgementRoute
 import com.dynokore.gst.transport.application.FailoverAdapter
 import com.dynokore.gst.transport.application.RotateCredential
 import com.dynokore.gst.transport.application.RotateResult
 import com.dynokore.gst.transport.application.SetConnectionEntities
-import com.dynokore.gst.transport.application.SetTenantCeiling
 import com.dynokore.gst.transport.application.TestConnection
 import com.dynokore.gst.transport.contract.api.AdministrationApi
 import com.dynokore.gst.transport.contract.model.AcknowledgementRouteResponse
@@ -27,8 +23,6 @@ import com.dynokore.gst.transport.contract.model.RotateCredentialRequest
 import com.dynokore.gst.transport.contract.model.SetConnectionEntitiesRequest
 import com.dynokore.gst.transport.contract.model.SetConnectionEntitiesResponse
 import com.dynokore.gst.transport.contract.model.SetThroughputCeilingRequest
-import com.dynokore.gst.transport.domain.CeilingChange
-import com.dynokore.gst.transport.domain.CeilingRefusal
 import com.dynokore.gst.transport.domain.AdapterId
 import com.dynokore.gst.transport.domain.EntityRef
 import com.dynokore.gst.transport.domain.TenantRef
@@ -36,7 +30,6 @@ import com.dynokore.platform.outboxandqueue.TenantScope
 import com.dynokore.platform.serviceruntime.http.ClosedErrorCode
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.RestController
-import java.math.BigDecimal
 import java.time.Clock
 import java.time.Duration
 import java.time.OffsetDateTime
@@ -55,7 +48,7 @@ import com.dynokore.gst.transport.application.ConnectionTestResult as TestOutcom
  * 404 SRT-005 with nothing recorded or published. The refusals are mapped by [AdministrationAdvice].
  */
 @RestController
-@Suppress("LongParameterList") // one collaborator per operation of the interface, wired by the composition root
+@Suppress("LongParameterList", "TooManyFunctions") // one collaborator and handler per operation of the interface
 open class AdministrationController(
     private val elect: ElectAcknowledgementRoute,
     private val clear: ClearAcknowledgementRoute,
@@ -70,16 +63,12 @@ open class AdministrationController(
     private val rotate: RotateCredential,
     private val rotations: JooqCredentialRotationLog,
     private val window: RotationWindow,
-    private val ceilings: SetTenantCeiling,
-    private val records: JooqConnectionRecords,
+    private val ceiling: ThroughputCeilingCommand,
 ) : AdministrationApi {
     /**
      * `setThroughputCeiling` (INV-REQ-1317, owner ruling 2026-11-18 A): asks `vp-56.set` (the set permission of VP-56),
-     * decided per request, never a role name. The connection is read under the tenant predicate: a ref of another
-     * tenant is 404 SRT-005 and its row is untouched. A ceiling above the agreed rate is 422 POL-008 and a connection
-     * with no agreed rate recorded is 422 POL-010 (fail closed); nothing is stored in either. A value of zero or below
-     * is refused by the request schema (400 SRT-001). The change and the key record commit together; the actor bound
-     * for the change is the acting user ID.
+     * decided per request, never a role name. The command is [ThroughputCeilingCommand]; under the `Idempotency-Key`
+     * the change and the key record commit together, and the actor bound for the change is the acting user ID.
      */
     override fun setThroughputCeiling(
         connectionRef: String,
@@ -95,45 +84,9 @@ open class AdministrationController(
                 idempotencyKey,
                 "PUT setThroughputCeiling $connectionRef ${value.toPlainString()}",
                 ApConnection::class.java,
-            ) {
-                val before = records.load(tenant, connectionRef) ?: throw ConnectionNotFound(connectionRef)
-                if (before.agreedRate == null) throw CatalogueRefusal(HTTP_UNPROCESSABLE, BOUND_UNAVAILABLE, BOUND_TITLE)
-                store(AdapterId(connectionRef), value)
-                (records.load(tenant, connectionRef) ?: throw ConnectionNotFound(connectionRef)).toResponse()
-            }
+            ) { ceiling.set(tenant, connectionRef, value) }
         }
     }
-
-    private fun store(
-        adapter: AdapterId,
-        value: BigDecimal,
-    ) {
-        val change =
-            try {
-                ceilings.set(adapter, value)
-            } catch (_: AdapterNotRegistered) {
-                throw CatalogueRefusal(HTTP_UNPROCESSABLE, BOUND_UNAVAILABLE, BOUND_TITLE)
-            }
-        if (change is CeilingChange.Refused) {
-            throw when (change.reason) {
-                CeilingRefusal.ABOVE_AGREED_RATE -> CatalogueRefusal(HTTP_UNPROCESSABLE, LOOSER, LOOSER_TITLE)
-                CeilingRefusal.NOT_POSITIVE -> ApiRefusal(ClosedErrorCode.CONTRACT_VIOLATION)
-            }
-        }
-    }
-
-    private fun ConnectionRecord.toResponse() =
-        ApConnection(
-            connectionRef = adapterRef,
-            adapterRef = adapterRef,
-            entityRefs = entityRefs.toSet(),
-            version = version.toInt(),
-            throughputCeiling = (tenantCeiling ?: agreedRate)?.plain(),
-            agreedRate = agreedRate?.plain(),
-        )
-
-    /** The column keeps three decimals; the answer shows the number without trailing zeros and never as an exponent. */
-    private fun BigDecimal.plain(): BigDecimal = stripTrailingZeros().let { if (it.scale() < 0) it.setScale(0) else it }
 
     /**
      * `rotateCredential`: asks `ap-credential.manage`. The new reference is named in the request and is only a vault
@@ -308,12 +261,6 @@ open class AdministrationController(
         )
     }
 }
-
-private const val HTTP_UNPROCESSABLE = 422
-private const val LOOSER = "POL-008"
-private const val LOOSER_TITLE = "Looser than a broader scope"
-private const val BOUND_UNAVAILABLE = "POL-010"
-private const val BOUND_TITLE = "Bound unavailable"
 
 /** The overlap window of a credential rotation (INV-REQ-837): configuration with no default, null while unset. */
 class RotationWindow(

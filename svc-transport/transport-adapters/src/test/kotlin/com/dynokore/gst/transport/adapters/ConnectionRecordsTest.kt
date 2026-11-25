@@ -9,6 +9,7 @@ import com.dynokore.platform.tenancyjooq.TenancyTables
 import com.dynokore.platform.tenancykernel.BindingKeySource
 import com.dynokore.platform.tenancykernel.TenantContextImpl
 import com.dynokore.platform.tenancykernel.TenantId
+import com.dynokore.platform.tenancykernel.TransactionRunner
 import com.dynokore.platform.tenancykernel.TransactionRunnerImpl
 import io.kotest.matchers.shouldBe
 import org.jooq.SQLDialect
@@ -24,40 +25,41 @@ import java.util.UUID
  * so a missing predicate cannot be masked by the database.
  */
 class ConnectionRecordsTest {
-    @Test
-    fun `INV-AC-24957 a connection record of tenant A is not found by tenant B even in a session bound to A`() {
-        val bound = UUID.randomUUID()
-        val bindings = TenantContextImpl()
-        val source =
+    private val bindings = TenantContextImpl()
+    private val impl =
+        TransactionRunnerImpl(
             PGSimpleDataSource().apply {
                 setUrl(TransportDb.jdbcUrl)
                 user = TransportDb.RUNTIME
                 password = TransportDb.RUNTIME_PASSWORD
-            }
-        val impl =
-            TransactionRunnerImpl(
-                source,
-                bindings,
-                null,
-                object : BindingKeySource {
-                    override fun currentKey(): ByteArray = TransportDb.bindingKey.copyOf()
+            },
+            bindings,
+            null,
+            object : BindingKeySource {
+                override fun currentKey(): ByteArray = TransportDb.bindingKey.copyOf()
 
-                    override fun previousKey(): ByteArray? = null
-                },
-            )
-        val dsl =
-            TenancyJooq
-                .configure(
-                    DefaultConfiguration().set(SQLDialect.POSTGRES),
-                    TenancyTables.declared(mapOf(DSL.name("transport", "ap_connection") to TableClass.TENANT)),
-                    bindings,
-                    impl,
-                ).dsl()
-        val runner =
-            object : com.dynokore.platform.tenancykernel.TransactionRunner {
-                override fun <T> inTransaction(block: () -> T): T =
-                    bindings.bind(TenantId(bound), SignedBindings.ACTOR) { impl.inTransaction(block) }
-            }
+                override fun previousKey(): ByteArray? = null
+            },
+        )
+    private val dsl =
+        TenancyJooq
+            .configure(
+                DefaultConfiguration().set(SQLDialect.POSTGRES),
+                TenancyTables.declared(mapOf(DSL.name("transport", "ap_connection") to TableClass.TENANT)),
+                bindings,
+                impl,
+            ).dsl()
+
+    private fun runnerBoundTo(tenant: UUID) =
+        object : TransactionRunner {
+            override fun <T> inTransaction(block: () -> T): T =
+                bindings.bind(TenantId(tenant), SignedBindings.ACTOR) { impl.inTransaction(block) }
+        }
+
+    @Test
+    fun `INV-AC-24957 a connection record of tenant A is not found by tenant B even in a session bound to A`() {
+        val bound = UUID.randomUUID()
+        val runner = runnerBoundTo(bound)
         val adapter = "a-${UUID.randomUUID().toString().take(12)}"
         runner.inTransaction {
             dsl

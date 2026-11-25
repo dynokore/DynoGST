@@ -3,6 +3,7 @@ package com.dynokore.gst.transport.bootstrap
 import com.dynokore.gst.transport.adapters.ap.AccessPointRegistry
 import com.dynokore.gst.transport.adapters.ap.ApEndpoints
 import com.dynokore.gst.transport.adapters.ap.HttpAccessPointAdapter
+import com.dynokore.gst.transport.adapters.http.ThroughputCeilingCommand
 import com.dynokore.gst.transport.adapters.metrics.AttemptMetrics
 import com.dynokore.gst.transport.adapters.persistence.JooqApConnections
 import com.dynokore.gst.transport.adapters.persistence.JooqAttemptLog
@@ -81,6 +82,12 @@ class TransportConfiguration {
         dsl: DSLContext,
         runner: TransactionRunner,
     ): JooqConnectionRecords = JooqConnectionRecords(dsl, runner)
+
+    @Bean
+    fun throughputCeilingCommand(
+        ceilings: SetTenantCeiling,
+        records: JooqConnectionRecords,
+    ): ThroughputCeilingCommand = ThroughputCeilingCommand(ceilings, records)
 
     @Bean
     fun setTenantCeiling(connections: ApConnections): SetTenantCeiling = SetTenantCeiling(connections)

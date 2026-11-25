@@ -36,7 +36,7 @@ class OperationsGateTest {
         val cell: String,
     )
 
-    /** Parallel change (INV-Q-15626 A): six states, before 12486, after it, after 4982, after 18675, after 18676, after 24959 (the handler is live before the key is listed). */
+    /** Parallel change (INV-Q-15626 A): six states, the last two after 18676 and after 24959 (handler live first). */
     private val state1 =
         GateState(
             done = "INV-T-4981\n",

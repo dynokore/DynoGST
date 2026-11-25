@@ -207,12 +207,13 @@ class ThroughputCeilingHttpTest {
         val connection = r.connection(tenant)
         val answer = r.set(connection, "100", r.permitted(tenant))
         answer.status shouldBe 200
-        BigDecimal(mapper.readTree(answer.body).get("throughputCeiling").asString()).compareTo(BigDecimal("100")) shouldBe 0
+        val json = mapper.readTree(answer.body)
+        BigDecimal(json.get("throughputCeiling").asString()).compareTo(BigDecimal("100")) shouldBe 0
         r.stored(tenant, connection).shouldBeNumber("100")
     }
 
     @Test
-    fun `INV-AC-24957 (3) a ceiling of 101 and one of 100_0001 above the agreed rate are refused POL-008, nothing stored`(
+    fun `INV-AC-24957 (3) a ceiling of 101 or 100_0001 above the agreed rate is refused POL-008 and nothing is stored`(
         @TempDir dir: Path,
     ) = run(dir) { r ->
         val tenant = UUID.randomUUID()
