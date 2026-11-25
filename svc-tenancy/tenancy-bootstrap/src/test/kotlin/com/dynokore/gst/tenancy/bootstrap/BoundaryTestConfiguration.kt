@@ -12,6 +12,7 @@ import com.dynokore.gst.tenancy.application.election.CallerSource
 import com.dynokore.gst.tenancy.application.election.EntityFactSource
 import com.dynokore.gst.tenancy.application.installation.InstallationAuthority
 import com.dynokore.gst.tenancy.application.migration.MigrationCutoverPermissions
+import com.dynokore.gst.tenancy.application.period.SubmissionScopePermissions
 import com.dynokore.gst.tenancy.application.rendition.RenditionPermissions
 import com.dynokore.gst.tenancy.application.workspace.TenantAuthority
 import com.dynokore.gst.tenancy.domain.ElectionPermissions
@@ -208,6 +209,7 @@ class TestPeople :
 
     override fun actor(): String = caller
 
+    @Suppress("LongMethod") // one branch per permission key the fake decides; each key adds one branch
     override fun holds(
         person: String,
         entityRef: String,
@@ -239,6 +241,10 @@ class TestPeople :
 
             PeriodPermissions.PACK_DELTA_VIEW -> {
                 roles.any { it in PACK_DELTA_VIEWING }
+            }
+
+            SubmissionScopePermissions.READ -> {
+                roles.any { it in SUBMISSION_SCOPE_READING }
             }
 
             ElectionPermissions.APPROVE -> {
@@ -277,6 +283,16 @@ class TestPeople :
                     RolePermissions
                         .cells(form)
                         .filterValues { it[PeriodPermissions.PACK_DELTA_VIEW] == RoleAllowance.PERMITTED }
+                        .keys
+                }.toSet()
+
+        /** The roles the catalogue permits `transaction.ingest`, read through RolePermissions (INV-T-27013). */
+        val SUBMISSION_SCOPE_READING: Set<String> =
+            DeploymentForm.entries
+                .flatMap { form ->
+                    RolePermissions
+                        .cells(form)
+                        .filterValues { it[SubmissionScopePermissions.READ] == RoleAllowance.PERMITTED }
                         .keys
                 }.toSet()
         val PERIOD_CONFIRMING = setOf(ElectionRoles.ENTITY_ADMIN, ElectionRoles.TAX_APPROVER)
