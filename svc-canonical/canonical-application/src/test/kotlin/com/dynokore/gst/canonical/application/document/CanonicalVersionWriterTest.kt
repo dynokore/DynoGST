@@ -29,7 +29,10 @@ class CanonicalVersionWriterTest {
 
     private val store =
         object : DocumentStore {
-            override fun insert(document: NewDocument) {
+            override fun insert(
+                document: NewDocument,
+                link: SourceLink,
+            ) {
                 calls += "insert ${document.docUuid}"
                 stored += "doc ${document.docUuid}"
             }
@@ -38,6 +41,7 @@ class CanonicalVersionWriterTest {
                 docUuid: UUID,
                 expectedVersion: Int,
                 version: NewVersion,
+                link: SourceLink,
             ): UpdateOutcome {
                 calls += "createVersion $docUuid $expectedVersion"
                 if (current[docUuid] != expectedVersion) return UpdateOutcome.Conflict
@@ -149,14 +153,14 @@ class CanonicalVersionWriterTest {
 
     @Test
     fun `INV-AC-22846 first version stages one fact set with the caller's aggregateId`() {
-        tx.inTransaction { writer.createFirst(newDocument(1), facts(1, aggregateId = "AGG-2026-0001")) }
+        tx.inTransaction { writer.createFirst(newDocument(1), facts(1, aggregateId = "AGG-2026-0001"), LINK) }
         staged.map { it.version to it.aggregateId } shouldBe listOf(1 to "AGG-2026-0001")
         calls shouldBe listOf("insert ${id(1)}", "bind ${id(1)} AGG-2026-0001", "stage")
     }
 
     @Test
     fun `INV-AC-22846 next version stages expected plus one with the stored aggregate reference`() {
-        val outcome = tx.inTransaction { writer.next(id(2), 2, newVersion, facts(2).copy(version = 99)) }
+        val outcome = tx.inTransaction { writer.next(id(2), 2, newVersion, facts(2).copy(version = 99), LINK) }
         outcome shouldBe UpdateOutcome.Updated(3)
         staged.map { it.docUuid to it.version to it.aggregateId } shouldBe
             listOf(id(2) to 3 to "AGG-2026-0002")
@@ -165,7 +169,7 @@ class CanonicalVersionWriterTest {
 
     @Test
     fun `INV-AC-22846 next version of a document without a stored reference stages aggregateId null`() {
-        tx.inTransaction { writer.next(id(3), 4, newVersion, facts(3)) }
+        tx.inTransaction { writer.next(id(3), 4, newVersion, facts(3), LINK) }
         staged.size shouldBe 1
         staged.single().aggregateId shouldBe null
         staged.single().version shouldBe 5
@@ -174,14 +178,14 @@ class CanonicalVersionWriterTest {
     @Test
     fun `INV-AC-25340 next version stages the netDerivation of the facts and defaults to null`() {
         val fact = NetDerivationFact(2, listOf(NetDerivationCreditNoteFact(id(4), 1)))
-        tx.inTransaction { writer.next(id(2), 2, newVersion, facts(2).copy(netDerivation = fact)) }
-        tx.inTransaction { writer.next(id(3), 4, newVersion, facts(3)) }
+        tx.inTransaction { writer.next(id(2), 2, newVersion, facts(2).copy(netDerivation = fact), LINK) }
+        tx.inTransaction { writer.next(id(3), 4, newVersion, facts(3), LINK) }
         staged.map { it.netDerivation } shouldBe listOf(fact, null)
     }
 
     @Test
     fun `INV-AC-22846 a stale write returns Conflict and stages nothing`() {
-        val outcome = tx.inTransaction { writer.next(id(3), 1, newVersion, facts(3)) }
+        val outcome = tx.inTransaction { writer.next(id(3), 1, newVersion, facts(3), LINK) }
         outcome shouldBe UpdateOutcome.Conflict
         staged shouldBe emptyList<CanonicalVersionCreatedFacts>()
         calls shouldBe listOf("createVersion ${id(3)} 1")
@@ -192,7 +196,7 @@ class CanonicalVersionWriterTest {
         failPublisher = true
         val e =
             assertThrows<IllegalStateException> {
-                tx.inTransaction { writer.next(id(2), 2, newVersion, facts(2)) }
+                tx.inTransaction { writer.next(id(2), 2, newVersion, facts(2), LINK) }
             }
         e.message shouldBe "outbox down"
         rollbacks shouldBe 1
@@ -212,7 +216,7 @@ class CanonicalVersionWriterTest {
     @Test
     fun `INV-AC-22903 unannounced writes call the store and never stage, and Conflict is returned unchanged`() {
         val document = newDocument(1)
-        tx.inTransaction { writer.createFirstUnannounced(document, UnannouncedReason.NO_SCOPE_VERDICT) }
+        tx.inTransaction { writer.createFirstUnannounced(document, UnannouncedReason.NO_SCOPE_VERDICT, LINK) }
         val e =
             tx.inTransaction {
                 writer.nextUnannounced(
@@ -220,9 +224,19 @@ class CanonicalVersionWriterTest {
                     2,
                     newVersion,
                     UnannouncedReason.NO_PRESCRIBED_PERIOD,
+                    LINK,
                 )
             }
-        val f = tx.inTransaction { writer.nextUnannounced(id(3), 1, newVersion, UnannouncedReason.NO_SCOPE_VERDICT) }
+        val f =
+            tx.inTransaction {
+                writer.nextUnannounced(
+                    id(3),
+                    1,
+                    newVersion,
+                    UnannouncedReason.NO_SCOPE_VERDICT,
+                    LINK,
+                )
+            }
         e shouldBe UpdateOutcome.Updated(3)
         f shouldBe UpdateOutcome.Conflict
         calls shouldBe listOf("insert ${id(1)}", "createVersion ${id(2)} 2", "createVersion ${id(3)} 1")
@@ -246,9 +260,9 @@ class CanonicalVersionWriterTest {
                 counterpartyOnNetwork = true,
                 debitNote = true,
             )
-        tx.inTransaction { writer.createFirst(newDocument(1), facts(1, routing = sale)) }
-        tx.inTransaction { writer.next(id(2), 2, newVersion, facts(2, routing = selfBilled)) }
-        tx.inTransaction { writer.next(id(3), 4, newVersion, facts(3, routing = relayedDebit)) }
+        tx.inTransaction { writer.createFirst(newDocument(1), facts(1, routing = sale), LINK) }
+        tx.inTransaction { writer.next(id(2), 2, newVersion, facts(2, routing = selfBilled), LINK) }
+        tx.inTransaction { writer.next(id(3), 4, newVersion, facts(3, routing = relayedDebit), LINK) }
         staged.map { it.routingFacts } shouldBe listOf(sale, selfBilled, relayedDebit)
         staged[0].routingFacts.counterpartyOnNetwork shouldBe null
         staged[0].routingFacts.debitNote shouldBe null
@@ -259,19 +273,19 @@ class CanonicalVersionWriterTest {
 
     @Test
     fun `INV-AC-23003 an unannounced write stages no routing facts`() {
-        tx.inTransaction { writer.nextUnannounced(id(4), 2, newVersion, UnannouncedReason.NO_SCOPE_VERDICT) }
+        tx.inTransaction { writer.nextUnannounced(id(4), 2, newVersion, UnannouncedReason.NO_SCOPE_VERDICT, LINK) }
         staged shouldBe emptyList<CanonicalVersionCreatedFacts>()
     }
 
     @Test
     fun `INV-AC-25234 first version with an aggregateId inserts, binds the inserted docUuid, then stages`() {
-        tx.inTransaction { writer.createFirst(newDocument(1), facts(1, aggregateId = "AGG-2026-0001")) }
+        tx.inTransaction { writer.createFirst(newDocument(1), facts(1, aggregateId = "AGG-2026-0001"), LINK) }
         calls shouldBe listOf("insert ${id(1)}", "bind ${id(1)} AGG-2026-0001", "stage")
     }
 
     @Test
     fun `INV-AC-25234 first version without an aggregateId makes no bind call`() {
-        tx.inTransaction { writer.createFirst(newDocument(1), facts(1)) }
+        tx.inTransaction { writer.createFirst(newDocument(1), facts(1), LINK) }
         calls shouldBe listOf("insert ${id(1)}", "stage")
     }
 
@@ -279,7 +293,7 @@ class CanonicalVersionWriterTest {
     fun `INV-AC-25234 a bind that changes no row throws and stages nothing`() {
         bindResult = false
         assertThrows<IllegalStateException> {
-            tx.inTransaction { writer.createFirst(newDocument(1), facts(1, aggregateId = "AGG-2026-0001")) }
+            tx.inTransaction { writer.createFirst(newDocument(1), facts(1, aggregateId = "AGG-2026-0001"), LINK) }
         }
         staged shouldBe emptyList<CanonicalVersionCreatedFacts>()
         calls shouldBe listOf("insert ${id(1)}", "bind ${id(1)} AGG-2026-0001")
@@ -290,7 +304,7 @@ class CanonicalVersionWriterTest {
     @Test
     fun `INV-AC-25234 facts of another docUuid are refused and nothing is inserted`() {
         assertThrows<IllegalArgumentException> {
-            tx.inTransaction { writer.createFirst(newDocument(1), facts(5, aggregateId = "AGG-2026-0001")) }
+            tx.inTransaction { writer.createFirst(newDocument(1), facts(5, aggregateId = "AGG-2026-0001"), LINK) }
         }
         calls shouldBe emptyList<String>()
         staged shouldBe emptyList<CanonicalVersionCreatedFacts>()
@@ -298,9 +312,13 @@ class CanonicalVersionWriterTest {
 
     @Test
     fun `INV-AC-25234 the other three operations make no bind call`() {
-        tx.inTransaction { writer.createFirstUnannounced(newDocument(1), UnannouncedReason.NO_SCOPE_VERDICT) }
-        tx.inTransaction { writer.next(id(2), 2, newVersion, facts(2, aggregateId = "AGG-2026-0009")) }
-        tx.inTransaction { writer.nextUnannounced(id(3), 4, newVersion, UnannouncedReason.NO_SCOPE_VERDICT) }
+        tx.inTransaction { writer.createFirstUnannounced(newDocument(1), UnannouncedReason.NO_SCOPE_VERDICT, LINK) }
+        tx.inTransaction { writer.next(id(2), 2, newVersion, facts(2, aggregateId = "AGG-2026-0009"), LINK) }
+        tx.inTransaction { writer.nextUnannounced(id(3), 4, newVersion, UnannouncedReason.NO_SCOPE_VERDICT, LINK) }
         calls.none { it.startsWith("bind") } shouldBe true
+    }
+
+    private companion object {
+        val LINK = SourceLink.Consumed("test-source", "event-1")
     }
 }

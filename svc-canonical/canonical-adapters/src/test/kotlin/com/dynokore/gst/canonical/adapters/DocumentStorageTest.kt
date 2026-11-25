@@ -80,6 +80,8 @@ class DocumentStorageTest {
         version["canonical"] shouldBe Triple("jsonb", "", "NO")
         listOf("tenant_id", "entity_id").forEach { version[it] shouldBe Triple("uuid", "", "NO") }
         version["partition_date"] shouldBe Triple("date", "", "NO")
+        listOf("source_system", "source_key").forEach { version[it] shouldBe Triple("text", "", "NO") }
+        version["source_revision"] shouldBe Triple("bigint", "", "NO")
         version["version"] shouldBe Triple("integer", "", "NO")
         version["mde_pack_version"] shouldBe Triple("character varying", "32", "YES")
         listOf("scope_pack_version", "mapping_pack_version").forEach {

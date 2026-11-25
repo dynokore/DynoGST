@@ -11,6 +11,7 @@ import com.dynokore.gst.canonical.application.document.NetDerivationKind
 import com.dynokore.gst.canonical.application.document.RoutingDirection
 import com.dynokore.gst.canonical.application.document.RoutingFactsData
 import com.dynokore.gst.canonical.application.document.RoutingNetworkPath
+import com.dynokore.gst.canonical.application.document.SourceLink
 import com.dynokore.gst.canonical.domain.document.Direction
 import com.dynokore.gst.canonical.domain.document.NewDocument
 import com.dynokore.gst.canonical.domain.document.NewVersion
@@ -106,12 +107,16 @@ class NetDerivationRequestHandlerTest {
 
     private val store =
         object : DocumentStore {
-            override fun insert(document: NewDocument) = error("not used")
+            override fun insert(
+                document: NewDocument,
+                link: SourceLink,
+            ) = error("not used")
 
             override fun createVersion(
                 docUuid: UUID,
                 expectedVersion: Int,
                 version: NewVersion,
+                link: SourceLink,
             ): UpdateOutcome {
                 writes += "createVersion $docUuid $expectedVersion ${version.canonical}"
                 return if (conflict) UpdateOutcome.Conflict else UpdateOutcome.Updated(expectedVersion + 1L)

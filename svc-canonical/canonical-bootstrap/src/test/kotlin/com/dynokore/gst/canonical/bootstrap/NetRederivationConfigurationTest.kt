@@ -233,10 +233,10 @@ class NetRederivationConfigurationTest {
         val periodId = UUID.randomUUID()
         insertPeriod(dsl, d.tenant, periodId)
         val invoice = canonical(d.number, d.amount, "810.00", "9810.00")
-        store.insert(newDocument(d, d.invoice, d.number, invoice, periodId))
+        store.insert(newDocument(d, d.invoice, d.number, invoice, periodId), seededLink(d.tenant, d.invoice))
         val noteNumber = "CN-" + d.note
         val note = canonical(noteNumber, "1000.00", "90.00", "1090.00", d.number)
-        store.insert(newDocument(d, d.note, noteNumber, note, periodId))
+        store.insert(newDocument(d, d.note, noteNumber, note, periodId), seededLink(d.tenant, d.note))
         insertInbound(dsl, d, d.invoice, "INVOICE")
         insertInbound(dsl, d, d.note, "CREDIT_NOTE")
     }
@@ -273,11 +273,12 @@ class NetRederivationConfigurationTest {
         ctx.getBean(TenantScope::class.java).bind(TenantId(d.tenant), actor) {
             ctx.getBean(TransactionRunner::class.java).inTransaction {
                 val erp = version(canonical(d.number, d.amount, "810.00", "9810.00"))
-                ctx.getBean(DocumentStore::class.java).createVersion(d.invoice, 2, erp)
+                val link = seededLink(d.tenant, d.invoice)
+                ctx.getBean(DocumentStore::class.java).createVersion(d.invoice, 2, erp, link)
                 ready.countDown()
                 go.await(10, TimeUnit.SECONDS)
                 ctx.getBean(InboundEventTrace::class.java).within(envelope(d.tenant)) {
-                    ctx.getBean(NetRederivation::class.java).afterErpVersion(d.invoice, 3, emptyList())
+                    ctx.getBean(NetRederivation::class.java).afterErpVersion(d.invoice, 3, emptyList(), link)
                 }
             }
         }

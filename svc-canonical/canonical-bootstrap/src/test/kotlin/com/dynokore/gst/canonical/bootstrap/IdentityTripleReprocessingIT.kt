@@ -182,7 +182,8 @@ class IdentityTripleReprocessingIT {
                     version(),
                 )
             scope.bind(TenantId(tenant), SignedBindings.ACTOR) {
-                runner.inTransaction { JooqDocumentStore(dsl).insert(document) }
+                val link = seededLink(tenant, doc)
+                runner.inTransaction { JooqDocumentStore(dsl).insert(document, link) }
             }
             owner(
                 "insert into canonical.inbound_event (tenant_id, entity_id, doc_uuid, version, event_kind, " +

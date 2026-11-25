@@ -52,6 +52,7 @@ class DocumentKit {
                 DSL.name("canonical", "document_subtotal") to TableClass.TENANT,
                 DSL.name("canonical", "document_party") to TableClass.TENANT,
                 DSL.name("canonical", "inbound_event") to TableClass.TENANT,
+                DSL.name("canonical", "source_event") to TableClass.TENANT,
             ),
         )
     val dsl =
@@ -68,7 +69,10 @@ class DocumentKit {
     ): T = tenants.bind(TenantId(tenant), SignedBindings.ACTOR, block)
 
     fun insert(document: NewDocument) =
-        asTenant(document.tenantId) { transaction.inTransaction { store.insert(document) } }
+        asTenant(document.tenantId) {
+            val link = SourceLinks.recorded(document.tenantId, document.docUuid)
+            transaction.inTransaction { store.insert(document, link) }
+        }
 
     companion object {
         /** A canonical document of the contract shape with no line, no subtotal and both parties empty. */

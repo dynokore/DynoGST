@@ -4,12 +4,14 @@ import com.dynokore.gst.canonical.adapters.CanonicalDb
 import com.dynokore.gst.canonical.adapters.SignedBindings
 import com.dynokore.gst.canonical.adapters.persistence.JooqDocumentStore
 import com.dynokore.gst.canonical.adapters.persistence.JooqDocumentVersions
+import com.dynokore.gst.canonical.application.document.SourceLink
 import com.dynokore.gst.canonical.domain.document.Direction
 import com.dynokore.gst.canonical.domain.document.DocumentState
 import com.dynokore.gst.canonical.domain.document.NewDocument
 import com.dynokore.gst.canonical.domain.document.NewVersion
 import com.dynokore.gst.canonical.domain.document.ScopeVerdict
 import com.dynokore.gst.canonical.domain.document.SpecificationVersion
+import com.dynokore.gst.canonical.domain.source.SourceKey
 import com.dynokore.platform.outboxandqueue.TenantScope
 import com.dynokore.platform.tenancykernel.TenantId
 import com.dynokore.platform.tenancykernel.TransactionRunner
@@ -21,6 +23,29 @@ import org.springframework.context.ApplicationContext
 import java.nio.file.Path
 import java.time.LocalDate
 import java.util.UUID
+
+/** Commits a `source_event` row of its own for [doc] and returns the RECORDED link a test-written version needs. */
+internal fun seededLink(
+    tenant: UUID,
+    doc: UUID,
+): SourceLink.Recorded {
+    val key = SourceKey(tenant, "test-seed", UUID.randomUUID().toString(), 1)
+    CanonicalDb.superuser().use { connection ->
+        connection
+            .prepareStatement(
+                "insert into canonical.source_event (tenant_id, source_system, source_key, source_revision, " +
+                    "doc_uuid, result) values (?, ?, ?, ?, ?, '{}'::jsonb)",
+            ).use {
+                it.setObject(1, key.tenantId)
+                it.setString(2, key.sourceSystem)
+                it.setString(3, key.sourceKey)
+                it.setLong(4, key.sourceRevision)
+                it.setObject(5, doc)
+                it.executeUpdate()
+            }
+    }
+    return SourceLink.Recorded(key)
+}
 
 /**
  * The document version store against a real database (P109): JooqDocumentVersions over documents written by
@@ -91,8 +116,8 @@ class DocumentVersionsStoreTest {
         doc: UUID,
         version: Int,
     ) = asTenant(tenant) {
-        documents.insert(newDocument(tenant, doc))
-        (1 until version).forEach { documents.createVersion(doc, it, newVersion()) }
+        documents.insert(newDocument(tenant, doc), seededLink(tenant, doc))
+        (1 until version).forEach { documents.createVersion(doc, it, newVersion(), seededLink(tenant, doc)) }
     }
 
     private fun Boundary.next(
@@ -150,7 +175,7 @@ class DocumentVersionsStoreTest {
         b.seed(t1, d1, 1)
         b.next(t1, d1) shouldBe 2
 
-        b.asTenant(t1) { documents.createVersion(d1, 1, newVersion()) }
+        b.asTenant(t1) { documents.createVersion(d1, 1, newVersion(), seededLink(t1, d1)) }
 
         b.next(t1, d1) shouldBe 3
     }

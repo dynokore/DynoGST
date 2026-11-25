@@ -14,9 +14,11 @@ import com.dynokore.gst.canonical.application.document.RecordDocumentCommand
 import com.dynokore.gst.canonical.application.document.RecordDocumentPipeline
 import com.dynokore.gst.canonical.application.document.RecordDocumentService
 import com.dynokore.gst.canonical.application.document.RecordPartyRef
+import com.dynokore.gst.canonical.application.document.SourceLink
 import com.dynokore.gst.canonical.application.source.RecordSourceEvent
 import com.dynokore.gst.canonical.domain.document.Direction
 import com.dynokore.gst.canonical.domain.document.NewDocument
+import com.dynokore.gst.canonical.domain.source.SourceKey
 import com.dynokore.platform.tenancyjooq.TableClass
 import com.dynokore.platform.tenancyjooq.TenancyJooq
 import com.dynokore.platform.tenancyjooq.TenancyTables
@@ -109,6 +111,9 @@ class DocumentIdentityConflictDbTest {
                     direction = spec.direction,
                     documentTypeCode = spec.typeCode,
                     fiscalYear = spec.fiscalYear,
+                ),
+                SourceLink.Recorded(
+                    SourceKey(command.tenantId, command.sourceSystem, command.sourceKey, command.sourceRevision),
                 ),
             )
             """{"result": "${command.sourceKey}"}""" // the jsonb text form
@@ -268,12 +273,13 @@ class DocumentIdentityConflictDbTest {
     @Test
     fun `INV-AC-1768 j a document_pkey violation is not mapped and the original exception propagates`() {
         val doc = DocumentKit.document(tenant, entity, day, "P-1")
-        asTenant(tenant) { transaction.inTransaction { store.insert(doc) } }
+        val first = SourceLinks.recorded(tenant, doc.docUuid)
+        asTenant(tenant) { transaction.inTransaction { store.insert(doc, first) } }
         val failure =
             shouldThrow<DataAccessException> {
                 asTenant(tenant) {
                     transaction.inTransaction {
-                        store.insert(DocumentKit.document(tenant, entity, day, "P-2", docUuid = doc.docUuid))
+                        store.insert(DocumentKit.document(tenant, entity, day, "P-2", docUuid = doc.docUuid), first)
                     }
                 }
             }
@@ -288,7 +294,10 @@ class DocumentIdentityConflictDbTest {
             shouldThrow<DataAccessException> {
                 asTenant(tenant) {
                     transaction.inTransaction {
-                        store.insert(DocumentKit.document(tenant, entity, day, issuer = tooLong))
+                        store.insert(
+                            DocumentKit.document(tenant, entity, day, issuer = tooLong),
+                            SourceLinks.recorded(tenant, UUID.randomUUID()),
+                        )
                     }
                 }
             }

@@ -121,7 +121,12 @@ class DocumentPartitionTest {
         val documentBefore = holder("document", document.docUuid)
         val versionBefore = holder("document_version", document.docUuid, "and version = 1")
         kit.asTenant(tenant) {
-            kit.versions.createVersion(document.docUuid, 1, DocumentKit.version(LocalDate.of(2027, 2, 1)))
+            kit.versions.createVersion(
+                document.docUuid,
+                1,
+                DocumentKit.version(LocalDate.of(2027, 2, 1)),
+                SourceLinks.recorded(tenant, document.docUuid),
+            )
         } shouldBe UpdateOutcome.Updated(2)
         DocumentSql.documentColumn("transaction_date", document.docUuid) shouldBe "2027-02-01"
         DocumentSql.documentColumn("partition_date", document.docUuid) shouldBe "2026-03-15"

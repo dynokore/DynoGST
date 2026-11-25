@@ -311,6 +311,7 @@ class SampleDocumentReaderTest {
                     LocalDate.of(2026, 3, 10),
                     SampleKit.canonical(listOf(SampleKit.Sub("ZR", "7.00", "0.00"))),
                 ),
+                SourceLinks.recorded(tenant, document.docUuid),
             )
         }
         val item = items().getValue(document.docUuid.toString())

@@ -4,6 +4,7 @@ import com.dynokore.gst.canonical.application.document.CanonicalVersionCreatedFa
 import com.dynokore.gst.canonical.application.document.CanonicalVersionWriter
 import com.dynokore.gst.canonical.application.document.DocumentRowConflict
 import com.dynokore.gst.canonical.application.document.NetDerivationFact
+import com.dynokore.gst.canonical.application.document.SourceLink
 import com.dynokore.gst.canonical.domain.netting.Derived
 import com.dynokore.gst.canonical.domain.netting.NetDerivation
 import com.dynokore.platform.serviceruntime.persistence.UpdateOutcome
@@ -14,7 +15,8 @@ import java.util.UUID
  * re-derived net of the same credit notes, unless the ERP declares them itself. It opens no transaction: the caller
  * runs [afterErpVersion] in the transaction that wrote the ERP version, so the derived version is written through
  * [CanonicalVersionWriter] in the same transaction. A refused derivation writes nothing: the ERP version stays as
- * posted and submission-svc decides the credit note again. Declared Doc UUIDs compare as UUID values, not text.
+ * posted and submission-svc decides the credit note again. The derived version stores the source link of the ERP
+ * version that produced it, never that of the predecessor. Declared Doc UUIDs compare as UUID values, not text.
  */
 class NetRederivation(
     private val records: NetDerivationRecords,
@@ -27,12 +29,13 @@ class NetRederivation(
         docUuid: UUID,
         newVersion: Int,
         declaredCreditNoteDocUuids: List<UUID>,
+        link: SourceLink,
     ) {
         val predecessor = records.recordOf(docUuid, newVersion - 1)
         val declared = declaredCreditNoteDocUuids.toSet()
         if (predecessor != null && predecessor.creditNotes.none { it.docUuid in declared }) {
             val derived = derive(docUuid, newVersion, predecessor)
-            if (derived != null) write(docUuid, newVersion, predecessor, derived)
+            if (derived != null) write(docUuid, newVersion, predecessor, derived, link)
         }
     }
 
@@ -56,10 +59,11 @@ class NetRederivation(
         newVersion: Int,
         predecessor: NetDerivationFact,
         derived: Derived,
+        link: SourceLink,
     ) {
         val fact = NetDerivationFact(baseVersion = newVersion, creditNotes = predecessor.creditNotes)
-        val outcome =
-            writer.next(docUuid, newVersion, versions.build(docUuid, newVersion, derived), factsFor(docUuid, fact))
+        val next = versions.build(docUuid, newVersion, derived)
+        val outcome = writer.next(docUuid, newVersion, next, factsFor(docUuid, fact), link)
         if (outcome !is UpdateOutcome.Updated) throw DocumentRowConflict(docUuid, newVersion)
         records.record(docUuid, outcome.version.toInt(), newVersion, predecessor.creditNotes)
     }

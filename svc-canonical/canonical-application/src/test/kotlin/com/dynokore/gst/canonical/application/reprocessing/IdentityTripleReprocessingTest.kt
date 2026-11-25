@@ -10,6 +10,7 @@ import com.dynokore.gst.canonical.application.document.DocumentStore
 import com.dynokore.gst.canonical.application.document.RoutingDirection
 import com.dynokore.gst.canonical.application.document.RoutingFactsData
 import com.dynokore.gst.canonical.application.document.RoutingNetworkPath
+import com.dynokore.gst.canonical.application.document.SourceLink
 import com.dynokore.gst.canonical.application.document.VersionKey
 import com.dynokore.gst.canonical.domain.document.NewDocument
 import com.dynokore.gst.canonical.domain.document.NewVersion
@@ -97,12 +98,16 @@ class IdentityTripleReprocessingTest {
 
     private val store =
         object : DocumentStore {
-            override fun insert(document: NewDocument) = error("not used")
+            override fun insert(
+                document: NewDocument,
+                link: SourceLink,
+            ) = error("not used")
 
             override fun createVersion(
                 docUuid: UUID,
                 expectedVersion: Int,
                 version: NewVersion,
+                link: SourceLink,
             ): UpdateOutcome {
                 val list = world.versions[tenant to docUuid]
                 if (world.conflict || list == null || list.size != expectedVersion) return UpdateOutcome.Conflict

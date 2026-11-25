@@ -15,6 +15,7 @@ import com.dynokore.gst.canonical.application.document.RoutingFactsData
 import com.dynokore.gst.canonical.application.document.RoutingNetworkPath
 import com.dynokore.gst.canonical.application.document.SelfBillingAssignmentData
 import com.dynokore.gst.canonical.application.document.SelfBillingSubmissionType
+import com.dynokore.gst.canonical.application.document.SourceLink
 import com.dynokore.gst.canonical.domain.document.Direction
 import com.dynokore.gst.canonical.domain.document.DocumentState
 import com.dynokore.gst.canonical.domain.document.NewDocument
@@ -87,6 +88,12 @@ class CanonicalVersionCreatedOutboxDbTest {
             )
         val writer = CanonicalVersionWriter(store, publisher, refs)
     }
+
+    private fun Boundary.createFirst(
+        tenant: UUID,
+        doc: UUID,
+        facts: CanonicalVersionCreatedFacts,
+    ) = writer.createFirst(newDocument(tenant, doc), facts, seededLink(tenant, doc))
 
     private fun run(
         dir: Path,
@@ -189,14 +196,14 @@ class CanonicalVersionCreatedOutboxDbTest {
     ) {
         b.scope.bind(TenantId(tenant), actor) {
             b.runner.inTransaction {
-                b.writer.createFirst(newDocument(tenant, d), facts(d, 1, null))
+                b.writer.createFirst(newDocument(tenant, d), facts(d, 1, null), seededLink(tenant, d))
                 b.refs.bind(d, "AGG-2026-0001")
-                b.writer.createFirst(newDocument(tenant, e), facts(e, 1, null))
+                b.writer.createFirst(newDocument(tenant, e), facts(e, 1, null), seededLink(tenant, e))
             }
         }
         // D's first row was staged before the bind; the aggregate is known from version 2 on, and stays unbound for E.
         b.scope.bind(TenantId(tenant), actor) {
-            b.runner.inTransaction { b.writer.next(d, 1, newVersion(), facts(d, 2, null)) }
+            b.runner.inTransaction { b.writer.next(d, 1, newVersion(), facts(d, 2, null), seededLink(tenant, d)) }
         }
     }
 
@@ -271,7 +278,9 @@ class CanonicalVersionCreatedOutboxDbTest {
     ) {
         val d = UUID.randomUUID()
         b.scope.bind(TenantId(tenant), actor) {
-            b.runner.inTransaction { b.writer.createFirst(newDocument(tenant, d), facts(d, 1, null, routing)) }
+            b.runner.inTransaction {
+                b.writer.createFirst(newDocument(tenant, d), facts(d, 1, null, routing), seededLink(tenant, d))
+            }
         }
         val data = rowsOf(tenant, d).single()[1]!!
         val row = mapper.readTree(data)
@@ -345,7 +354,9 @@ class CanonicalVersionCreatedOutboxDbTest {
         val tenant = UUID.randomUUID()
         val d = UUID.randomUUID()
         b.scope.bind(TenantId(tenant), actor) {
-            b.runner.inTransaction { b.writer.createFirst(newDocument(tenant, d), facts(d, 1, "AGG-2026-0001")) }
+            b.runner.inTransaction {
+                b.writer.createFirst(newDocument(tenant, d), facts(d, 1, "AGG-2026-0001"), seededLink(tenant, d))
+            }
         }
         val row = rowsOf(tenant, d).single()
         row[1]!!.let { schemaErrors(it).shouldBeEmpty() }
@@ -364,12 +375,17 @@ class CanonicalVersionCreatedOutboxDbTest {
         val g = UUID.randomUUID()
         val failingStore =
             object : DocumentStore by b.store {
-                override fun insert(document: NewDocument) = error("insert fails")
+                override fun insert(
+                    document: NewDocument,
+                    link: SourceLink,
+                ) = error("insert fails")
             }
         val writer = CanonicalVersionWriter(failingStore, b.publisher, b.refs)
         b.scope.bind(TenantId(tenant), actor) {
             b.runner.inTransaction {
-                shouldThrow<IllegalStateException> { writer.createFirst(newDocument(tenant, g), facts(g, 1, null)) }
+                shouldThrow<IllegalStateException> {
+                    writer.createFirst(newDocument(tenant, g), facts(g, 1, null), seededLink(tenant, g))
+                }
                 // the caller swallows the failure and commits: nothing may have been staged before the insert
             }
         }
@@ -392,7 +408,13 @@ class CanonicalVersionCreatedOutboxDbTest {
         val writer = CanonicalVersionWriter(b.store, failing, b.refs)
         shouldThrow<IllegalStateException> {
             b.scope.bind(TenantId(tenant), actor) {
-                b.runner.inTransaction { writer.createFirst(newDocument(tenant, f), facts(f, 1, null)) }
+                b.runner.inTransaction {
+                    writer.createFirst(
+                        newDocument(tenant, f),
+                        facts(f, 1, null),
+                        seededLink(tenant, f),
+                    )
+                }
             }
         }
         rowsOf(tenant, f).size shouldBe 0
@@ -415,12 +437,14 @@ class CanonicalVersionCreatedOutboxDbTest {
             .shouldNotBeNull()
         b.scope.bind(TenantId(tenant), actor) {
             b.runner.inTransaction {
-                b.writer.createFirst(newDocument(tenant, d1), facts(d1, 1, null, entityRef = "E1"))
-                b.writer.createFirst(newDocument(tenant, d2), facts(d2, 1, null, entityRef = "E2"))
+                b.createFirst(tenant, d1, facts(d1, 1, null, entityRef = "E1"))
+                b.createFirst(tenant, d2, facts(d2, 1, null, entityRef = "E2"))
             }
         }
         b.scope.bind(TenantId(tenant), actor) {
-            b.runner.inTransaction { b.writer.next(d1, 1, newVersion(), facts(d1, 2, null, entityRef = "E1")) }
+            b.runner.inTransaction {
+                b.writer.next(d1, 1, newVersion(), facts(d1, 2, null, entityRef = "E1"), seededLink(tenant, d1))
+            }
         }
         val rows = rowsOf(tenant, d1) + rowsOf(tenant, d2)
         rows.size shouldBe 3
@@ -432,7 +456,7 @@ class CanonicalVersionCreatedOutboxDbTest {
         shouldThrow<IllegalArgumentException> {
             b.scope.bind(TenantId(tenant), actor) {
                 b.runner.inTransaction {
-                    b.writer.createFirst(newDocument(tenant, blank), facts(blank, 1, null, entityRef = " "))
+                    b.createFirst(tenant, blank, facts(blank, 1, null, entityRef = " "))
                 }
             }
         }

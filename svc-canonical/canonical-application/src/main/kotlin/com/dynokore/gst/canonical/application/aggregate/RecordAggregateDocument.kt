@@ -7,6 +7,7 @@ import com.dynokore.gst.canonical.application.document.LineVerdictCombination
 import com.dynokore.gst.canonical.application.document.RoutingDirection
 import com.dynokore.gst.canonical.application.document.RoutingFactsData
 import com.dynokore.gst.canonical.application.document.RoutingNetworkPath
+import com.dynokore.gst.canonical.application.document.SourceLink
 import com.dynokore.gst.canonical.application.source.RecordSourceEvent
 import com.dynokore.gst.canonical.application.source.RecordedResult
 import com.dynokore.gst.canonical.domain.document.Direction
@@ -168,11 +169,13 @@ class RecordAggregateDocument(
     private val json: AggregateDocumentJson,
     private val writer: CanonicalVersionWriter,
 ) {
-    fun record(input: AggregateInput): RecordedResult =
-        sourceEvents.record(SourceKey(input.tenantId, SOURCE_SYSTEM, input.aggregateId, 1)) { docUuid ->
-            write(docUuid, input)
+    fun record(input: AggregateInput): RecordedResult {
+        val key = SourceKey(input.tenantId, SOURCE_SYSTEM, input.aggregateId, 1)
+        return sourceEvents.record(key) { docUuid ->
+            write(docUuid, input, SourceLink.Recorded(key))
             """{"docUuid":"$docUuid","aggregateId":${quote(input.aggregateId)}}"""
         }
+    }
 
     private class Checked(
         val direction: Direction,
@@ -206,6 +209,7 @@ class RecordAggregateDocument(
     private fun write(
         docUuid: UUID,
         input: AggregateInput,
+        link: SourceLink,
     ) {
         val c = check(input)
         val purchase = c.direction == Direction.PURCHASE
@@ -229,7 +233,7 @@ class RecordAggregateDocument(
             }
         val canonical = json.build(lines, amounts, input.isCreditNote, input.aggregateType, identity)
         val derived = Derived(ScopeVerdict.valueOf(verdict), packs, canonical)
-        writer.createFirst(document(docUuid, input, c, derived), facts(docUuid, input, c, derived))
+        writer.createFirst(document(docUuid, input, c, derived), facts(docUuid, input, c, derived), link)
     }
 
     private fun document(

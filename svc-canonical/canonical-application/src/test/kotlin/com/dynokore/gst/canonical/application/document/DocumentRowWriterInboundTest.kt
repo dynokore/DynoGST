@@ -42,7 +42,10 @@ class DocumentRowWriterInboundTest {
 
     private val store =
         object : DocumentStore {
-            override fun insert(document: NewDocument) {
+            override fun insert(
+                document: NewDocument,
+                link: SourceLink,
+            ) {
                 calls += "createFirst"
                 inserted += document
             }
@@ -51,6 +54,7 @@ class DocumentRowWriterInboundTest {
                 docUuid: UUID,
                 expectedVersion: Int,
                 version: NewVersion,
+                link: SourceLink,
             ): UpdateOutcome {
                 calls += "next"
                 return UpdateOutcome.Updated(expectedVersion + 1L)

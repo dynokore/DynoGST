@@ -3,6 +3,7 @@ package com.dynokore.gst.canonical.application.netting
 import com.dynokore.gst.canonical.application.document.CanonicalVersionCreatedFacts
 import com.dynokore.gst.canonical.application.document.CanonicalVersionWriter
 import com.dynokore.gst.canonical.application.document.NetDerivationFact
+import com.dynokore.gst.canonical.application.document.SourceLink
 import com.dynokore.gst.canonical.domain.netting.Derived
 import com.dynokore.gst.canonical.domain.netting.NetDerivation
 import com.dynokore.gst.canonical.domain.netting.NetRefusal
@@ -32,7 +33,8 @@ class NetDerivationRequestHandler(
         creditNotes: List<NetCreditNoteRef>,
     ) {
         if (!requests.markIfNew(requestEventId)) return
-        val reason = process(originalDocUuid, expectedBaseVersion, creditNotes)
+        val link = SourceLink.Consumed(REQUEST_SOURCE_SYSTEM, requestEventId.toString())
+        val reason = process(originalDocUuid, expectedBaseVersion, creditNotes, link)
         if (reason != null) refusals.stage(originalDocUuid, requestEventId, reason, creditNotes)
     }
 
@@ -41,12 +43,13 @@ class NetDerivationRequestHandler(
         originalDocUuid: UUID,
         expectedBaseVersion: Int,
         creditNotes: List<NetCreditNoteRef>,
+        link: SourceLink,
     ): NetRefusal? {
         val current = documents.currentVersion(originalDocUuid)
         return when {
             current == null -> NetRefusal.DOCUMENT_NOT_FOUND
             current != expectedBaseVersion -> NetRefusal.BASE_CHANGED
-            else -> derive(originalDocUuid, expectedBaseVersion, creditNotes)
+            else -> derive(originalDocUuid, expectedBaseVersion, creditNotes, link)
         }
     }
 
@@ -54,13 +57,14 @@ class NetDerivationRequestHandler(
         originalDocUuid: UUID,
         expectedBaseVersion: Int,
         creditNotes: List<NetCreditNoteRef>,
+        link: SourceLink,
     ): NetRefusal? {
         val base = documents.base(originalDocUuid, expectedBaseVersion)
         val notes = creditNotes.map { documents.creditNote(it.docUuid, it.version) }
         if (base == null || notes.any { it == null }) return NetRefusal.DOCUMENT_NOT_FOUND
         return when (val result = NetDerivation.derive(originalDocUuid, base, notes.filterNotNull())) {
             is Refused -> result.reason
-            is Derived -> write(originalDocUuid, expectedBaseVersion, creditNotes, result)
+            is Derived -> write(originalDocUuid, expectedBaseVersion, creditNotes, result, link)
         }
     }
 
@@ -69,6 +73,7 @@ class NetDerivationRequestHandler(
         expectedBaseVersion: Int,
         creditNotes: List<NetCreditNoteRef>,
         derived: Derived,
+        link: SourceLink,
     ): NetRefusal? {
         val fact = NetDerivationFact(baseVersion = expectedBaseVersion, creditNotes = creditNotes)
         val outcome =
@@ -77,9 +82,15 @@ class NetDerivationRequestHandler(
                 expectedBaseVersion,
                 versions.build(originalDocUuid, expectedBaseVersion, derived),
                 factsFor(originalDocUuid, fact),
+                link,
             )
         if (outcome !is UpdateOutcome.Updated) return NetRefusal.BASE_CHANGED
         records.record(originalDocUuid, outcome.version.toInt(), expectedBaseVersion, creditNotes)
         return null
+    }
+
+    private companion object {
+        /** The only producer of the request event (event-log/topics.yaml of platform-contracts). */
+        const val REQUEST_SOURCE_SYSTEM = "submission-svc"
     }
 }

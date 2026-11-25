@@ -76,6 +76,7 @@ class DocumentWindowTest {
                         """"taxSubtotals":{"value":[],"classification":"content"},""" +
                         """"parties":{"value":{"supplier":{},"buyer":{}},"classification":"content"}}""",
                 ),
+                SourceLinks.recorded(tenant, document.docUuid),
             )
         } shouldBe UpdateOutcome.Updated(2)
         read(march).shouldBeEmpty()

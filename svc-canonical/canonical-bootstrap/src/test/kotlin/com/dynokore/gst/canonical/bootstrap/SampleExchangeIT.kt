@@ -262,7 +262,7 @@ internal object SampleExchangeKit {
             val store = JooqDocumentStore(dsl)
             scope.bind(TenantId(owner), actor) {
                 runner.inTransaction {
-                    documents.forEach { store.insert(newDocument(owner, entity, it)) }
+                    documents.forEach { store.insert(newDocument(owner, entity, it), seededLink(owner, it.docUuid)) }
                 }
             }
         }

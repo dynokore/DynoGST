@@ -4,6 +4,7 @@ import com.dynokore.gst.canonical.adapters.CanonicalDb
 import com.dynokore.gst.canonical.adapters.DocumentKit
 import com.dynokore.gst.canonical.adapters.DocumentSql
 import com.dynokore.gst.canonical.adapters.SignedBindings
+import com.dynokore.gst.canonical.adapters.SourceLinks
 import com.dynokore.gst.canonical.domain.document.Direction
 import com.dynokore.gst.canonical.domain.document.DocumentState
 import com.dynokore.gst.canonical.domain.document.NewDocument
@@ -50,7 +51,7 @@ class JooqCurrentDocumentVersionsDbTest {
                 DefaultConfiguration().set(SQLDialect.POSTGRES),
                 TenancyTables.declared(
                     listOf("document", "document_version", "document_line", "document_subtotal", "document_party")
-                        .plus(listOf("inbound_event", "period_span"))
+                        .plus(listOf("inbound_event", "period_span", "source_event"))
                         .associate { DSL.name("canonical", it) to TableClass.TENANT },
                 ),
                 tenants,
@@ -108,7 +109,8 @@ class JooqCurrentDocumentVersionsDbTest {
                 periodId,
                 version(canonicalV1),
             )
-        asTenant(t1) { store.insert(document) }
+        val first = SourceLinks.recorded(t1, doc)
+        asTenant(t1) { store.insert(document, first) }
         DocumentSql.rows(
             "insert into canonical.inbound_event (tenant_id, entity_id, doc_uuid, version, event_kind, " +
                 "document_function) values (?, ?, ?, 1, 'POSTING', 'INVOICE') returning 1",
@@ -116,7 +118,8 @@ class JooqCurrentDocumentVersionsDbTest {
             entity,
             doc,
         )
-        asTenant(t1) { store.createVersion(doc, 1, version(canonicalV2)) }
+        val second = SourceLinks.recorded(t1, doc)
+        asTenant(t1) { store.createVersion(doc, 1, version(canonicalV2), second) }
     }
 
     @Test

@@ -116,12 +116,13 @@ class CanonicalVersionWriter(
     fun createFirst(
         document: NewDocument,
         facts: CanonicalVersionCreatedFacts,
+        link: SourceLink,
     ) {
         val aggregateId = facts.aggregateId
         require(aggregateId == null || facts.docUuid == document.docUuid) {
             "facts docUuid ${facts.docUuid} differs from document ${document.docUuid}"
         }
-        store.insert(document)
+        store.insert(document, link)
         if (aggregateId != null) {
             check(aggregateRefs.bind(document.docUuid, aggregateId)) {
                 "aggregate reference of ${document.docUuid} was not set"
@@ -135,8 +136,9 @@ class CanonicalVersionWriter(
         expectedVersion: Int,
         version: NewVersion,
         facts: CanonicalVersionCreatedFacts,
+        link: SourceLink,
     ): UpdateOutcome {
-        val outcome = store.createVersion(docUuid, expectedVersion, version)
+        val outcome = store.createVersion(docUuid, expectedVersion, version, link)
         if (outcome is UpdateOutcome.Updated) {
             publisher.stage(
                 facts.copy(
@@ -153,8 +155,9 @@ class CanonicalVersionWriter(
     fun createFirstUnannounced(
         document: NewDocument,
         reason: UnannouncedReason,
+        link: SourceLink,
     ) {
-        store.insert(document)
+        store.insert(document, link)
     }
 
     /** Writes the next version without an event and returns the store's outcome unchanged. */
@@ -164,5 +167,6 @@ class CanonicalVersionWriter(
         expectedVersion: Int,
         version: NewVersion,
         reason: UnannouncedReason,
-    ): UpdateOutcome = store.createVersion(docUuid, expectedVersion, version)
+        link: SourceLink,
+    ): UpdateOutcome = store.createVersion(docUuid, expectedVersion, version, link)
 }

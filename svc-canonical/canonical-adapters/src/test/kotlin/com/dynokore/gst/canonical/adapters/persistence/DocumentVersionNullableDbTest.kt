@@ -2,6 +2,7 @@ package com.dynokore.gst.canonical.adapters.persistence
 
 import com.dynokore.gst.canonical.adapters.DocumentKit
 import com.dynokore.gst.canonical.adapters.DocumentSql
+import com.dynokore.gst.canonical.adapters.SourceLinks
 import com.dynokore.gst.canonical.domain.document.NewVersion
 import com.dynokore.gst.canonical.domain.document.ScopeVerdict
 import com.dynokore.gst.canonical.domain.document.SpecificationVersion
@@ -98,7 +99,7 @@ class DocumentVersionNullableDbTest {
         doc: UUID,
         from: Int,
         version: NewVersion,
-    ) = kit.asTenant(tenant) { kit.versions.createVersion(doc, from, version) }
+    ) = kit.asTenant(tenant) { kit.versions.createVersion(doc, from, version, SourceLinks.recorded(tenant, doc)) }
 
     private fun bogus(
         column: String,
@@ -112,8 +113,9 @@ class DocumentVersionNullableDbTest {
         return DocumentSql.runtimeRefusal(
             tenant,
             "insert into canonical.document_version (doc_uuid, version, tenant_id, entity_id, partition_date, " +
-                "canonical, scope_verdict, specification_version, created_by) values ('$doc', 9, '$tenant', " +
-                "'$entity', '$partition', $canonicalValue, $scope, $specification, 'svc')",
+                "canonical, scope_verdict, specification_version, created_by, source_system, source_key, " +
+                "source_revision) values ('$doc', 9, '$tenant', '$entity', '$partition', $canonicalValue, $scope, " +
+                "$specification, 'svc', 'test-seed', 'raw', 1)",
         )!!
     }
 

@@ -43,7 +43,10 @@ class RowWritingResultBuilderTest {
 
     private val store =
         object : DocumentStore {
-            override fun insert(document: NewDocument) {
+            override fun insert(
+                document: NewDocument,
+                link: SourceLink,
+            ) {
                 calls += "insert"
                 inserted += document
             }
@@ -52,6 +55,7 @@ class RowWritingResultBuilderTest {
                 docUuid: UUID,
                 expectedVersion: Int,
                 version: NewVersion,
+                link: SourceLink,
             ): UpdateOutcome {
                 calls += "createVersion"
                 versionCalls += Triple(docUuid, expectedVersion, version)

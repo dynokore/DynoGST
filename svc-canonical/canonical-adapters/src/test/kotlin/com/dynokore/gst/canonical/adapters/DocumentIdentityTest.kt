@@ -47,8 +47,10 @@ class DocumentIdentityTest {
         values: VersionValues = VersionValues(),
     ) = "insert into canonical.document_version (doc_uuid, version, tenant_id, entity_id, partition_date, canonical, " +
         "scope_verdict, scope_pack_version, mapping_pack_version, mde_pack_version, specification_version, " +
-        "created_by) values ('$doc', 1, '$tenantId', '$entityId', '$partitionDate', '{}', " +
-        "'${values.scope}', ${values.scopePack}, 'm', ${values.mdePack}, '${values.specification}', 'svc')"
+        "created_by, source_system, source_key, source_revision) values " +
+        "('$doc', 1, '$tenantId', '$entityId', '$partitionDate', '{}', " +
+        "'${values.scope}', ${values.scopePack}, 'm', ${values.mdePack}, '${values.specification}', 'svc', " +
+        "'test-seed', 'raw', 1)"
 
     @Test
     fun `a second document with the same seven values and another partition_date is refused`() {

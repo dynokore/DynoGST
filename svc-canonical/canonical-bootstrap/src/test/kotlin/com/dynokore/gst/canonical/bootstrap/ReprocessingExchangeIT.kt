@@ -175,7 +175,9 @@ internal object ReprocessingKit {
         ) {
             val store = JooqDocumentStore(dsl)
             scope.bind(TenantId(owner), SignedBindings.ACTOR) {
-                runner.inTransaction { documents.forEach { store.insert(newDocument(owner, entity, it)) } }
+                runner.inTransaction {
+                    documents.forEach { store.insert(newDocument(owner, entity, it), seededLink(owner, it.docUuid)) }
+                }
             }
         }
 
@@ -183,7 +185,14 @@ internal object ReprocessingKit {
         fun bump(doc: Seeded) {
             val store = JooqDocumentStore(dsl)
             scope.bind(TenantId(tenant), SignedBindings.ACTOR) {
-                runner.inTransaction { store.createVersion(doc.docUuid, 1, versionOf(doc)) }
+                runner.inTransaction {
+                    store.createVersion(
+                        doc.docUuid,
+                        1,
+                        versionOf(doc),
+                        seededLink(tenant, doc.docUuid),
+                    )
+                }
             }
         }
 

@@ -260,6 +260,7 @@ class AggregateDocumentVersionEventDbTest {
                     newVersion(canonical),
                 ),
                 facts(plain, 1, canonical),
+                seededLink(tenant, plain),
             )
         }
     }
@@ -268,7 +269,9 @@ class AggregateDocumentVersionEventDbTest {
         doc: UUID,
         canonical: String,
     ) = scope.bind(TenantId(tenant), SignedBindings.ACTOR) {
-        runner.inTransaction { directWriter.next(doc, 1, newVersion(canonical), facts(doc, 2, canonical)) }
+        runner.inTransaction {
+            directWriter.next(doc, 1, newVersion(canonical), facts(doc, 2, canonical), seededLink(tenant, doc))
+        }
     }
 
     @Test

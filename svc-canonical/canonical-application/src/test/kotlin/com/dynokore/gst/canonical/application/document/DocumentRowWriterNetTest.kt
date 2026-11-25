@@ -82,7 +82,10 @@ class DocumentRowWriterNetTest {
 
     private val store =
         object : DocumentStore {
-            override fun insert(document: NewDocument) {
+            override fun insert(
+                document: NewDocument,
+                link: SourceLink,
+            ) {
                 calls += "insert"
             }
 
@@ -90,6 +93,7 @@ class DocumentRowWriterNetTest {
                 docUuid: UUID,
                 expectedVersion: Int,
                 version: NewVersion,
+                link: SourceLink,
             ): UpdateOutcome {
                 calls += "createVersion ${expectedVersion + 1} ${version.canonical}"
                 return UpdateOutcome.Updated(expectedVersion + 1L)

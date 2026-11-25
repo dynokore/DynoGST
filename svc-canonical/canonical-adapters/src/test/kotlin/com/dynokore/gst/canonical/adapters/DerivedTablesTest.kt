@@ -74,7 +74,9 @@ class DerivedTablesTest {
         doc: UUID,
         from: Int,
         canonical: String,
-    ) = kit.asTenant(tenant) { kit.versions.createVersion(doc, from, DocumentKit.version(day, canonical)) }
+    ) = kit.asTenant(tenant) {
+        kit.versions.createVersion(doc, from, DocumentKit.version(day, canonical), SourceLinks.recorded(tenant, doc))
+    }
 
     private fun seed(): List<UUID> =
         listOf("380", "381", "380").mapIndexed { index, type ->
@@ -272,7 +274,8 @@ class DerivedTablesTest {
             "insert into canonical.document_version select doc_uuid, 2, tenant_id, entity_id, partition_date, " +
                 "'{\"lines\":{\"value\":[],\"classification\":\"content\"}}'::jsonb, " +
                 "scope_verdict, scope_pack_version, mapping_pack_version, mde_pack_version, specification_version, " +
-                "created_at, created_by from canonical.document_version where doc_uuid = '${odd.docUuid}'",
+                "created_at, created_by, source_system, source_key, source_revision " +
+                "from canonical.document_version where doc_uuid = '${odd.docUuid}'",
         )
         val before = snapshot()
         val report = kit.asTenant(tenant) { kit.rebuilds.rebuildAllDerived(tenant) }

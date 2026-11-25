@@ -6,6 +6,7 @@ import com.dynokore.gst.canonical.application.aggregate.SupplierIdentity
 import com.dynokore.gst.canonical.application.document.CanonicalVersionCreatedFacts
 import com.dynokore.gst.canonical.application.document.CanonicalVersionCreatedPublisher
 import com.dynokore.gst.canonical.application.document.CreateDocumentVersion
+import com.dynokore.gst.canonical.application.document.SourceLink
 import com.dynokore.gst.canonical.domain.document.NewVersion
 import com.dynokore.platform.serviceruntime.persistence.UpdateOutcome
 import com.dynokore.platform.tenancykernel.TransactionRunner
@@ -88,7 +89,8 @@ class IdentityTripleReprocessing(
         require(eventId.length in 1..MAX_EVENT_ID) { "eventId is not 1 to $MAX_EVENT_ID characters" }
         transaction.inTransaction {
             if (markers.markIfNew(tenantId, eventId)) {
-                docUuids.forEach { reprocess(tenantId, entityRef, it) }
+                val link = SourceLink.Consumed(REQUEST_SOURCE_SYSTEM, eventId)
+                docUuids.forEach { reprocess(tenantId, entityRef, it, link) }
             }
         }
     }
@@ -97,6 +99,7 @@ class IdentityTripleReprocessing(
         tenantId: UUID,
         entityRef: String,
         docUuid: UUID,
+        link: SourceLink,
     ) {
         val head = current.read(tenantId, docUuid)
         val stored = head?.let { documents.tripleOf(it.content.canonical) }
@@ -121,17 +124,18 @@ class IdentityTripleReprocessing(
                     throw IdentityTripleReprocessingRetry("identity not available: ${answer.reason}")
                 }
             }
-        if (resolved != stored) store(docUuid, head, resolved)
+        if (resolved != stored) store(docUuid, head, resolved, link)
     }
 
     private fun store(
         docUuid: UUID,
         head: CurrentDocumentVersion,
         resolved: SupplierIdentity,
+        link: SourceLink,
     ) {
         val json = documents.withTriple(head.content.canonical, resolved)
         val next = head.content.copy(canonical = json, createdBy = actor)
-        val outcome = versions.createVersion(docUuid, head.version, next)
+        val outcome = versions.createVersion(docUuid, head.version, next, link)
         if (outcome !is UpdateOutcome.Updated) {
             throw IdentityTripleReprocessingRetry("the current version of $docUuid moved: $outcome")
         }
@@ -140,5 +144,8 @@ class IdentityTripleReprocessing(
 
     private companion object {
         const val MAX_EVENT_ID = 128
+
+        /** The only producer of the request event (event-log/topics.yaml of platform-contracts). */
+        const val REQUEST_SOURCE_SYSTEM = "submission-svc"
     }
 }

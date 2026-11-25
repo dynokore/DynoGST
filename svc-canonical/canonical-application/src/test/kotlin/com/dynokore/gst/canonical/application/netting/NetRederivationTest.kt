@@ -10,6 +10,7 @@ import com.dynokore.gst.canonical.application.document.NetDerivationFact
 import com.dynokore.gst.canonical.application.document.RoutingDirection
 import com.dynokore.gst.canonical.application.document.RoutingFactsData
 import com.dynokore.gst.canonical.application.document.RoutingNetworkPath
+import com.dynokore.gst.canonical.application.document.SourceLink
 import com.dynokore.gst.canonical.domain.document.Direction
 import com.dynokore.gst.canonical.domain.document.NewDocument
 import com.dynokore.gst.canonical.domain.document.NewVersion
@@ -78,12 +79,16 @@ class NetRederivationTest {
 
     private val store =
         object : DocumentStore {
-            override fun insert(document: NewDocument) = error("not used")
+            override fun insert(
+                document: NewDocument,
+                link: SourceLink,
+            ) = error("not used")
 
             override fun createVersion(
                 docUuid: UUID,
                 expectedVersion: Int,
                 version: NewVersion,
+                link: SourceLink,
             ): UpdateOutcome {
                 calls += "createVersion $expectedVersion ${version.canonical}"
                 return UpdateOutcome.Updated(expectedVersion + 1L)
@@ -205,7 +210,7 @@ class NetRederivationTest {
 
     @Test
     fun `INV-AC-25341 version 3 after derived version 2 writes the derived version 4 net of the same credit note`() {
-        rederivation.afterErpVersion(original, 3, emptyList())
+        rederivation.afterErpVersion(original, 3, emptyList(), LINK)
         calls shouldBe listOf("createVersion 3 derived $expectedNet", "record 4 3 [$noteA]")
         staged.single().netDerivation shouldBe NetDerivationFact(3, refA)
         staged.single().version shouldBe 4
@@ -213,7 +218,7 @@ class NetRederivationTest {
 
     @Test
     fun `INV-AC-25341 version 3 declaring the credit note writes nothing more`() {
-        rederivation.afterErpVersion(original, 3, listOf(noteA))
+        rederivation.afterErpVersion(original, 3, listOf(noteA), LINK)
         calls shouldBe emptyList()
         staged shouldBe emptyList()
     }
@@ -221,14 +226,14 @@ class NetRederivationTest {
     @Test
     fun `INV-AC-25341 a declared Doc UUID of another credit note still re-derives`() {
         val lookAlikes = listOf(id(2), original, entity)
-        rederivation.afterErpVersion(original, 3, lookAlikes)
+        rederivation.afterErpVersion(original, 3, lookAlikes, LINK)
         calls shouldBe listOf("createVersion 3 derived $expectedNet", "record 4 3 [$noteA]")
     }
 
     @Test
     fun `INV-AC-25341 no derived predecessor writes nothing more`() {
         predecessor = null
-        rederivation.afterErpVersion(original, 3, emptyList())
+        rederivation.afterErpVersion(original, 3, emptyList(), LINK)
         calls shouldBe emptyList()
         staged shouldBe emptyList()
     }
@@ -236,7 +241,7 @@ class NetRederivationTest {
     @Test
     fun `INV-AC-25341 a refused re-derivation writes nothing more`() {
         baseAmount = "500.00" // net not positive: NET_NOT_POSITIVE
-        rederivation.afterErpVersion(original, 3, emptyList())
+        rederivation.afterErpVersion(original, 3, emptyList(), LINK)
         calls shouldBe emptyList()
         staged shouldBe emptyList()
     }
@@ -244,8 +249,12 @@ class NetRederivationTest {
     @Test
     fun `INV-AC-25341 recordOf is asked for exactly the version before the new one and null writes nothing more`() {
         predecessor = null
-        rederivation.afterErpVersion(original, 3, emptyList())
+        rederivation.afterErpVersion(original, 3, emptyList(), LINK)
         asked shouldBe listOf(original to 2)
         calls shouldBe emptyList()
+    }
+
+    private companion object {
+        val LINK = SourceLink.Consumed("test-source", "event-1")
     }
 }

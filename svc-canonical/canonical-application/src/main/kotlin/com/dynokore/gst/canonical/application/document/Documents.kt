@@ -12,18 +12,23 @@ import java.util.UUID
 
 /** Port of the `document` and `document_version` tables (canonical schema). */
 interface DocumentStore {
-    /** Inserts the document and its version 1 with `current_version` 1. */
-    fun insert(document: NewDocument)
+    /** Inserts the document and its version 1 with `current_version` 1; the version stores [link]. */
+    fun insert(
+        document: NewDocument,
+        link: SourceLink,
+    )
 
     /**
      * Inserts version [expectedVersion] + 1 and moves `current_version` from [expectedVersion] to it, when the pointer
      * still holds [expectedVersion]; [UpdateOutcome.Conflict] and no write otherwise (also for a document the bound
-     * tenant does not see). Sets `transaction_date` to that of [version]; `partition_date` is not touched.
+     * tenant does not see). Sets `transaction_date` to that of [version]; `partition_date` is not touched. The new
+     * version stores [link]; a conflict writes no `source_event` row either.
      */
     fun createVersion(
         docUuid: UUID,
         expectedVersion: Int,
         version: NewVersion,
+        link: SourceLink,
     ): UpdateOutcome
 
     /**
@@ -71,9 +76,10 @@ class CreateDocumentVersion(
         docUuid: UUID,
         expectedVersion: Int,
         version: NewVersion,
+        link: SourceLink,
     ): UpdateOutcome {
         require(expectedVersion >= 1) { "expectedVersion is below 1" }
-        return transaction.inTransaction { store.createVersion(docUuid, expectedVersion, version) }
+        return transaction.inTransaction { store.createVersion(docUuid, expectedVersion, version, link) }
     }
 }
 

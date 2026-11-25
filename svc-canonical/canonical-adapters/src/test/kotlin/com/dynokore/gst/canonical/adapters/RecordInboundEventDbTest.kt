@@ -21,6 +21,7 @@ import com.dynokore.gst.canonical.domain.document.DocumentState
 import com.dynokore.gst.canonical.domain.document.NewVersion
 import com.dynokore.gst.canonical.domain.netting.Derived
 import com.dynokore.gst.canonical.domain.netting.DocumentFunction
+import com.dynokore.gst.canonical.domain.source.SourceKey
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
@@ -141,10 +142,17 @@ class RecordInboundEventDbTest {
         doc: UUID,
         number: String,
         failAfter: Boolean,
-    ) = kit.asTenant(t1) {
-        kit.transaction.inTransaction {
-            rowWriter.write(command(number), doc, 1, facts(number))
-            if (failAfter) error("record failed after the writes")
+    ) {
+        val command = command(number)
+        SourceLinks.seed(
+            SourceKey(command.tenantId, command.sourceSystem, command.sourceKey, command.sourceRevision),
+            doc,
+        )
+        kit.asTenant(t1) {
+            kit.transaction.inTransaction {
+                rowWriter.write(command, doc, 1, facts(number))
+                if (failAfter) error("record failed after the writes")
+            }
         }
     }
 

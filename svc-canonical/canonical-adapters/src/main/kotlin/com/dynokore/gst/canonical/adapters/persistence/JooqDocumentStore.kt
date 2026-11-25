@@ -7,11 +7,13 @@ import com.dynokore.gst.canonical.adapters.persistence.jooq.tables.references.DO
 import com.dynokore.gst.canonical.adapters.persistence.jooq.tables.references.DOCUMENT_VERSION
 import com.dynokore.gst.canonical.application.document.DocumentIdentityConflict
 import com.dynokore.gst.canonical.application.document.DocumentStore
+import com.dynokore.gst.canonical.application.document.SourceLink
 import com.dynokore.gst.canonical.domain.document.DerivedRows
 import com.dynokore.gst.canonical.domain.document.NewDocument
 import com.dynokore.gst.canonical.domain.document.NewVersion
 import com.dynokore.gst.canonical.domain.document.SubtotalCoverage
 import com.dynokore.gst.canonical.domain.document.WindowDocument
+import com.dynokore.gst.canonical.domain.source.SourceKey
 import com.dynokore.platform.serviceruntime.persistence.UpdateOutcome
 import org.jooq.DSLContext
 import org.jooq.exception.DataAccessException
@@ -26,14 +28,21 @@ import com.dynokore.gst.canonical.application.document.VersionKey as Application
  * TPL-11. jOOQ only. The DSLContext is the one of the open `canonical` transaction; the tenant predicate is the
  * framework's and forced row-level security stays behind it. `document` has no `version` column (its pointer is
  * `current_version` and its key spans the partition columns), so the conditional pointer move is written here and
- * reports the outcome type of the AggregateStore.
+ * reports the outcome type of the AggregateStore. Every version row stores the key of the `source_event` row of the
+ * event that produced it; for a consumed event the store inserts that row itself and never links a row it did not
+ * insert.
  */
 class JooqDocumentStore(
     private val dsl: DSLContext,
 ) : DocumentStore {
-    override fun insert(document: NewDocument) {
+    private val sourceEvents = JooqSourceEventStore(dsl)
+
+    override fun insert(
+        document: NewDocument,
+        link: SourceLink,
+    ) {
         try {
-            insertRow(document)
+            insertRow(document, link)
         } catch (failure: DataAccessException) {
             val server = causes(failure).filterIsInstance<PSQLException>().firstOrNull()
             if (isIdentityViolation(server?.sqlState, server?.serverErrorMessage?.constraint)) {
@@ -45,7 +54,10 @@ class JooqDocumentStore(
 
     private fun causes(failure: Throwable): Sequence<Throwable> = generateSequence(failure) { it.cause }
 
-    private fun insertRow(document: NewDocument) {
+    private fun insertRow(
+        document: NewDocument,
+        link: SourceLink,
+    ) {
         dsl
             .insertInto(DOCUMENT)
             .set(DOCUMENT.DOC_UUID, document.docUuid)
@@ -66,13 +78,14 @@ class JooqDocumentStore(
             .set(DOCUMENT.STATE, document.state.name)
             .execute()
         val key = VersionKey(document.docUuid, FIRST_VERSION, document.tenantId, document.entityId)
-        insertVersion(key, document.first.transactionDate, document.first)
+        insertVersion(key, document.first.transactionDate, document.first, link)
     }
 
     override fun createVersion(
         docUuid: UUID,
         expectedVersion: Int,
         version: NewVersion,
+        link: SourceLink,
     ): UpdateOutcome {
         val next = expectedVersion + 1
         val moved =
@@ -85,7 +98,7 @@ class JooqDocumentStore(
                 .returning(DOCUMENT.TENANT_ID, DOCUMENT.ENTITY_ID, DOCUMENT.PARTITION_DATE)
                 .fetchOne() ?: return UpdateOutcome.Conflict
         val key = VersionKey(docUuid, next, checkNotNull(moved.tenantId), checkNotNull(moved.entityId))
-        insertVersion(key, checkNotNull(moved.partitionDate), version)
+        insertVersion(key, checkNotNull(moved.partitionDate), version, link)
         return UpdateOutcome.Updated(next.toLong())
     }
 
@@ -100,7 +113,13 @@ class JooqDocumentStore(
         key: VersionKey,
         partitionDate: LocalDate,
         version: NewVersion,
+        link: SourceLink,
     ) {
+        val source =
+            when (link) {
+                is SourceLink.Recorded -> link.key
+                is SourceLink.Consumed -> recordConsumed(key, link)
+            }
         dsl
             .insertInto(DOCUMENT_VERSION)
             .set(DOCUMENT_VERSION.DOC_UUID, key.docUuid)
@@ -115,6 +134,9 @@ class JooqDocumentStore(
             .set(DOCUMENT_VERSION.MDE_PACK_VERSION, version.mdePackVersion)
             .set(DOCUMENT_VERSION.SPECIFICATION_VERSION, version.specificationVersion?.name)
             .set(DOCUMENT_VERSION.CREATED_BY, version.createdBy)
+            .set(DOCUMENT_VERSION.SOURCE_SYSTEM, source.sourceSystem)
+            .set(DOCUMENT_VERSION.SOURCE_KEY, source.sourceKey)
+            .set(DOCUMENT_VERSION.SOURCE_REVISION, source.sourceRevision)
             .execute()
         // C-6 and the shape are checked here, in the transaction that writes the version: a throw rolls all of it back.
         writeDerived(
@@ -123,6 +145,25 @@ class JooqDocumentStore(
             key.tenantId,
             CanonicalDerivation.derive(version.canonical).also(SubtotalCoverage::check),
         )
+    }
+
+    /**
+     * The `source_event` row of a consumed event for one version row: revision 1 of the event id and the Doc UUID,
+     * under the source-key lock. A key that is too long or already exists throws, so the transaction rolls back.
+     */
+    private fun recordConsumed(
+        version: VersionKey,
+        link: SourceLink.Consumed,
+    ): SourceKey {
+        val composed = "${link.eventId}/${version.docUuid}"
+        check(composed.length <= MAX_SOURCE_KEY) { "source key is longer than $MAX_SOURCE_KEY characters" }
+        val source = SourceKey(version.tenantId, link.sourceSystem, composed, CONSUMED_REVISION)
+        sourceEvents.lockSourceKey(source)
+        val result = """{"docUuid":"${version.docUuid}","version":${version.number}}"""
+        check(sourceEvents.insert(source, version.docUuid, result)) {
+            "a source_event row of the consumed event exists already for ${version.docUuid}"
+        }
+        return source
     }
 
     private fun writeDerived(
@@ -261,6 +302,10 @@ class JooqDocumentStore(
 
     internal companion object {
         const val FIRST_VERSION = 1
+        const val CONSUMED_REVISION = 1L
+
+        /** The `sourceKey` bound of `RecordDocumentRequest`. */
+        const val MAX_SOURCE_KEY = 128
         const val UNIQUE_VIOLATION = "23505"
         const val IDENTITY_CONSTRAINT = "document_identity_key"
 

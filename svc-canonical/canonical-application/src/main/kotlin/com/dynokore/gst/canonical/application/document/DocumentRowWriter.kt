@@ -7,6 +7,7 @@ import com.dynokore.gst.canonical.domain.document.Direction
 import com.dynokore.gst.canonical.domain.document.NewDocument
 import com.dynokore.gst.canonical.domain.inbound.InboundEvent
 import com.dynokore.gst.canonical.domain.inbound.InboundKind
+import com.dynokore.gst.canonical.domain.source.SourceKey
 import com.dynokore.platform.serviceruntime.persistence.UpdateOutcome
 import java.util.UUID
 
@@ -41,12 +42,16 @@ class DocumentRowWriter(
             "a network receipt is recorded as a RECEIPT row, not by the record path"
         }
         val reason = unannouncedReason(facts)
+        val link =
+            SourceLink.Recorded(
+                SourceKey(command.tenantId, command.sourceSystem, command.sourceKey, command.sourceRevision),
+            )
         if (version == 1) {
             val document = newDocument(command, docUuid, facts)
             if (reason == null) {
-                writer.createFirst(document, eventOf(command, docUuid, version, facts))
+                writer.createFirst(document, eventOf(command, docUuid, version, facts), link)
             } else {
-                writer.createFirstUnannounced(document, reason)
+                writer.createFirstUnannounced(document, reason, link)
             }
             inbound.append(inboundEventOf(command, facts), docUuid, version)
             return
@@ -54,13 +59,13 @@ class DocumentRowWriter(
         val expected = version - 1
         val outcome =
             if (reason == null) {
-                writer.next(docUuid, expected, facts.version, eventOf(command, docUuid, version, facts))
+                writer.next(docUuid, expected, facts.version, eventOf(command, docUuid, version, facts), link)
             } else {
-                writer.nextUnannounced(docUuid, expected, facts.version, reason)
+                writer.nextUnannounced(docUuid, expected, facts.version, reason, link)
             }
         if (outcome is UpdateOutcome.Conflict) throw DocumentRowConflict(docUuid, expected)
         inbound.append(inboundEventOf(command, facts), docUuid, version)
-        rederivation.afterErpVersion(docUuid, version, declaredCreditNotes.of(command, facts.entityId))
+        rederivation.afterErpVersion(docUuid, version, declaredCreditNotes.of(command, facts.entityId), link)
     }
 
     private fun inboundEventOf(

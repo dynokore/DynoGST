@@ -82,6 +82,8 @@ open class NetDerivationHarness {
             "document_subtotal",
             "document_party",
             "inbound_event",
+            "source_event",
+            "identity_triple_request_marker",
             "period_span",
             "document_version_net_derivation",
             "processed_net_derivation_request",
@@ -219,14 +221,23 @@ open class NetDerivationHarness {
                     .set(PERIOD_SPAN.PERIOD_ID, s.periodId)
                     .execute()
                 val number = "INV-" + s.invoice
-                store.insert(document(s, s.invoice, number, canonical(number, "9000.00", "810.00", "9810.00")))
+                store.insert(
+                    document(s, s.invoice, number, canonical(number, "9000.00", "810.00", "9810.00")),
+                    SourceLinks.recorded(s.tenant, s.invoice),
+                )
                 (2..versions).forEach { v ->
-                    store.createVersion(s.invoice, v - 1, version(canonical(number, "9000.00", "810.00", "9810.00")))
+                    store.createVersion(
+                        s.invoice,
+                        v - 1,
+                        version(canonical(number, "9000.00", "810.00", "9810.00")),
+                        SourceLinks.recorded(s.tenant, s.invoice),
+                    )
                 }
                 (1..versions).forEach { v -> inbound(s, s.invoice, v, "INVOICE") }
                 val noteNumber = "CN-" + s.note
                 store.insert(
                     document(s, s.note, noteNumber, canonical(noteNumber, "1000.00", "90.00", "1090.00", number)),
+                    SourceLinks.recorded(s.tenant, s.note),
                 )
                 inbound(s, s.note, 1, "CREDIT_NOTE")
             }

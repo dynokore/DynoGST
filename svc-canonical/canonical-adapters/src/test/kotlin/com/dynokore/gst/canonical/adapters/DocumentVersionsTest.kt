@@ -2,6 +2,7 @@ package com.dynokore.gst.canonical.adapters
 
 import com.dynokore.gst.canonical.application.document.CreateDocumentVersion
 import com.dynokore.gst.canonical.application.document.DocumentStore
+import com.dynokore.gst.canonical.application.document.SourceLink
 import com.dynokore.platform.serviceruntime.persistence.UpdateOutcome
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
@@ -43,6 +44,7 @@ class DocumentVersionsTest {
                     """"taxSubtotals":{"value":[],"classification":"content"},""" +
                     """"parties":{"value":{"supplier":{},"buyer":{}},"classification":"content"}}""",
             ),
+            SourceLinks.recorded(tenant, doc),
         )
     }
 
@@ -59,10 +61,11 @@ class DocumentVersionsTest {
                             docUuid: UUID,
                             expectedVersion: Int,
                             version: com.dynokore.gst.canonical.domain.document.NewVersion,
+                            link: SourceLink,
                         ): UpdateOutcome {
                             // both are inside their transaction and both hold version 1
                             barrier.await(10, TimeUnit.SECONDS)
-                            return kit.store.createVersion(docUuid, expectedVersion, version)
+                            return kit.store.createVersion(docUuid, expectedVersion, version, link)
                         }
                     },
                     kit.transaction,
