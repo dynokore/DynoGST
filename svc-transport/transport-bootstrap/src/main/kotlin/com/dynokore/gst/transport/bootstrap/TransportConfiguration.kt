@@ -6,6 +6,7 @@ import com.dynokore.gst.transport.adapters.ap.HttpAccessPointAdapter
 import com.dynokore.gst.transport.adapters.metrics.AttemptMetrics
 import com.dynokore.gst.transport.adapters.persistence.JooqApConnections
 import com.dynokore.gst.transport.adapters.persistence.JooqAttemptLog
+import com.dynokore.gst.transport.adapters.persistence.JooqConnectionRecords
 import com.dynokore.gst.transport.adapters.persistence.JooqEntityAdapterAssignments
 import com.dynokore.gst.transport.application.AccessPointAdapters
 import com.dynokore.gst.transport.application.ApConnections
@@ -74,6 +75,12 @@ class TransportConfiguration {
         assignments: EntityAdapterAssignments,
         clock: Clock,
     ): SubmitPayload = SubmitPayload(adapters, attempts, assignments, clock)
+
+    @Bean
+    fun connectionRecords(
+        dsl: DSLContext,
+        runner: TransactionRunner,
+    ): JooqConnectionRecords = JooqConnectionRecords(dsl, runner)
 
     @Bean
     fun setTenantCeiling(connections: ApConnections): SetTenantCeiling = SetTenantCeiling(connections)

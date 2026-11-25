@@ -63,6 +63,9 @@ class RouteCaller(
         /** `setConnectionEntities` and `testConnection` (INV-Q-18652 A), declared in the contract. */
         const val ADAPTER_CONFIGURE_PERMISSION = "adapter.configure"
 
+        /** `set_permission` of VP-56 (INV-NOTE-3 row VP-56), TENANT scope: `setThroughputCeiling` (INV-REQ-1317). */
+        const val THROUGHPUT_CEILING_SET_PERMISSION = "vp-56.set"
+
         /** `rotateCredential` (INV-Q-18652 A), declared in the contract; `adapter.configure` does not permit it. */
         const val AP_CREDENTIAL_MANAGE_PERMISSION = "ap-credential.manage"
     }

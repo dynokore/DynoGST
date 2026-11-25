@@ -147,6 +147,8 @@ class SyncEdgeCallerTest {
             // built (INV-T-4982): a named caller reaches the handler once; the end user of this test holds no
             // `vp-49.set` grant, so the handler itself answers 403 and records nothing
             ROUTE to CallerChecks.Reach(FORBIDDEN, """{"acknowledgementRoute":"POLLING"}"""),
+            // built (INV-T-24959): the end user of this test holds no `vp-56.set` grant, so the handler answers 403
+            CEILING to CallerChecks.Reach(FORBIDDEN, """{"throughputCeiling":50}"""),
             "DELETE $ROUTE_PATH" to CallerChecks.Reach(FORBIDDEN, ""),
         )
     }
@@ -268,6 +270,7 @@ class SyncEdgeCallerTest {
         const val ROTATE = "POST /internal/v1/transport/adapters/{adapterRef}/credential-rotations"
         const val CONNECTION_TEST = "POST /internal/v1/transport/adapters/{adapterRef}/connection-tests"
         const val ENTITIES = "PUT /internal/v1/transport/connections/{connectionRef}/entities"
+        const val CEILING = "PUT /internal/v1/transport/connections/{connectionRef}/throughput-ceiling"
         const val UNIQUE = 12
     }
 }

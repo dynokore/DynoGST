@@ -36,7 +36,7 @@ class OperationsGateTest {
         val cell: String,
     )
 
-    /** Parallel change (INV-Q-15626 A): five states, before 12486, after it, after 4982, after 18675, after 18676. */
+    /** Parallel change (INV-Q-15626 A): six states, before 12486, after it, after 4982, after 18675, after 18676, after 24959 (the handler is live before the key is listed). */
     private val state1 =
         GateState(
             done = "INV-T-4981\n",
@@ -66,10 +66,16 @@ class OperationsGateTest {
     private val state5 =
         GateState(
             done = "INV-T-4981\nINV-T-12486\nINV-T-4982\nINV-T-18675\nINV-T-18676\n",
-            stubSet = state4.stubSet - "rotateCredential",
+            stubSet = state4.stubSet - "rotateCredential" - "setThroughputCeiling",
             cell = "INV-T-12486",
         )
-    private val allStates = listOf(state1, state2, state3, state4, state5)
+    private val state6 =
+        GateState(
+            done = "INV-T-4981\nINV-T-12486\nINV-T-4982\nINV-T-18675\nINV-T-18676\nINV-T-24959\n",
+            stubSet = state5.stubSet,
+            cell = "INV-T-12486",
+        )
+    private val allStates = listOf(state1, state2, state3, state4, state5, state6)
 
     /** Replaces the row setConnectionEntities by UNASSIGNED whatever its assignee is. */
     private fun unassignSetConnectionEntities(table: String): String =
@@ -104,7 +110,7 @@ class OperationsGateTest {
 
     @Test
     fun `the real table covers the real contract`() {
-        OperationsGate.contractOperations(openapi).size shouldBe 10
+        OperationsGate.contractOperations(openapi).size shouldBe 11
         OperationsGate.contractOperations(openapi) shouldContain "electAcknowledgementRoute"
         OperationsGate.contractOperations(openapi) shouldContain "clearAcknowledgementRoute"
         OperationsGate.contractChannels(asyncapi).size shouldBe 4
@@ -362,6 +368,8 @@ class OperationsGateTest {
         stateByDone(state4.done + "INV-T-186750\n").shouldBeNull()
         stateByDone(state5.done) shouldBe state5
         stateByDone(state5.done + "INV-T-186760\n").shouldBeNull()
+        stateByDone(state6.done) shouldBe state6
+        stateByDone(state6.done + "INV-T-249590\n").shouldBeNull()
         stateByDone("INV-T-4981\nINV-T-12486\nINV-T-4982\nINV-T-186750\n").shouldBeNull()
     }
 }

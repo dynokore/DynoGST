@@ -13,3 +13,4 @@ channel	gst.transport.acknowledgement-received.v1	INV-T-4982
 channel	gst.transport.network-document-received.v1	INV-T-4982
 channel	gst.transport.access-point-route-changed.v1	INV-T-4982
 channel	gst.transport.example-happened.v1	UNASSIGNED
+operation	setThroughputCeiling	INV-T-24959
