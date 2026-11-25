@@ -32,7 +32,7 @@ data class NewVersion(
 
 /**
  * A new logical document with its version 1. `partition_date` and the first `transaction_date` are the transaction
- * date of [first].
+ * date of [first]. [entityRef] is stored as given; null stores no entity reference.
  */
 data class NewDocument(
     val docUuid: UUID,
@@ -48,6 +48,7 @@ data class NewDocument(
     val state: DocumentState,
     val prescribedPeriodId: UUID?,
     val first: NewVersion,
+    val entityRef: String? = null,
 ) {
     init {
         require(documentNumber.length in 1..MAX_DOCUMENT_NUMBER) { "document number length is outside 1..100" }

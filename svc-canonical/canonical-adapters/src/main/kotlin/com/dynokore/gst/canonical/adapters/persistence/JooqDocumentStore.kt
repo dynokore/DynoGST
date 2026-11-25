@@ -51,6 +51,7 @@ class JooqDocumentStore(
             .set(DOCUMENT.DOC_UUID, document.docUuid)
             .set(DOCUMENT.TENANT_ID, document.tenantId)
             .set(DOCUMENT.ENTITY_ID, document.entityId)
+            .set(DOCUMENT.ENTITY_REF, document.entityRef)
             .set(DOCUMENT.BUSINESS_UNIT_ID, document.businessUnitId)
             .set(DOCUMENT.DIRECTION, document.direction.name)
             .set(DOCUMENT.DOCUMENT_TYPE_CODE, document.documentTypeCode)
