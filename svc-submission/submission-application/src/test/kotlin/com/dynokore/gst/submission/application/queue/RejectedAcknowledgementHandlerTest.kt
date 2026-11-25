@@ -64,7 +64,7 @@ class RejectedAcknowledgementHandlerTest {
                 docUuid: String,
             ): List<VersionState> {
                 calls += "lockVersions"
-                return states.map { VersionState(it.key, it.value, SubmissionKind.TYPE_1B) }
+                return states.map { VersionState(it.key, it.value, SubmissionKind.TYPE_1B, priorSolutionHeld = false) }
             }
 
             override fun waitingDocUuids(

@@ -35,6 +35,12 @@ sealed interface EnqueueResult {
      * its state and no queue item exists.
      */
     data object NotScheduled : EnqueueResult
+
+    /**
+     * The version has a SUB-017 prior-solution hold row, resolved or not (INV-REQ-1110): nothing was written, the row
+     * keeps its state and no queue item exists.
+     */
+    data object PriorSolutionHeld : EnqueueResult
 }
 
 /** The result of [SubmissionQueue.releaseNext]. */
@@ -43,7 +49,7 @@ sealed interface ReleaseResult {
         val version: Int,
     ) : ReleaseResult
 
-    /** A version is in flight or no version is `READY`: nothing was written. */
+    /** A version is in flight or no unheld version is `READY`: nothing was written. */
     data object NothingToRelease : ReleaseResult
 }
 
@@ -105,13 +111,16 @@ class SubmissionQueue(
 
     /**
      * In one tenant transaction: when no version of the Doc UUID is in flight, enqueues the lowest `READY` version
-     * exactly as [enqueue] does; otherwise, or when none is `READY`, writes nothing.
+     * that has no prior-solution hold row exactly as [enqueue] does; otherwise, or when there is none, writes nothing.
      */
     fun releaseNext(docUuid: String): ReleaseResult {
         val doc = UUID.fromString(docUuid).toString()
         return transactions.inTransaction {
             val rows = versions.lockVersions(tenants.current(), doc)
-            val next = rows.firstOrNull { it.state == LifecycleState.READY && isOnScheduledPath(it.submissionType) }
+            val next =
+                rows.firstOrNull {
+                    it.state == LifecycleState.READY && isOnScheduledPath(it.submissionType) && !it.priorSolutionHeld
+                }
             if (next == null || rows.any { InFlight.isInFlight(it.state) }) {
                 ReleaseResult.NothingToRelease
             } else {
@@ -120,6 +129,7 @@ class SubmissionQueue(
 
                     is EnqueueResult.Waiting,
                     EnqueueResult.NotScheduled,
+                    EnqueueResult.PriorSolutionHeld,
                     -> ReleaseResult.NothingToRelease
                 }
             }
@@ -135,6 +145,7 @@ class SubmissionQueue(
     ): EnqueueResult {
         val row = rows.firstOrNull { it.version == version } ?: throw VersionNotReady(doc, version)
         if (!isOnScheduledPath(row.submissionType)) return EnqueueResult.NotScheduled
+        if (row.priorSolutionHeld) return EnqueueResult.PriorSolutionHeld
         if (store.moveReadyToQueued(tenants.current(), doc, version) != 1) throw VersionNotReady(doc, version)
         queue.enqueue(QueueEntry(partitionKey = doc, lane = lane, payloadJson = itemPayload(doc, version)))
         return EnqueueResult.Queued

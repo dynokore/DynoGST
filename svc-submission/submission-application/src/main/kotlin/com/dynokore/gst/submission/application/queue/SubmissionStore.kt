@@ -60,7 +60,8 @@ interface SubmissionStore {
      * Runs `UPDATE submission SET next_attempt_at = NULL WHERE state = 'RETRY' AND next_attempt_at IS NOT NULL AND
      * next_attempt_at <= now AND submission_type NOT IN (the kinds for which [isOnScheduledPath] is false) RETURNING
      * doc_uuid, version` and returns the (Doc UUID, version) pairs. A row of a refused kind (Type 1A, INV-REQ-74), or
-     * with no submission type, is not updated and not returned: it keeps its `next_attempt_at`.
+     * with no submission type, is not updated and not returned: it keeps its `next_attempt_at`. So is a row with a
+     * prior-solution hold row, resolved or not (INV-REQ-1110).
      */
     fun clearDueRetries(
         tenant: TenantId,
@@ -139,7 +140,10 @@ interface InFlightStore {
         docUuid: String,
     ): List<VersionState>
 
-    /** Up to [limit] Doc UUIDs with a `READY` version and no version in one of the four in-flight states. */
+    /**
+     * Up to [limit] Doc UUIDs with a `READY` version that has no prior-solution hold row (INV-REQ-1110) and no version
+     * in one of the four in-flight states.
+     */
     fun waitingDocUuids(
         tenant: TenantId,
         limit: Int,
@@ -151,6 +155,8 @@ class VersionState(
     val version: Int,
     val state: LifecycleState,
     val submissionType: SubmissionKind,
+    /** True when the version has a SUB-017 prior-solution hold row, resolved or not (INV-REQ-1110). */
+    val priorSolutionHeld: Boolean,
 )
 
 /** The `submission` row as the despatch step reads it. */

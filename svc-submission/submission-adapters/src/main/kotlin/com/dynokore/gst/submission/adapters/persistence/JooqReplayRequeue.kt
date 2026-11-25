@@ -27,7 +27,8 @@ import java.time.ZoneOffset
  * `DEAD_LETTERED` version returns to `QUEUED` with its retry series cleared and one item on the replay lane. A
  * version already `QUEUED` answers ALREADY_QUEUED; another in-flight version of the Doc UUID, or a refusal by the
  * in-flight index (the transaction rolls back), answers IN_FLIGHT_CONFLICT with nothing written. A version in any
- * other state, or with no row, throws (fail closed): the port has no outcome for it.
+ * other state, or with no row, throws (fail closed): the port has no outcome for it. So does a version with a
+ * prior-solution hold row, resolved or not (INV-REQ-1110).
  */
 class JooqReplayRequeue(
     private val dsl: DSLContext,
@@ -63,6 +64,9 @@ class JooqReplayRequeue(
             val kind = row.submissionType
             check(isOnScheduledPath(kind)) {
                 "replay of $docUuid version $version: submission type ${kind.name} is not on the scheduled path"
+            }
+            check(!row.priorSolutionHeld) {
+                "replay of $docUuid version $version: the version has a prior-solution hold"
             }
             when (val planned = RetryPlanner.onReplay(docUuid, version, state)) {
                 is ReplayResult.Unchanged -> {

@@ -264,6 +264,7 @@ class JooqSubmissionStore(
             .and(Submission.SUBMISSION_.NEXT_ATTEMPT_AT.isNotNull)
             .and(Submission.SUBMISSION_.NEXT_ATTEMPT_AT.le(now.atOffset(ZoneOffset.UTC)))
             .and(Submission.SUBMISSION_.SUBMISSION_TYPE.notIn(REFUSED_KINDS))
+            .andNot(priorSolutionHoldExists())
             .returning(Submission.SUBMISSION_.DOC_UUID, Submission.SUBMISSION_.VERSION)
             .fetch()
             .map { checkNotNull(it.docUuid) to checkNotNull(it.version) }

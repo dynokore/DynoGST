@@ -64,9 +64,16 @@ class HeldReleaseTest {
                 val other =
                     blockedBy[docUuid]
                         ?.let {
-                            listOf(VersionState(it, LifecycleState.QUEUED, SubmissionKind.TYPE_1B))
+                            listOf(
+                                VersionState(
+                                    it,
+                                    LifecycleState.QUEUED,
+                                    SubmissionKind.TYPE_1B,
+                                    priorSolutionHeld = false,
+                                ),
+                            )
                         }.orEmpty()
-                return other + VersionState(1, LifecycleState.READY, SubmissionKind.TYPE_1B)
+                return other + VersionState(1, LifecycleState.READY, SubmissionKind.TYPE_1B, priorSolutionHeld = false)
             }
 
             override fun waitingDocUuids(

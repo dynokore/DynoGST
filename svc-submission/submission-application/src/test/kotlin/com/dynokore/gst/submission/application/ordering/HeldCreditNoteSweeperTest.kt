@@ -118,7 +118,8 @@ class HeldCreditNoteSweeperTest {
             override fun lockVersions(
                 tenant: TenantId,
                 docUuid: String,
-            ): List<VersionState> = listOf(VersionState(1, LifecycleState.READY, SubmissionKind.TYPE_1B))
+            ): List<VersionState> =
+                listOf(VersionState(1, LifecycleState.READY, SubmissionKind.TYPE_1B, priorSolutionHeld = false))
 
             override fun waitingDocUuids(
                 tenant: TenantId,

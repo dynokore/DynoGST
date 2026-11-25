@@ -54,7 +54,7 @@ class AcknowledgementReceivedHandlerTest {
                 docUuid: String,
             ): List<VersionState> {
                 calls += "lockVersions"
-                return states.map { VersionState(it.key, it.value, SubmissionKind.TYPE_1B) }
+                return states.map { VersionState(it.key, it.value, SubmissionKind.TYPE_1B, priorSolutionHeld = false) }
             }
 
             override fun waitingDocUuids(
@@ -246,7 +246,7 @@ class AcknowledgementReceivedHandlerTest {
                 override fun lockVersions(
                     tenant: TenantId,
                     docUuid: String,
-                ): List<VersionState> = listOf(VersionState(1, SENT, SubmissionKind.TYPE_1B))
+                ): List<VersionState> = listOf(VersionState(1, SENT, SubmissionKind.TYPE_1B, priorSolutionHeld = false))
             }
         val skewed =
             AcknowledgementReceivedHandler(
