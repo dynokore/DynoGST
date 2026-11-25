@@ -63,7 +63,7 @@ sealed interface RecordingOutcome {
         val docUuid: UUID,
         val version: Long,
     ) : RecordingOutcome {
-        override val httpStatus: Int = HTTP_OK
+        override val httpStatus: Int = HTTP_CREATED
     }
 
     /** A lower `sourceRevision` than recorded: canonical rejection ING-002. */

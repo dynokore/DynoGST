@@ -71,7 +71,7 @@ class RecordTransactionTest {
         val amend = service.execute(command("K", 3)) as RecordingOutcome.Amend
         amend.docUuid shouldBe first.docUuid
         amend.version shouldBe 2
-        amend.httpStatus shouldBe 200
+        amend.httpStatus shouldBe 201
         val stale = service.execute(command("K", 1))
         stale shouldBe RecordingOutcome.Stale
         stale.httpStatus shouldBe 409
@@ -132,7 +132,7 @@ class RecordTransactionTest {
         handed.sourceRevision shouldBe 2
         handed.sourceKey shouldBe "K"
         outcome shouldBe RecordingOutcome.Amend(first.docUuid, 2)
-        outcome.httpStatus shouldBe 200
+        outcome.httpStatus shouldBe 201
         // Exhaustive without else: a new RecordingOutcome member breaks compilation here.
         val isAmendOnly =
             when (outcome) {
@@ -147,6 +147,29 @@ class RecordTransactionTest {
             }
         isAmendOnly shouldBe true
         canonical.calls.size shouldBe 2
+    }
+
+    @Test
+    fun `INV-AC-28749 an amendment is 201 with the same Doc UUID`() {
+        val service = RecordTransaction(CanonicalStub())
+        val first = service.execute(command("K", 1)) as RecordingOutcome.New
+        val amend = service.execute(command("K", 2))
+        amend shouldBe RecordingOutcome.Amend(first.docUuid, 2)
+        amend.httpStatus shouldBe 201
+    }
+
+    @Test
+    fun `INV-AC-28749 a replay is 200 and a lower revision 409 ING-002`() {
+        val service = RecordTransaction(CanonicalStub())
+        val first = service.execute(command("K", 1)) as RecordingOutcome.New
+        service.execute(command("K", 2))
+        val replay = service.execute(command("K", 2))
+        replay shouldBe RecordingOutcome.Replay(first.docUuid)
+        replay.httpStatus shouldBe 200
+        val stale = service.execute(command("K", 1))
+        stale shouldBe RecordingOutcome.Stale
+        stale.httpStatus shouldBe 409
+        RecordingOutcome.Stale.ERROR_CODE shouldBe "ING-002"
     }
 
     @Test
