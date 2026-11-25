@@ -1,6 +1,7 @@
 package com.dynokore.gst.payload.adapters
 
 import com.dynokore.gst.catalogue.Disposition
+import com.dynokore.gst.catalogue.ErrorCode
 import com.dynokore.gst.payload.adapters.persistence.GstCodeCatalogue
 import com.dynokore.gst.payload.adapters.persistence.GstCodeCatalogue.CatalogueEntry
 import io.kotest.matchers.shouldBe
@@ -66,5 +67,26 @@ class GstCodeCatalogueTest {
     @Test
     fun `a code with no entry is not overridable`() {
         GstCodeCatalogue { emptyList() }.isOverridable("PAY-011") shouldBe false
+    }
+
+    @Test
+    fun `INV-AC-26561 the catalogue holds exactly one PAY-020 entry`() {
+        ErrorCode.entries.count { it.code == "PAY-020" } shouldBe 1
+    }
+
+    @Test
+    fun `INV-AC-26561 PAY-020 has the disposition MANUAL`() {
+        ErrorCode.entries.single { it.code == "PAY-020" }.disposition shouldBe Disposition.MANUAL
+    }
+
+    @Test
+    fun `INV-AC-26561 PAY-020 is not overridable`() {
+        catalogue.isOverridable("PAY-020") shouldBe false
+    }
+
+    @Test
+    fun `INV-AC-26561 look-alike codes find no entry`() {
+        val counts = listOf("PAY-0200", "pay-020", "PAY-020 ").map { c -> ErrorCode.entries.count { it.code == c } }
+        counts shouldBe listOf(0, 0, 0)
     }
 }
