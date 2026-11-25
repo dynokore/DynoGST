@@ -379,7 +379,7 @@ class SampleDocumentReaderTest {
             "document_version" to
                 "canonical created_at created_by doc_uuid entity_id mapping_pack_version mde_pack_version " +
                 "partition_date scope_pack_version scope_verdict source_key source_revision source_system " +
-                    "specification_version tenant_id version",
+                "specification_version tenant_id version",
             "document_line" to
                 "description doc_uuid line_amount line_number quantity tax_amount tax_code tenant_id " +
                 "unit_price version",
