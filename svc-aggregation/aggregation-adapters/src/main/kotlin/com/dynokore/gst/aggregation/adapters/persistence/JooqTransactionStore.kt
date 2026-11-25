@@ -24,6 +24,8 @@ class JooqTransactionStore(
     private val runner: TransactionRunner,
     private val tenants: TenantContext,
 ) {
+    private val receipts = JooqIntakeReceipts(dsl, tenants)
+
     /** The repository of one intake call: every row it stores carries [businessUnitRef] and [aggregateType]. */
     fun scoped(
         businessUnitRef: String,
@@ -104,38 +106,46 @@ class JooqTransactionStore(
                 .fetchOne(0, Long::class.javaObjectType)
         }
 
-    /** A row already stored under the same key is left as it is: the first intake wins, a repeat stores nothing. */
+    /**
+     * A row already stored under the same key is left as it is: the first intake wins, a repeat stores nothing. A call
+     * that adds at least one row also writes its receipt in the same transaction; a second receipt of the triple fails,
+     * so a concurrent call cannot add rows under it (INV-AC-28764).
+     */
     private fun store(
         origin: Origin,
         placed: List<PlacedTransaction>,
     ) {
         runner.inTransaction {
+            val submittedBy = receipts.submitter()
             val tenant = tenants.current().value
+            var added = 0
             placed.forEachIndexed { index, item ->
-                dsl
-                    .insertInto(AGGREGATE_TRANSACTION)
-                    .set(AGGREGATE_TRANSACTION.TENANT_ID, tenant)
-                    .set(AGGREGATE_TRANSACTION.ENTITY_REF, origin.entityRef)
-                    .set(AGGREGATE_TRANSACTION.BUSINESS_UNIT_REF, origin.businessUnitRef)
-                    .set(AGGREGATE_TRANSACTION.AGGREGATE_TYPE, origin.aggregateType.name)
-                    .set(AGGREGATE_TRANSACTION.SOURCE_KEY, origin.sourceKey)
-                    .set(AGGREGATE_TRANSACTION.SOURCE_REVISION, origin.sourceRevision)
-                    .set(AGGREGATE_TRANSACTION.TRANSACTION_REF, item.transaction.transactionRef)
-                    .set(AGGREGATE_TRANSACTION.POSITION, index)
-                    .set(AGGREGATE_TRANSACTION.TRANSACTION_DATE, item.transaction.transactionDate)
-                    .set(AGGREGATE_TRANSACTION.INTERNAL_TAX_CODE, item.transaction.internalTaxCode)
-                    .set(AGGREGATE_TRANSACTION.AMOUNT, item.transaction.amount)
-                    .set(AGGREGATE_TRANSACTION.UNDERLYING_REF, item.transaction.underlyingRef)
-                    .set(AGGREGATE_TRANSACTION.CREDIT_NOTE, item.transaction.isCreditNote)
-                    .set(AGGREGATE_TRANSACTION.CLAIMANT_REFERENCE, item.transaction.claimantReference)
-                    .set(AGGREGATE_TRANSACTION.CLAIMABLE_INPUT_TAX, item.transaction.claimableInputTax)
-                    .set(AGGREGATE_TRANSACTION.TAXABLE_AMOUNT, item.transaction.taxableAmount)
-                    .set(AGGREGATE_TRANSACTION.WINDOW_START, item.placement.window.start)
-                    .set(AGGREGATE_TRANSACTION.WINDOW_END, item.placement.window.end)
-                    .set(AGGREGATE_TRANSACTION.WINDOW_STATE, item.placement.state.name)
-                    .onConflictDoNothing()
-                    .execute()
+                added +=
+                    dsl
+                        .insertInto(AGGREGATE_TRANSACTION)
+                        .set(AGGREGATE_TRANSACTION.TENANT_ID, tenant)
+                        .set(AGGREGATE_TRANSACTION.ENTITY_REF, origin.entityRef)
+                        .set(AGGREGATE_TRANSACTION.BUSINESS_UNIT_REF, origin.businessUnitRef)
+                        .set(AGGREGATE_TRANSACTION.AGGREGATE_TYPE, origin.aggregateType.name)
+                        .set(AGGREGATE_TRANSACTION.SOURCE_KEY, origin.sourceKey)
+                        .set(AGGREGATE_TRANSACTION.SOURCE_REVISION, origin.sourceRevision)
+                        .set(AGGREGATE_TRANSACTION.TRANSACTION_REF, item.transaction.transactionRef)
+                        .set(AGGREGATE_TRANSACTION.POSITION, index)
+                        .set(AGGREGATE_TRANSACTION.TRANSACTION_DATE, item.transaction.transactionDate)
+                        .set(AGGREGATE_TRANSACTION.INTERNAL_TAX_CODE, item.transaction.internalTaxCode)
+                        .set(AGGREGATE_TRANSACTION.AMOUNT, item.transaction.amount)
+                        .set(AGGREGATE_TRANSACTION.UNDERLYING_REF, item.transaction.underlyingRef)
+                        .set(AGGREGATE_TRANSACTION.CREDIT_NOTE, item.transaction.isCreditNote)
+                        .set(AGGREGATE_TRANSACTION.CLAIMANT_REFERENCE, item.transaction.claimantReference)
+                        .set(AGGREGATE_TRANSACTION.CLAIMABLE_INPUT_TAX, item.transaction.claimableInputTax)
+                        .set(AGGREGATE_TRANSACTION.TAXABLE_AMOUNT, item.transaction.taxableAmount)
+                        .set(AGGREGATE_TRANSACTION.WINDOW_START, item.placement.window.start)
+                        .set(AGGREGATE_TRANSACTION.WINDOW_END, item.placement.window.end)
+                        .set(AGGREGATE_TRANSACTION.WINDOW_STATE, item.placement.state.name)
+                        .onConflictDoNothing()
+                        .execute()
             }
+            if (added > 0) receipts.record(IntakeOperation.TRANSACTIONS, origin.accepted(), submittedBy)
         }
     }
 
@@ -145,5 +155,7 @@ class JooqTransactionStore(
         val aggregateType: AggregateType,
         val sourceKey: String,
         val sourceRevision: Long,
-    )
+    ) {
+        fun accepted() = AcceptedIntake(entityRef, sourceKey, sourceRevision, aggregateType)
+    }
 }

@@ -37,6 +37,7 @@ class JooqAggregateStore(
         this(dsl, runner, tenants, null)
 
     private val seen = JooqSeenRevisions(dsl, tenants, runner)
+    private val receipts = JooqIntakeReceipts(dsl, tenants)
 
     override fun findByIntakeKey(
         entityRef: String,
@@ -87,7 +88,13 @@ class JooqAggregateStore(
     override fun store(aggregate: NewAggregate): StoredAggregate {
         val id = UUID.randomUUID()
         try {
-            runner.inTransaction { insert(id, aggregate) }
+            runner.inTransaction {
+                insert(id, aggregate)
+                // The one write the closing run shares with the intake. The intake places every aggregate it stores
+                // in a window; the closing run's intake has no window repository, so its aggregates have no window
+                // state (see CloseWindows) and are no accepted intake (INV-AC-28764).
+                if (aggregate.windowState != null) recordReceipt(aggregate)
+            }
         } catch (failure: DataAccessException) {
             if (isIntakeKeyViolation(failure)) throw DuplicateIntakeKey()
             throw failure
@@ -154,6 +161,8 @@ class JooqAggregateStore(
                         .execute()
                 check(marked == 1) { "the aggregate to replace changed state during the intake" }
                 insert(id, replacement)
+                // only the intake replaces: always a receipt, whatever window the replaced aggregate had
+                recordReceipt(replacement)
             }
         } catch (failure: DataAccessException) {
             if (isIntakeKeyViolation(failure)) throw DuplicateIntakeKey()
@@ -161,6 +170,17 @@ class JooqAggregateStore(
         }
         return StoredAggregate(replacement, id)
     }
+
+    private fun recordReceipt(aggregate: NewAggregate) =
+        receipts.record(
+            IntakeOperation.BATCH,
+            AcceptedIntake(
+                aggregate.entityRef,
+                aggregate.sourceKey,
+                aggregate.sourceRevision,
+                aggregate.aggregateType,
+            ),
+        )
 
     private fun insert(
         id: UUID,

@@ -16,6 +16,12 @@ class JooqSeenRevisions(
     private val tenants: TenantContext,
     private val runner: TransactionRunner? = null,
 ) : SeenRevisions {
+    private val receipts = JooqIntakeReceipts(dsl, tenants)
+
+    /**
+     * Only the batch intake records a seen revision, for a higher revision it accepts without storing an aggregate, so
+     * its receipt is written here, with the type of the aggregate it was compared with.
+     */
     override fun recordSeen(
         compared: StoredAggregate,
         sourceRevision: Long,
@@ -30,6 +36,15 @@ class JooqSeenRevisions(
                 .set(SEEN_REVISION.AGGREGATE_ID, compared.aggregateId)
                 .onConflictDoNothing()
                 .execute()
+            receipts.record(
+                IntakeOperation.BATCH,
+                AcceptedIntake(
+                    compared.aggregate.entityRef,
+                    compared.aggregate.sourceKey,
+                    sourceRevision,
+                    compared.aggregate.aggregateType,
+                ),
+            )
         }
     }
 
