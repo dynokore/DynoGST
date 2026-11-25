@@ -167,17 +167,21 @@ class FlowContextIssuanceTest {
         withFlowEnv { env ->
             // a header that names a served caller changes nothing: the caller is read from the verified identity only
             caller(env)
+            // the token tenant is bound, so only the missing caller can refuse this call
             val response =
-                env.mvc
-                    .perform(
-                        post(FLOW_CONTEXTS_PATH)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .header("X-Caller-Service", "ingestion-svc")
-                            .param("callerService", "ingestion-svc")
-                            .content(env.body()),
-                    ).andReturn()
-                    .response
+                env.asTokenTenant {
+                    env.mvc
+                        .perform(
+                            post(FLOW_CONTEXTS_PATH)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .header("X-Caller-Service", "ingestion-svc")
+                                .param("callerService", "ingestion-svc")
+                                .content(env.body()),
+                        ).andReturn()
+                        .response
+                }
             refusedWith(env, response, 403, "SRT-004")
+            assertThat(env.lines().single()).containsEntry("result", "CALLER_NOT_SERVED")
         }
 
     @Test

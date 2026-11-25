@@ -140,6 +140,9 @@ class FlowEnv(
     private val tenantContext = context.getBean(TenantContext::class.java)
     private val platformBinding = context.getBean(PlatformTenantBinding::class.java)
 
+    /** Runs [perform] with the request tenant bound, as the token of that tenant binds it. */
+    fun <T> asTokenTenant(perform: () -> T): T = tenantContext.bind(tokens.kit.tenant, "usr-1", perform)
+
     fun call(
         body: String,
         service: String? = "ingestion-svc",
@@ -153,7 +156,7 @@ class FlowEnv(
                 .response
         }
         return when (bound) {
-            Bound.OWN -> tenantContext.bind(tokens.kit.tenant, "usr-1", perform)
+            Bound.OWN -> asTokenTenant(perform)
             Bound.OTHER -> tenantContext.bind(TenantId.of(OTHER_TENANT), "usr-1", perform)
             Bound.PLATFORM -> platformBinding.bindPlatform("usr-1", perform)
             Bound.NONE -> perform()
