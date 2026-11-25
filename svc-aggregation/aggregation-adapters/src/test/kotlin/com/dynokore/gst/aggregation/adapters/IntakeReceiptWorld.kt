@@ -123,7 +123,7 @@ internal class IntakeReceiptWorld(
             Clock.systemUTC(),
         )
     private val windows = JooqWindowStore(dsl, runner, tenants)
-    private val aggregates =
+    val aggregates =
         JooqAggregateStore(
             dsl,
             runner,
@@ -131,6 +131,7 @@ internal class IntakeReceiptWorld(
             JooqUsedShortCodes(dsl, tenants, ShortCodeUsedOutbox(writer, tenants)),
         )
     val transactions = JooqTransactionStore(dsl, runner, tenants)
+    val seen = JooqSeenRevisions(dsl, tenants, runner)
     private val intake =
         IntakeAggregate(
             codes,
@@ -139,7 +140,7 @@ internal class IntakeReceiptWorld(
             { _, _, _ -> Cadence.DAILY },
             { _, _, _ -> spans },
             aggregates,
-            JooqSeenRevisions(dsl, tenants, runner),
+            seen,
         )
     private val controller =
         TransactionIntakeController(

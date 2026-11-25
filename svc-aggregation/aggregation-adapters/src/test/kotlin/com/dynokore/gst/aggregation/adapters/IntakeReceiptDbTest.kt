@@ -190,26 +190,10 @@ class IntakeReceiptDbTest {
         receiptWorld(tenant) { first ->
             receiptWorld(tenant) { second ->
                 second.principal = BOB
-                val stored = CountDownLatch(1)
-                val release = CountDownLatch(1)
-                val holding =
-                    CompletableFuture.runAsync {
-                        first.runner.inTransaction {
-                            first.storeRows("T-FIRST")
-                            stored.countDown()
-                            check(release.await(WAIT_SECONDS, TimeUnit.SECONDS)) { "never released" }
-                        }
-                    }
-                check(stored.await(WAIT_SECONDS, TimeUnit.SECONDS)) { "the first call never stored" }
-                val pid = second.connection.backendPid()
-                val racing = CompletableFuture.supplyAsync { runCatching { second.storeRows("T-SECOND") } }
-                try {
-                    awaitLockWait(pid)
-                } finally {
-                    release.countDown()
-                }
-                holding.get(WAIT_SECONDS, TimeUnit.SECONDS)
-                val lost = racing.get(WAIT_SECONDS, TimeUnit.SECONDS).exceptionOrNull()
+
+                val lost =
+                    race(first, second, { first.storeRows("T-FIRST") }, { second.storeRows("T-SECOND") })
+                        .exceptionOrNull()
 
                 lost shouldNotBe null
                 (lost as DataAccessException).sqlState() shouldBe "23505"
@@ -219,6 +203,65 @@ class IntakeReceiptDbTest {
                 receiptsOf(tenant) shouldBe listOf(receipt("TRANSACTIONS", 1, ALICE))
             }
         }
+    }
+
+    @Test
+    fun `INV-AC-28764 of two concurrent identical unchanged batches the second is a replay and writes no receipt`() {
+        receiptWorld(tenant) { first ->
+            receiptWorld(tenant) { second ->
+                first.batch(1) shouldBe 202
+                transmit(tenant)
+                second.principal = BOB
+
+                val raced = race(first, second, { first.batch(2) shouldBe 202 }, { second.batch(2) })
+
+                raced.getOrThrow() shouldBe 202
+                databaseRows(
+                    "select source_revision::text from aggregation.seen_revision where tenant_id = '$tenant'",
+                ) shouldBe listOf("2")
+                receiptsOf(tenant) shouldBe listOf(receipt("BATCH", 1, ALICE), receipt("BATCH", 2, ALICE))
+
+                // the store of a revision already seen adds nothing, and still needs a principal
+                val stored = intakeDataOf(tenant)
+                val compared = checkNotNull(second.aggregates.current(ENTITY, KEY))
+                second.seen.recordSeen(compared, 2)
+                second.principal = null
+                shouldThrow<IllegalStateException> { second.seen.recordSeen(compared, 2) }
+                intakeDataOf(tenant) shouldBe stored
+            }
+        }
+    }
+
+    /**
+     * Runs [held] in a transaction of [first] that stays open until the [racing] call of [second] waits for one of its
+     * locks, then commits it; the result of the racing call.
+     */
+    private fun <T> race(
+        first: IntakeReceiptWorld,
+        second: IntakeReceiptWorld,
+        held: () -> Unit,
+        racing: () -> T,
+    ): Result<T> {
+        val stored = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val holding =
+            CompletableFuture.runAsync {
+                first.runner.inTransaction {
+                    held()
+                    stored.countDown()
+                    check(release.await(WAIT_SECONDS, TimeUnit.SECONDS)) { "never released" }
+                }
+            }
+        check(stored.await(WAIT_SECONDS, TimeUnit.SECONDS)) { "the first call never stored" }
+        val pid = second.connection.backendPid()
+        val raced = CompletableFuture.supplyAsync { runCatching(racing) }
+        try {
+            awaitLockWait(pid)
+        } finally {
+            release.countDown()
+        }
+        holding.get(WAIT_SECONDS, TimeUnit.SECONDS)
+        return raced.get(WAIT_SECONDS, TimeUnit.SECONDS)
     }
 
     private fun java.sql.Connection.backendPid(): Int =

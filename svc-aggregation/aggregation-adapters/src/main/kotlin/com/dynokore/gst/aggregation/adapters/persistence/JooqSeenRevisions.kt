@@ -20,33 +20,48 @@ class JooqSeenRevisions(
 
     /**
      * Only the batch intake records a seen revision, for a higher revision it accepts without storing an aggregate, so
-     * its receipt is written here, with the type of the aggregate it was compared with.
+     * its receipt is written here, with the type of the aggregate it was compared with. A call whose seen revision is
+     * already there adds nothing: it is a replay and writes no receipt (INV-AC-28764). It still needs a principal.
      */
     override fun recordSeen(
         compared: StoredAggregate,
         sourceRevision: Long,
     ) {
         checkNotNull(runner) { "recording needs a transaction runner" }.inTransaction {
-            dsl
-                .insertInto(SEEN_REVISION)
-                .set(SEEN_REVISION.TENANT_ID, tenants.current().value)
-                .set(SEEN_REVISION.ENTITY_REF, compared.aggregate.entityRef)
-                .set(SEEN_REVISION.SOURCE_KEY, compared.aggregate.sourceKey)
-                .set(SEEN_REVISION.SOURCE_REVISION, sourceRevision)
-                .set(SEEN_REVISION.AGGREGATE_ID, compared.aggregateId)
-                .onConflictDoNothing()
-                .execute()
-            receipts.record(
-                IntakeOperation.BATCH,
-                AcceptedIntake(
-                    compared.aggregate.entityRef,
-                    compared.aggregate.sourceKey,
-                    sourceRevision,
-                    compared.aggregate.aggregateType,
-                ),
-            )
+            val submittedBy = receipts.submitter()
+            if (insertSeen(compared, sourceRevision) > 0) receipt(compared, sourceRevision, submittedBy)
         }
     }
+
+    /** The number of rows added: none when the revision is already seen; call inside a transaction. */
+    private fun insertSeen(
+        compared: StoredAggregate,
+        sourceRevision: Long,
+    ): Int =
+        dsl
+            .insertInto(SEEN_REVISION)
+            .set(SEEN_REVISION.TENANT_ID, tenants.current().value)
+            .set(SEEN_REVISION.ENTITY_REF, compared.aggregate.entityRef)
+            .set(SEEN_REVISION.SOURCE_KEY, compared.aggregate.sourceKey)
+            .set(SEEN_REVISION.SOURCE_REVISION, sourceRevision)
+            .set(SEEN_REVISION.AGGREGATE_ID, compared.aggregateId)
+            .onConflictDoNothing()
+            .execute()
+
+    private fun receipt(
+        compared: StoredAggregate,
+        sourceRevision: Long,
+        submittedBy: String,
+    ) = receipts.record(
+        IntakeOperation.BATCH,
+        AcceptedIntake(
+            compared.aggregate.entityRef,
+            compared.aggregate.sourceKey,
+            sourceRevision,
+            compared.aggregate.aggregateType,
+        ),
+        submittedBy,
+    )
 
     override fun comparedWith(
         entityRef: String,
@@ -84,7 +99,9 @@ class JooqSeenRevisions(
                     .and(AGGREGATE.HANDED_ON_AT.isNull)
                     .execute()
             check(marked == 1) { "the aggregate to supersede changed state during the intake" }
-            recordSeen(compared, sourceRevision)
+            insertSeen(compared, sourceRevision)
+            // the mark above stores intake data, so the receipt is written even if the revision was already seen
+            receipt(compared, sourceRevision, receipts.submitter())
         }
     }
 
