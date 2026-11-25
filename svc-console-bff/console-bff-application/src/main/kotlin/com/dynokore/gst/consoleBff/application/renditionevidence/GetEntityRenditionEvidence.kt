@@ -31,7 +31,8 @@ sealed interface RenditionEvidenceResult {
  * asked once, with the same limit and its own cursor; there is no join across pages and nothing is stored. It fails
  * closed: an unavailable owner gives [RenditionEvidenceResult.Unavailable] and no partial page. When both owners
  * answer and refuse differently, the order is Forbidden, NotFound, Invalid (deny wins, and a refused caller learns
- * nothing about existence: OWASP ASVS V4.1). The permission is decided by the read filter, not here.
+ * nothing about existence: OWASP ASVS V4.1). When both refuse with the same kind, the envelope of the attestation
+ * read is relayed. The permission is decided by the read filter, not here.
  */
 class GetEntityRenditionEvidence(
     private val attestations: AttestationRead,

@@ -68,7 +68,10 @@ class SampleCheckReadClientTest {
         for (cursor in HOSTILE_CURSORS) {
             stub.answer(200, """{"items":[]}""")
             val reply = page(cursor = cursor)
-            assertEquals(listOf("limit" to "25", "cursor" to cursor), stub.seen.single().query, "$cursor $reply")
+            val seen = stub.seen.single()
+            assertEquals(listOf("limit" to "25", "cursor" to cursor), seen.query, "$cursor $reply")
+            // RFC 3986: a '+' is never left literal or used for a space
+            assertTrue('+' !in seen.rawQuery, seen.rawQuery)
         }
     }
 

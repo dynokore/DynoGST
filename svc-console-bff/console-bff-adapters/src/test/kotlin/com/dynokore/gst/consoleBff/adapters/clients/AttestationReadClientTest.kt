@@ -30,6 +30,7 @@ import java.util.function.Supplier
 internal data class PageRequest(
     val method: String,
     val rawPath: String,
+    val rawQuery: String,
     val query: List<Pair<String, String>>,
     val authorization: String?,
 )
@@ -53,6 +54,7 @@ internal class PageStub {
                     PageRequest(
                         x.requestMethod,
                         x.requestURI.rawPath,
+                        x.requestURI.rawQuery.orEmpty(),
                         query,
                         x.requestHeaders.getFirst("Authorization"),
                     )
@@ -183,7 +185,10 @@ class AttestationReadClientTest {
         for (cursor in HOSTILE_CURSORS) {
             stub.answer(200, """{"items":[]}""")
             val reply = page(cursor = cursor)
-            assertEquals(listOf("limit" to "25", "cursor" to cursor), stub.seen.single().query, "$cursor $reply")
+            val seen = stub.seen.single()
+            assertEquals(listOf("limit" to "25", "cursor" to cursor), seen.query, "$cursor $reply")
+            // RFC 3986: a '+' is never left literal or used for a space
+            assertTrue('+' !in seen.rawQuery, seen.rawQuery)
         }
     }
 

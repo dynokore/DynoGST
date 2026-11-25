@@ -35,7 +35,10 @@ class GetEntityRenditionEvidenceTest {
             },
         )
 
-    private fun refusal(status: Int) = OwnerRefusal(status, "SRT-$status", "T", "BLOCK", "MANUAL", "R", "D")
+    private fun refusal(
+        status: Int,
+        owner: String = "SRT",
+    ) = OwnerRefusal(status, "$owner-$status", "T", "BLOCK", "MANUAL", "R", "D")
 
     private fun get() = useCase.get("E1", LIMIT, "a-1", "s-1")
 
@@ -127,26 +130,43 @@ class GetEntityRenditionEvidenceTest {
     @Test
     fun `INV-AC-27606 two different refusals give Forbidden before NotFound before Invalid in either position`() {
         for ((winner, loser) in listOf(403 to 404, 403 to 400, 404 to 400)) {
-            for ((first, second) in listOf(winner to loser, loser to winner)) {
-                attestationReply = refused(first)
-                sampleReply = refused(second)
-                val status =
-                    when (val result = get()) {
-                        is RenditionEvidenceResult.Forbidden -> result.refusal.status
-                        is RenditionEvidenceResult.NotFound -> result.refusal.status
-                        is RenditionEvidenceResult.Invalid -> result.refusal.status
-                        else -> null
-                    }
-                status shouldBe winner
-            }
+            attestationReply = refused(winner)
+            sampleReply = refused(loser)
+            get() shouldBe relayed(refusal(winner))
+            attestationReply = refused(loser)
+            sampleReply = refused(winner)
+            get() shouldBe relayed(refusal(winner))
         }
     }
 
-    private fun refused(status: Int): PageReply<Nothing> =
-        when (status) {
-            403 -> PageReply.Forbidden(refusal(status))
-            404 -> PageReply.NotFound(refusal(status))
-            else -> PageReply.Invalid(refusal(status))
+    @Test
+    fun `INV-AC-27606 two refusals of the same kind relay the envelope of the attestation read`() {
+        for (status in listOf(400, 403, 404)) {
+            val ofAttestations = refusal(status, "ATT")
+            val ofSamples = refusal(status, "SMP")
+            attestationReply = refused(ofAttestations)
+            sampleReply = refused(ofSamples)
+            get() shouldBe relayed(ofAttestations)
+            attestationReply = refused(ofSamples)
+            sampleReply = refused(ofAttestations)
+            get() shouldBe relayed(ofSamples)
+        }
+    }
+
+    private fun relayed(refusal: OwnerRefusal): RenditionEvidenceResult =
+        when (refusal.status) {
+            403 -> RenditionEvidenceResult.Forbidden(refusal)
+            404 -> RenditionEvidenceResult.NotFound(refusal)
+            else -> RenditionEvidenceResult.Invalid(refusal)
+        }
+
+    private fun refused(status: Int): PageReply<Nothing> = refused(refusal(status))
+
+    private fun refused(refusal: OwnerRefusal): PageReply<Nothing> =
+        when (refusal.status) {
+            403 -> PageReply.Forbidden(refusal)
+            404 -> PageReply.NotFound(refusal)
+            else -> PageReply.Invalid(refusal)
         }
 
     private companion object {
