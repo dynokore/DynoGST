@@ -23,6 +23,8 @@ import java.util.concurrent.ConcurrentHashMap
  * [RecordKind], then `prior_evidence` (V24). A unit holds only the members that were written to, so an imported-only
  * unit has `prior_evidence` alone. A call that fails or is refused stops the sequence and the failure is thrown, never
  * skipped (INV-AC-22962, INV-AC-22964, INV-AC-28694):
+ * - [lock]: `hold_retention_partition` (V31) alone, the deletion's first call: it locks the unit row, in any state,
+ *   until the transaction ends, before any statement on a partitioned table (one lock order with the importer);
  * - [detach]: first `lock_retention_partition` (V31) locks the unit row until the transaction ends, so a writer that
  *   came first has committed and is archived, and a later one waits and is refused; then the member list is read once
  *   (none, or a table that is not one of the five, is thrown before any object is written), their rows are archived and
@@ -32,8 +34,8 @@ import java.util.concurrent.ConcurrentHashMap
  * - [drop]: `drop_detached_partition(partition)` for each registered member.
  * The archive objects are locked for [archiveLockPeriod] from the write (NIST SP 800-53 AU-9); it is configuration with
  * no default: while it is null the deletion is refused before any object is written. Zero is allowed, negative is not.
- * [observe] is told the name of each call just before it is made (`detach:<table>`, `archive`, `drop:<table>`); the
- * lock is not observed.
+ * [observe] is told the name of each call just before it is made (`detach:<table>`, `archive`, `drop:<table>`);
+ * neither lock is observed.
  */
 class JooqPartitionLifecycle(
     private val dsl: DSLContext,
@@ -48,13 +50,15 @@ class JooqPartitionLifecycle(
         }
     }
 
+    override fun lock(partitionId: String) = callOnUnit("hold_retention_partition", partitionId)
+
     override fun detach(
         partitionId: String,
         auditRef: String,
         retentionEnd: Instant,
     ) {
         checkNotNull(archiveLockPeriod) { "no archive lock period is configured" }
-        lock(partitionId)
+        lockAttached(partitionId)
         val members = members(partitionId)
         // The runtime login holds no right on a detached partition (it is owned by the migration login), so the rows
         // are read through the chain tables, still attached, and written to the object store before the first detach.
@@ -92,15 +96,15 @@ class JooqPartitionLifecycle(
         return prefix
     }
 
-    private fun lock(partitionId: String) {
+    private fun lockAttached(partitionId: String) = callOnUnit("lock_retention_partition", partitionId)
+
+    private fun callOnUnit(
+        function: String,
+        partitionId: String,
+    ) {
         dsl
-            .select(
-                DSL.function(
-                    DSL.name(SCHEMA, "lock_retention_partition"),
-                    SQLDataType.OTHER,
-                    DSL.`val`(partitionId),
-                ),
-            ).fetch()
+            .select(DSL.function(DSL.name(SCHEMA, function), SQLDataType.OTHER, DSL.`val`(partitionId)))
+            .fetch()
     }
 
     private class UnitKey(

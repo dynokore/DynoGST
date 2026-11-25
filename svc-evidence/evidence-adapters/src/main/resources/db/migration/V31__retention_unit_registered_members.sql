@@ -5,6 +5,11 @@
 -- a writer's create_retention_partition takes FOR SHARE, the deletion's lock_retention_partition takes FOR UPDATE, so
 -- no record is dropped without being archived (NIST SP 800-53 AU-9, AU-11, SI-12). The registry is complete by
 -- construction, so the archive mark needs at least one registered member and every registered member DETACHED.
+--
+-- One lock order for the importer and the deletion (PostgreSQL manual, Explicit Locking, Deadlocks): the unit row is
+-- locked before any statement on a partitioned table. The deletion starts with hold_retention_partition. The importer
+-- locks its units with lock_import_unit in ascending unit-key order, creating a missing row, and only after the last
+-- one creates a missing member (which locks a parent table ACCESS EXCLUSIVE until commit).
 
 create or replace function evidence.create_retention_partition(
     p_parent regclass, p_tenant_id uuid, p_entity_ref text, p_period_from text, p_period_to text)
@@ -58,7 +63,15 @@ begin
     else
         v_id := 'rp_' || replace(gen_random_uuid()::text, '-', '');
         insert into evidence.retention_partition (partition_id, tenant_id, entity_ref, period_from, period_to, state)
-        values (v_id, p_tenant_id, p_entity_ref, p_period_from, p_period_to, 'ATTACHED');
+        values (v_id, p_tenant_id, p_entity_ref, p_period_from, p_period_to, 'ATTACHED')
+        on conflict (tenant_id, entity_ref, period_from, period_to) do nothing;
+        select r.partition_id, r.state into v_id, v_state from evidence.retention_partition r
+            where r.tenant_id = p_tenant_id and r.entity_ref = p_entity_ref
+              and r.period_from = p_period_from and r.period_to = p_period_to
+            for share;
+        if v_state is distinct from 'ATTACHED' then
+            raise exception 'the partition of this period is no longer attached' using errcode = '55000';
+        end if;
     end if;
     v_partition := format('%I.%I', 'evidence', v_chain || '_' || v_id);
     execute format('CREATE TABLE %s PARTITION OF %s FOR VALUES FROM (%L, %L, %L) TO (%L, %L, %L)', v_partition, p_parent, p_tenant_id, p_entity_ref, p_period_from, p_tenant_id, p_entity_ref, p_period_to);
@@ -81,6 +94,53 @@ begin
         where r.partition_id = p_partition_id and r.tenant_id = v_tenant and r.state = 'ATTACHED' for update;
     if not found then
         raise exception 'the partition is not attached' using errcode = '55000';
+    end if;
+end
+$$;
+
+-- The deletion's first call: the unit row of the bound tenant in any state, locked before anything is read. A row
+-- that does not exist or is another tenant's is neither locked nor refused: the deletion's own read answers for it.
+create function evidence.hold_retention_partition(p_partition_id text) returns void
+language plpgsql security definer set search_path = pg_catalog, evidence, pg_temp as $$
+declare
+    v_tenant uuid := (select evidence.bound_tenant());
+begin
+    if v_tenant is null then
+        raise exception 'no tenant is bound' using errcode = '42501';
+    end if;
+    perform 1 from evidence.retention_partition r
+        where r.partition_id = p_partition_id and r.tenant_id = v_tenant for update;
+end
+$$;
+
+-- The importer's lock of one unit, created when missing, held until its transaction ends. It takes no lock on a
+-- partitioned table. Owned by evidence_sys (least privilege for SECURITY DEFINER; INV-ADR-3968 item 6a): the one
+-- right it adds is INSERT on the unit registry, under the tenant policy of that table.
+create function evidence.lock_import_unit(
+    p_tenant_id uuid, p_entity_ref text, p_period_from text, p_period_to text)
+    returns void
+language plpgsql security definer set search_path = pg_catalog, evidence, pg_temp as $$
+declare
+    v_state text;
+begin
+    if p_tenant_id is null or p_entity_ref is null or p_period_from is null
+       or p_period_to is distinct from p_period_from || chr(1)
+       or position(chr(1) in p_entity_ref || p_period_from) > 0 then
+        raise exception 'tenant, entity and period must be set; the range is one period' using errcode = '22023';
+    end if;
+    if (select evidence.bound_tenant()) is distinct from p_tenant_id then
+        raise exception 'a unit is locked only in its own tenant transaction' using errcode = '42501';
+    end if;
+    insert into evidence.retention_partition (partition_id, tenant_id, entity_ref, period_from, period_to, state)
+    values ('rp_' || replace(gen_random_uuid()::text, '-', ''), p_tenant_id, p_entity_ref, p_period_from, p_period_to,
+            'ATTACHED')
+    on conflict (tenant_id, entity_ref, period_from, period_to) do nothing;
+    select r.state into v_state from evidence.retention_partition r
+        where r.tenant_id = p_tenant_id and r.entity_ref = p_entity_ref
+          and r.period_from = p_period_from and r.period_to = p_period_to
+        for update;
+    if v_state is distinct from 'ATTACHED' then
+        raise exception 'the partition of this period is no longer attached' using errcode = '55000';
     end if;
 end
 $$;
@@ -111,9 +171,16 @@ begin
 end
 $$;
 -- The replaced functions keep their grants; the owner statements are repeated for the migration lint (V21 style).
+grant insert on evidence.retention_partition to evidence_sys;
 grant create on schema evidence to evidence_sys;
 alter function evidence.mark_partition_archived(text, text) owner to evidence_sys;
 alter function evidence.lock_retention_partition(text) owner to evidence_sys;
+alter function evidence.hold_retention_partition(text) owner to evidence_sys;
+alter function evidence.lock_import_unit(uuid, text, text, text) owner to evidence_sys;
 revoke create on schema evidence from evidence_sys;
 revoke all on function evidence.lock_retention_partition(text) from public;
 grant execute on function evidence.lock_retention_partition(text) to evidence_runtime;
+revoke all on function evidence.hold_retention_partition(text) from public;
+grant execute on function evidence.hold_retention_partition(text) to evidence_runtime;
+revoke all on function evidence.lock_import_unit(uuid, text, text, text) from public;
+grant execute on function evidence.lock_import_unit(uuid, text, text, text) to evidence_runtime;

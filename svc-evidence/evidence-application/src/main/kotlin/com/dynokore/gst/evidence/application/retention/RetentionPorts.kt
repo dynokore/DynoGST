@@ -83,6 +83,12 @@ interface DeletionAudit {
 }
 
 interface PartitionLifecycle {
+    /**
+     * Locks the unit until the transaction ends, before anything of the deletion is read. An unknown, foreign or
+     * deleted unit is not refused here: the registry read answers for it.
+     */
+    fun lock(partitionId: String)
+
     fun detach(
         partitionId: String,
         auditRef: String,

@@ -5,7 +5,11 @@ import com.dynokore.gst.evidence.adapters.persistence.JooqPartitionLifecycle
 import com.dynokore.gst.evidence.adapters.persistence.JooqPriorEvidenceStore
 import com.dynokore.gst.evidence.adapters.persistence.JooqRetentionRecords
 import com.dynokore.gst.evidence.adapters.retention.JsonTierYearsReader
+import com.dynokore.gst.evidence.application.migration.ImportPriorEvidence
+import com.dynokore.gst.evidence.application.migration.ImportPriorEvidenceCommand
+import com.dynokore.gst.evidence.application.migration.ImportResult
 import com.dynokore.gst.evidence.application.migration.PriorEvidenceRow
+import com.dynokore.gst.evidence.application.migration.PriorSubmissionRecordCommand
 import com.dynokore.gst.evidence.application.retention.DeleteAtRetentionEnd
 import com.dynokore.gst.evidence.application.retention.DeleteAtRetentionEndResult
 import com.dynokore.gst.evidence.application.retention.DeletionAudit
@@ -24,10 +28,13 @@ import com.dynokore.platform.evidencestore.ObjectKey
 import com.dynokore.platform.evidencestore.ObjectRef
 import com.dynokore.platform.evidencestore.ObjectStore
 import com.dynokore.platform.evidencestore.PeriodRef
+import com.dynokore.platform.serviceruntime.replica.Principal
+import com.dynokore.platform.serviceruntime.replica.PrincipalKind
 import com.dynokore.platform.tenancykernel.TenantContext
 import com.dynokore.platform.tenancykernel.TenantId
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.types.shouldBeInstanceOf
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
 import org.jooq.exception.DataAccessException
@@ -49,7 +56,8 @@ import java.util.concurrent.TimeUnit
 
 /**
  * INV-AC-28694: retention-end deletion acts on the registered members of a unit (V31), so a unit with only imported
- * records is deleted, and the deletion and the writers of a unit are serialized by row locks on the unit. Real
+ * records is deleted, and the deletion and the writers of a unit are serialized by row locks on the unit, in one lock
+ * order with the importer (unit rows first, ascending), so none of them gets a deadlock (SQLSTATE 40P01). Real
  * PostgreSQL, the runtime login and two real connections for the concurrent cases; an in-memory object store.
  */
 @Suppress("LargeClass") // one DB test class for the one criterion (INV-AC-28694)
@@ -159,7 +167,7 @@ class RegisteredMemberDeletionDbTest {
         tenant: UUID,
         document: String,
     ) {
-        val date = LocalDate.of(2010, 2, 1)
+        val date = DATE_A
         JooqPriorEvidenceStore(dsl).insert(
             TenantId(tenant),
             PriorEvidenceRow(
@@ -187,14 +195,17 @@ class RegisteredMemberDeletionDbTest {
             .append(TenantId(tenant), EntityRef(ENTITY), PeriodRef(PERIOD), EvidenceType.AUDIT_LOG, "a".toByteArray())
     }
 
-    private fun partitionId(tenant: UUID): String =
+    private fun partitionId(
+        tenant: UUID,
+        period: String = PERIOD,
+    ): String =
         checkNotNull(
             scalar(
                 "select partition_id from evidence.retention_partition " +
                     "where tenant_id = ? and entity_ref = ? and period_from = ?",
                 tenant,
                 ENTITY,
-                PERIOD,
+                period,
             ),
         )
 
@@ -260,7 +271,18 @@ class RegisteredMemberDeletionDbTest {
         fun text(key: String) = objects.getValue(key).toString(Charsets.UTF_8)
     }
 
-    private class Audited : DeletionAudit {
+    /** What one deletion did: its archive objects, its observed lifecycle calls and its audit entries. */
+    private class Seen(
+        val store: Memory = Memory(),
+        onAudit: () -> Unit = {},
+    ) {
+        val calls = mutableListOf<String>()
+        val audit = Audited(onAudit)
+    }
+
+    private class Audited(
+        private val onAudit: () -> Unit,
+    ) : DeletionAudit {
         val tailHashes = mutableListOf<List<String>>()
 
         override fun append(
@@ -270,6 +292,7 @@ class RegisteredMemberDeletionDbTest {
             tailHashes: List<String>,
         ): String {
             this.tailHashes += tailHashes
+            onAudit()
             return "audit-1"
         }
     }
@@ -309,9 +332,7 @@ class RegisteredMemberDeletionDbTest {
         c: Connection,
         tenant: UUID,
         id: String,
-        store: ObjectStore,
-        calls: MutableList<String>,
-        audit: Audited = Audited(),
+        seen: Seen,
     ): DeleteAtRetentionEndResult {
         val records = JooqRetentionRecords(dsl(c), effective(tenant), clock)
         val result =
@@ -322,8 +343,8 @@ class RegisteredMemberDeletionDbTest {
                 records,
                 records,
                 records,
-                audit,
-                lifecycle(dsl(c), store, calls),
+                seen.audit,
+                lifecycle(dsl(c), seen.store, seen.calls),
                 clock,
             ).execute(tenant.toString(), "u-starter", id)
         c.commit()
@@ -360,20 +381,19 @@ class RegisteredMemberDeletionDbTest {
     fun `INV-AC-28694 a unit with only imported records is deleted through its one registered member`() {
         val tenant = tenant()
         val id = importedUnit(tenant)
-        val store = Memory()
-        val calls = mutableListOf<String>()
-        val audit = Audited()
-        open(tenant).use { delete(it, tenant, id, store, calls, audit) } shouldBe DeleteAtRetentionEndResult.DELETED
-        calls shouldBe listOf("detach:prior_evidence", "archive", "drop:prior_evidence")
-        store.objects.keys.toList() shouldBe listOf(key(tenant, id, "prior_evidence"))
-        store.text(key(tenant, id, "prior_evidence")) shouldContain "\"DOC-1\""
+        val seen = Seen()
+        open(tenant).use { delete(it, tenant, id, seen) } shouldBe DeleteAtRetentionEndResult.DELETED
+        seen.calls shouldBe listOf("detach:prior_evidence", "archive", "drop:prior_evidence")
+        seen.store.objects.keys
+            .toList() shouldBe listOf(key(tenant, id, "prior_evidence"))
+        seen.store.text(key(tenant, id, "prior_evidence")) shouldContain "\"DOC-1\""
         unitState(id) shouldBe "DROPPED"
         members(id) shouldBe "prior_evidence=DROPPED"
         scalar(
             "select tail_hashes::text from evidence.retention_partition where partition_id = ?",
             id,
         ) shouldBe "{\"prior_evidence\": null}"
-        audit.tailHashes shouldBe listOf(emptyList())
+        seen.audit.tailHashes shouldBe listOf(emptyList())
     }
 
     @Test
@@ -381,11 +401,11 @@ class RegisteredMemberDeletionDbTest {
         val tenant = tenant()
         runtime(tenant) { appendAudit(it, tenant) }
         val id = authority(tenant)
-        val store = Memory()
-        val calls = mutableListOf<String>()
-        open(tenant).use { delete(it, tenant, id, store, calls) } shouldBe DeleteAtRetentionEndResult.DELETED
-        calls shouldBe listOf("detach:audit_log", "archive", "drop:audit_log")
-        store.objects.keys.toList() shouldBe listOf(key(tenant, id, "audit_log"))
+        val seen = Seen()
+        open(tenant).use { delete(it, tenant, id, seen) } shouldBe DeleteAtRetentionEndResult.DELETED
+        seen.calls shouldBe listOf("detach:audit_log", "archive", "drop:audit_log")
+        seen.store.objects.keys
+            .toList() shouldBe listOf(key(tenant, id, "audit_log"))
         unitState(id) shouldBe "DROPPED"
         members(id) shouldBe "audit_log=DROPPED"
     }
@@ -403,11 +423,10 @@ class RegisteredMemberDeletionDbTest {
             ENTITY,
             PERIOD,
         ) shouldBe null
-        val store = Memory()
-        val calls = mutableListOf<String>()
-        open(tenant).use { delete(it, tenant, id, store, calls) } shouldBe DeleteAtRetentionEndResult.HOLD_IN_FORCE
-        calls shouldBe emptyList()
-        store.objects.size shouldBe 0
+        val seen = Seen()
+        open(tenant).use { delete(it, tenant, id, seen) } shouldBe DeleteAtRetentionEndResult.HOLD_IN_FORCE
+        seen.calls shouldBe emptyList()
+        seen.store.objects.size shouldBe 0
         unitState(id) shouldBe "ATTACHED"
     }
 
@@ -458,14 +477,14 @@ class RegisteredMemberDeletionDbTest {
     fun `INV-AC-28694 a record of a transaction open when the deletion starts is archived after it commits`() {
         val tenant = tenant()
         val id = importedUnit(tenant)
-        val store = Memory()
+        val seen = Seen()
         open(tenant).use { writer ->
             insertImported(dsl(writer), tenant, "DOC-2")
             open(tenant).use { deleter ->
                 val deleterPid = pid(deleter)
                 val deletion =
                     threads.submit<DeleteAtRetentionEndResult> {
-                        delete(deleter, tenant, id, store, mutableListOf())
+                        delete(deleter, tenant, id, seen)
                     }
                 try {
                     awaitLockWait(deleterPid, deletion)
@@ -475,7 +494,7 @@ class RegisteredMemberDeletionDbTest {
                 deletion.bounded() shouldBe DeleteAtRetentionEndResult.DELETED
             }
         }
-        val archived = store.text(key(tenant, id, "prior_evidence"))
+        val archived = seen.store.text(key(tenant, id, "prior_evidence"))
         archived shouldContain "\"DOC-1\""
         archived shouldContain "\"DOC-2\""
         unitState(id) shouldBe "DROPPED"
@@ -506,23 +525,13 @@ class RegisteredMemberDeletionDbTest {
             open(tenant).use { writer ->
                 val deletion =
                     threads.submit<DeleteAtRetentionEndResult> {
-                        delete(deleter, tenant, id, store, mutableListOf())
+                        delete(deleter, tenant, id, Seen(store))
                     }
                 val writing: Future<String?>
                 try {
                     inPut.await(WAIT_SECONDS, TimeUnit.SECONDS) shouldBe true
                     val writerPid = pid(writer)
-                    writing =
-                        threads.submit<String?> {
-                            try {
-                                write(dsl(writer), tenant)
-                                writer.commit()
-                                null
-                            } catch (e: DataAccessException) {
-                                writer.rollback()
-                                e.sqlState()
-                            }
-                        }
+                    writing = threads.submit<String?> { refusalOf(writer) { write(it, tenant) } }
                     awaitLockWait(writerPid, writing)
                 } finally {
                     release.countDown()
@@ -531,6 +540,28 @@ class RegisteredMemberDeletionDbTest {
                 writing.bounded() shouldBe "55000"
             }
         }
+        assertNothingLeft(tenant, id)
+    }
+
+    /** Runs [write] on [writer] and commits: the SQLSTATE of its refusal, else null. */
+    private fun refusalOf(
+        writer: Connection,
+        write: (DSLContext) -> Unit,
+    ): String? =
+        try {
+            write(dsl(writer))
+            writer.commit()
+            null
+        } catch (e: DataAccessException) {
+            writer.rollback()
+            e.sqlState()
+        }
+
+    /** No imported row, no partition table and no attached member of the deleted unit remains. */
+    private fun assertNothingLeft(
+        tenant: UUID,
+        id: String,
+    ) {
         scalar("select count(*) from evidence.prior_evidence where tenant_id = ?", tenant) shouldBe "0"
         scalar("select count(*) from pg_class where relname like ?", "%_$id") shouldBe "0"
         unitState(id) shouldBe "DROPPED"
@@ -560,9 +591,406 @@ class RegisteredMemberDeletionDbTest {
         unitState(id) shouldBe "ARCHIVED"
     }
 
+    /** The importer: the whole use case over the store on [c], not committed here. */
+    private fun import(
+        c: Connection,
+        tenant: UUID,
+        vararg records: Pair<String, LocalDate>,
+    ): ImportResult =
+        ImportPriorEvidence(
+            authorizer = { _, _, _, _ -> true },
+            store = JooqPriorEvidenceStore(dsl(c)),
+            events = { _, _ -> },
+            clock = clock,
+            ids = UUID::randomUUID,
+        ).execute(
+            TenantId(tenant),
+            Principal("u-importer", PrincipalKind.HUMAN),
+            ENTITY,
+            ImportPriorEvidenceCommand(
+                "LEGACY",
+                records.map { (document, date) -> PriorSubmissionRecordCommand(document, date, "ACK-$document") },
+            ),
+        )
+
+    private fun rowsIn(
+        tenant: UUID,
+        period: String,
+    ) = scalar("select count(*) from evidence.prior_evidence where tenant_id = ? and period_ref = ?", tenant, period)
+
+    private fun unitsIn(
+        tenant: UUID,
+        period: String,
+    ) = scalar(
+        "select count(*) from evidence.retention_partition where tenant_id = ? and period_from = ?",
+        tenant,
+        period,
+    )
+
+    /** [check] runs while [hold] keeps one deletion inside its transaction; the deletion must then end DELETED. */
+    private fun whileDeletionIsHeld(
+        tenant: UUID,
+        id: String,
+        hold: Hold,
+        seen: Seen,
+        check: () -> () -> Unit,
+    ) {
+        open(tenant).use { deleter ->
+            val deletion = threads.submit<DeleteAtRetentionEndResult> { delete(deleter, tenant, id, seen) }
+            val afterwards: () -> Unit
+            try {
+                hold.reached.await(WAIT_SECONDS, TimeUnit.SECONDS) shouldBe true
+                afterwards = check()
+            } finally {
+                hold.release.countDown()
+            }
+            deletion.bounded() shouldBe DeleteAtRetentionEndResult.DELETED
+            afterwards()
+        }
+    }
+
+    /** Blocks the thread that calls [stop] until the test releases it. */
+    private class Hold {
+        val reached = CountDownLatch(1)
+        val release = CountDownLatch(1)
+
+        fun stop() {
+            reached.countDown()
+            check(release.await(WAIT_SECONDS, TimeUnit.SECONDS)) { "the deletion was not released" }
+        }
+    }
+
+    /** Starts [work] on [c] in another thread and returns once it is seen waiting on a lock. */
+    private fun <T> startWaiting(
+        c: Connection,
+        work: () -> T,
+    ): Future<T> {
+        val backend = pid(c)
+        val started = threads.submit<T> { work() }
+        awaitLockWait(backend, started)
+        return started
+    }
+
+    /** Starts the deletion of [id] while [first] is open, sees it wait, then commits [first]: DELETED. */
+    private fun deleteBehind(
+        first: Connection,
+        tenant: UUID,
+        id: String,
+        seen: Seen,
+    ) {
+        open(tenant).use { deleter ->
+            val deletion: Future<DeleteAtRetentionEndResult>
+            try {
+                deletion = startWaiting(deleter) { delete(deleter, tenant, id, seen) }
+            } finally {
+                first.commit()
+            }
+            deletion.bounded() shouldBe DeleteAtRetentionEndResult.DELETED
+        }
+    }
+
+    @Test
+    fun `INV-AC-28694 (i) an import of the same unit that came first is archived by the waiting deletion`() {
+        val tenant = tenant()
+        val id = importedUnit(tenant)
+        val seen = Seen()
+        open(tenant).use { importer ->
+            import(importer, tenant, "DOC-2" to DATE_A).shouldBeInstanceOf<ImportResult.Imported>()
+            deleteBehind(importer, tenant, id, seen)
+        }
+        val archived = seen.store.text(key(tenant, id, "prior_evidence"))
+        archived shouldContain "\"DOC-1\""
+        archived shouldContain "\"DOC-2\""
+        unitState(id) shouldBe "DROPPED"
+    }
+
+    @Test
+    fun `INV-AC-28694 (j) an import of a unit under deletion waits and is then refused`() {
+        val tenant = tenant()
+        val id = importedUnit(tenant)
+        val hold = Hold()
+        open(tenant).use { importer ->
+            whileDeletionIsHeld(tenant, id, hold, Seen(Memory { hold.stop() })) {
+                val importing =
+                    startWaiting(importer) { refusalOf(importer) { import(importer, tenant, "DOC-2" to DATE_A) } }
+                return@whileDeletionIsHeld { importing.bounded() shouldBe "55000" }
+            }
+        }
+        assertNothingLeft(tenant, id)
+    }
+
+    @Test
+    fun `INV-AC-28694 (k1) an import into a new unit waits for the deletion of another and then commits`() {
+        val tenant = tenant()
+        val id = importedUnit(tenant)
+        val hold = Hold()
+        open(tenant).use { importer ->
+            whileDeletionIsHeld(tenant, id, hold, Seen(Memory { hold.stop() })) {
+                val importing =
+                    startWaiting(importer) { refusalOf(importer) { import(importer, tenant, "DOC-B" to DATE_B) } }
+                return@whileDeletionIsHeld { importing.bounded() shouldBe null }
+            }
+        }
+        unitState(id) shouldBe "DROPPED"
+        members(partitionId(tenant, PERIOD_B)) shouldBe "prior_evidence=ATTACHED"
+        rowsIn(tenant, PERIOD_B) shouldBe "1"
+    }
+
+    @Test
+    fun `INV-AC-28694 (k2) a refused import of a new unit and a deleted one leaves nothing of the new unit`() {
+        val tenant = tenant()
+        val id = importedUnit(tenant)
+        val hold = Hold()
+        open(tenant).use { importer ->
+            whileDeletionIsHeld(tenant, id, hold, Seen(Memory { hold.stop() })) {
+                val importing =
+                    startWaiting(importer) {
+                        refusalOf(importer) { import(importer, tenant, "DOC-B" to DATE_B, "DOC-2" to DATE_A) }
+                    }
+                return@whileDeletionIsHeld { importing.bounded() shouldBe "55000" }
+            }
+        }
+        unitsIn(tenant, PERIOD_B) shouldBe "0"
+        scalar("select count(*) from evidence.retention_partition_member where tenant_id = ?", tenant) shouldBe "1"
+        scalar(
+            "select count(*) from pg_class where relispartition and relkind = 'r' " +
+                "and pg_get_expr(relpartbound, oid) like ?",
+            "%$tenant%",
+        ) shouldBe "0"
+        assertNothingLeft(tenant, id)
+    }
+
+    @Test
+    fun `INV-AC-28694 (k3) a deletion waits for an import of a new unit that came first and both succeed`() {
+        val tenant = tenant()
+        val id = importedUnit(tenant)
+        open(tenant).use { importer ->
+            import(importer, tenant, "DOC-B" to DATE_B).shouldBeInstanceOf<ImportResult.Imported>()
+            deleteBehind(importer, tenant, id, Seen())
+        }
+        unitState(id) shouldBe "DROPPED"
+        members(partitionId(tenant, PERIOD_B)) shouldBe "prior_evidence=ATTACHED"
+        rowsIn(tenant, PERIOD_B) shouldBe "1"
+    }
+
+    @Test
+    fun `INV-AC-28694 (l) an import locks its units in ascending order whatever order its records have`() {
+        val tenant = tenant()
+        open(tenant).use {
+            import(it, tenant, "DOC-1" to DATE_A, "DOC-2" to DATE_Q2)
+            it.commit()
+        }
+        val later = partitionId(tenant, PERIOD_Q2)
+        open(tenant).use { holder ->
+            lockImportUnit(holder, tenant, PERIOD)
+            open(tenant).use { importer ->
+                val importing: Future<String?>
+                try {
+                    importing =
+                        startWaiting(importer) {
+                            refusalOf(importer) { import(importer, tenant, "DOC-3" to DATE_Q2, "DOC-4" to DATE_A) }
+                        }
+                    lockableNow(later)
+                } finally {
+                    holder.commit()
+                }
+                importing.bounded() shouldBe null
+            }
+        }
+        rowsIn(tenant, PERIOD) shouldBe "2"
+        rowsIn(tenant, PERIOD_Q2) shouldBe "2"
+    }
+
+    @Test
+    fun `INV-AC-28694 (m) a chain writer waits for a deletion that has read the record tables and is refused`() {
+        val tenant = tenant()
+        val id = importedUnit(tenant)
+        val hold = Hold()
+        open(tenant).use { writer ->
+            whileDeletionIsHeld(tenant, id, hold, Seen(onAudit = { hold.stop() })) {
+                val writing = startWaiting(writer) { refusalOf(writer) { appendAudit(it, tenant) } }
+                return@whileDeletionIsHeld { writing.bounded() shouldBe "55000" }
+            }
+        }
+        assertNothingLeft(tenant, id)
+    }
+
+    @Test
+    fun `INV-AC-28694 (n) the deletion's first lock refuses only a missing tenant and locks only its own unit`() {
+        val tenant = tenant()
+        val id = importedUnit(tenant)
+        val hold = "select evidence.hold_retention_partition(?)"
+        unbound(hold, id) shouldBe "42501"
+        open(tenant()).use { other ->
+            other.prepareStatement(hold).use {
+                it.setString(1, id)
+                it.execute()
+            }
+            lockableNow(id)
+        }
+        superuserUpdate("update evidence.retention_partition set state = 'DETACHED' where partition_id = ?", id)
+        sqlState(tenant, hold, id) shouldBe null
+    }
+
+    @Test
+    fun `INV-AC-28694 (n) the import lock refuses another tenant, a bad range and a unit that is not attached`() {
+        val tenant = tenant()
+        val id = importedUnit(tenant)
+        val whole = "select evidence.lock_import_unit(?, ?, ?, ? || chr(1))"
+        sqlState(tenant(), whole, tenant, ENTITY, PERIOD, PERIOD) shouldBe "42501"
+        unbound(whole, tenant, ENTITY, PERIOD, PERIOD) shouldBe "42501"
+        EvidenceDb.connect(EvidenceDb.MIGRATE, EvidenceDb.MIGRATE_PASSWORD).use { c ->
+            c.autoCommit = false
+            run(c, whole, arrayOf<Any>(tenant, ENTITY, PERIOD, PERIOD))
+        } shouldBe "42501"
+        sqlState(tenant, "select evidence.lock_import_unit(?, ?, ?, ?)", tenant, ENTITY, PERIOD, PERIOD) shouldBe
+            "22023"
+        sqlState(tenant, whole, tenant, ENTITY, PERIOD_B, PERIOD_B) shouldBe null
+        unitsIn(tenant, PERIOD_B) shouldBe "1"
+        val created = partitionId(tenant, PERIOD_B)
+        unitState(created) shouldBe "ATTACHED"
+        members(created) shouldBe null
+        superuserUpdate("update evidence.retention_partition set state = 'DETACHED' where partition_id = ?", id)
+        sqlState(tenant, whole, tenant, ENTITY, PERIOD, PERIOD) shouldBe "55000"
+        assertImportLockPrivileges()
+    }
+
+    /** The owner of the import lock gained INSERT on the unit registry and nothing else near it. */
+    private fun assertImportLockPrivileges() {
+        fun table(
+            name: String,
+            privilege: String,
+        ) = scalar("select has_table_privilege(?, ?, ?)::text", EvidenceDb.SYS, "evidence.$name", privilege)
+
+        fun updatable(column: String) =
+            scalar(
+                "select has_column_privilege(?, 'evidence.retention_partition', ?, 'UPDATE')::text",
+                EvidenceDb.SYS,
+                column,
+            )
+        table("retention_partition", "INSERT") shouldBe "true"
+        table("retention_partition", "DELETE") shouldBe "false"
+        table("retention_partition", "TRUNCATE") shouldBe "false"
+        table("retention_partition_member", "INSERT") shouldBe "false"
+        updatable("tenant_id") shouldBe "false"
+        updatable("partition_id") shouldBe "false"
+        scalar(
+            "select string_agg(policyname, ',' order by policyname) from pg_policies " +
+                "where schemaname = 'evidence' and tablename = 'retention_partition'",
+        ) shouldBe "tenant_isolation"
+    }
+
+    @Test
+    fun `INV-AC-28694 (o) detach alone waits for a writer of the unit and archives its record`() {
+        val tenant = tenant()
+        val id = importedUnit(tenant)
+        val seen = Seen()
+        open(tenant).use { writer ->
+            insertImported(dsl(writer), tenant, "DOC-2")
+            open(tenant).use { deleter ->
+                val detaching: Future<Unit>
+                try {
+                    detaching =
+                        startWaiting(deleter) {
+                            lifecycle(dsl(deleter), seen.store, seen.calls)
+                                .detach(id, "audit-1", clock.instant().minusSeconds(1))
+                            deleter.commit()
+                        }
+                } finally {
+                    writer.commit()
+                }
+                detaching.bounded()
+            }
+        }
+        val archived = seen.store.text(key(tenant, id, "prior_evidence"))
+        archived shouldContain "\"DOC-1\""
+        archived shouldContain "\"DOC-2\""
+    }
+
+    @Test
+    fun `INV-AC-28694 (p) a chain writer waits for an import that is creating the unit and then succeeds`() {
+        val tenant = tenant()
+        open(tenant).use { holder ->
+            lockImportUnit(holder, tenant, PERIOD)
+            open(tenant).use { writer ->
+                val writing: Future<String?>
+                try {
+                    writing = startWaiting(writer) { refusalOf(writer) { appendAudit(it, tenant) } }
+                } finally {
+                    holder.commit()
+                }
+                writing.bounded() shouldBe null
+            }
+        }
+        unitsIn(tenant, PERIOD) shouldBe "1"
+        members(partitionId(tenant)) shouldBe "audit_log=ATTACHED"
+    }
+
+    @Test
+    fun `INV-AC-28694 (q) the import lock of a unit is exclusive`() {
+        val tenant = tenant()
+        importedUnit(tenant)
+        open(tenant).use { holder ->
+            lockImportUnit(holder, tenant, PERIOD)
+            open(tenant).use { second ->
+                val locking: Future<Unit>
+                try {
+                    locking =
+                        startWaiting(second) {
+                            lockImportUnit(second, tenant, PERIOD)
+                            second.commit()
+                        }
+                } finally {
+                    holder.commit()
+                }
+                locking.bounded()
+            }
+        }
+    }
+
+    private fun lockImportUnit(
+        c: Connection,
+        tenant: UUID,
+        period: String,
+    ) {
+        c.prepareStatement("select evidence.lock_import_unit(?, ?, ?, ? || chr(1))").use { st ->
+            listOf<Any>(tenant, ENTITY, period, period).forEachIndexed { i, a -> st.setObject(i + 1, a) }
+            st.execute()
+        }
+    }
+
+    /** The unit row [id] can be locked at once: nobody else holds it. The lock is given back. */
+    private fun lockableNow(id: String) =
+        EvidenceDb.superuser().use { c ->
+            c.autoCommit = false
+            val sql = "select 1 from evidence.retention_partition where partition_id = ? for update nowait"
+            c.prepareStatement(sql).use { st ->
+                st.setString(1, id)
+                st.executeQuery().use { it.next() shouldBe true }
+            }
+            c.rollback()
+        }
+
+    /** One statement as the runtime login with no tenant binding: the SQLSTATE of a failure, else null. */
+    private fun unbound(
+        sql: String,
+        vararg args: Any?,
+    ): String? =
+        EvidenceDb.connect(EvidenceDb.RUNTIME, EvidenceDb.RUNTIME_PASSWORD).use { c ->
+            c.autoCommit = false
+            run(c, sql, args)
+        }
+
     private companion object {
         const val ENTITY = "E1"
         const val PERIOD = "2010-Q1"
+        const val PERIOD_B = "2009-Q4"
+        const val PERIOD_Q2 = "2010-Q2"
+        val DATE_A: LocalDate = LocalDate.of(2010, 2, 1)
+
+        /** A quarter before [DATE_A]'s, so its unit row is locked before that of A. */
+        val DATE_B: LocalDate = LocalDate.of(2009, 11, 1)
+        val DATE_Q2: LocalDate = LocalDate.of(2010, 5, 1)
         const val WAIT_SECONDS = 30L
         const val NOTICED_DAYS_AGO = 90L
         const val CLOSED_DAYS_AGO = 60L
