@@ -79,13 +79,14 @@ class PriorSubmissionEvidenceImportedOutboxTest {
         val data: String,
         val entity: String,
         val tenant: String,
+        val subject: String,
     )
 
     private fun rows(): List<Stored> =
         EvidenceDb.superuser().use { c ->
             c
                 .prepareStatement(
-                    "select type, data::text, entity_ref, tenant_id::text from ${EvidenceDb.SCHEMA}.outbox " +
+                    "select type, data::text, entity_ref, tenant_id::text, subject from ${EvidenceDb.SCHEMA}.outbox " +
                         "where tenant_id = ? order by seq",
                 ).use {
                     it.setObject(1, tenant)
@@ -97,6 +98,7 @@ class PriorSubmissionEvidenceImportedOutboxTest {
                                     rs.getString(2),
                                     rs.getString(3),
                                     rs.getString(4),
+                                    rs.getString(5),
                                 )
                             } else {
                                 null
@@ -124,6 +126,7 @@ class PriorSubmissionEvidenceImportedOutboxTest {
         stored.type shouldBe type
         stored.tenant shouldBe tenant.toString()
         stored.entity shouldBe "E1"
+        stored.subject shouldBe "E1:DOC-1:2026-02-27"
         val payload = json.readTree(stored.data)
         payload.propertyNames().asSequence().toSet() shouldBe
             setOf("entityRef", "documentNumber", "transactionDate", "acknowledgementRef", "priorSolution")

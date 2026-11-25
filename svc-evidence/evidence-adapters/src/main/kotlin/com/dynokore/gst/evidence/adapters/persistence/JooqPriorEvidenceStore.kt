@@ -25,8 +25,7 @@ class JooqPriorEvidenceStore(
         documentNumber: String,
         transactionDate: LocalDate,
     ) {
-        // Transaction-scoped; the second key has its own prefix, so it never equals the key of
-        // create_retention_partition.
+        // Transaction-scoped; see LOCK_PREFIX for why this never equals the key of create_retention_partition.
         dsl
             .select(
                 DSL.function(
@@ -102,7 +101,11 @@ class JooqPriorEvidenceStore(
         /** The exclusive end of a one-period unit: the period followed by this character (V21). */
         const val UNIT_END = "\u0001"
 
-        /** Keeps the identity lock apart from the `<chain table>:<period>` key of create_retention_partition. */
+        /**
+         * First part of the identity lock's second key. create_retention_partition locks on `<chain table>:<period>`,
+         * here also `prior_evidence:<period>`; the keys differ because the identity has a further colon between the
+         * document number and the date, and a period has none.
+         */
         const val LOCK_PREFIX = "prior_evidence:"
     }
 }
