@@ -260,14 +260,6 @@ class RegisteredMemberDeletionDbTest {
         fun text(key: String) = objects.getValue(key).toString(Charsets.UTF_8)
     }
 
-    /** What one deletion did: its archive objects, its observed lifecycle calls and its audit entries. */
-    private class Seen(
-        val store: Memory = Memory(),
-    ) {
-        val calls = mutableListOf<String>()
-        val audit = Audited()
-    }
-
     private class Audited : DeletionAudit {
         val tailHashes = mutableListOf<List<String>>()
 
@@ -317,7 +309,9 @@ class RegisteredMemberDeletionDbTest {
         c: Connection,
         tenant: UUID,
         id: String,
-        seen: Seen,
+        store: ObjectStore,
+        calls: MutableList<String>,
+        audit: Audited = Audited(),
     ): DeleteAtRetentionEndResult {
         val records = JooqRetentionRecords(dsl(c), effective(tenant), clock)
         val result =
@@ -328,8 +322,8 @@ class RegisteredMemberDeletionDbTest {
                 records,
                 records,
                 records,
-                seen.audit,
-                lifecycle(dsl(c), seen.store, seen.calls),
+                audit,
+                lifecycle(dsl(c), store, calls),
                 clock,
             ).execute(tenant.toString(), "u-starter", id)
         c.commit()
@@ -366,19 +360,20 @@ class RegisteredMemberDeletionDbTest {
     fun `INV-AC-28694 a unit with only imported records is deleted through its one registered member`() {
         val tenant = tenant()
         val id = importedUnit(tenant)
-        val seen = Seen()
-        open(tenant).use { delete(it, tenant, id, seen) } shouldBe DeleteAtRetentionEndResult.DELETED
-        seen.calls shouldBe listOf("detach:prior_evidence", "archive", "drop:prior_evidence")
-        seen.store.objects.keys
-            .toList() shouldBe listOf(key(tenant, id, "prior_evidence"))
-        seen.store.text(key(tenant, id, "prior_evidence")) shouldContain "\"DOC-1\""
+        val store = Memory()
+        val calls = mutableListOf<String>()
+        val audit = Audited()
+        open(tenant).use { delete(it, tenant, id, store, calls, audit) } shouldBe DeleteAtRetentionEndResult.DELETED
+        calls shouldBe listOf("detach:prior_evidence", "archive", "drop:prior_evidence")
+        store.objects.keys.toList() shouldBe listOf(key(tenant, id, "prior_evidence"))
+        store.text(key(tenant, id, "prior_evidence")) shouldContain "\"DOC-1\""
         unitState(id) shouldBe "DROPPED"
         members(id) shouldBe "prior_evidence=DROPPED"
         scalar(
             "select tail_hashes::text from evidence.retention_partition where partition_id = ?",
             id,
         ) shouldBe "{\"prior_evidence\": null}"
-        seen.audit.tailHashes shouldBe listOf(emptyList())
+        audit.tailHashes shouldBe listOf(emptyList())
     }
 
     @Test
@@ -386,11 +381,11 @@ class RegisteredMemberDeletionDbTest {
         val tenant = tenant()
         runtime(tenant) { appendAudit(it, tenant) }
         val id = authority(tenant)
-        val seen = Seen()
-        open(tenant).use { delete(it, tenant, id, seen) } shouldBe DeleteAtRetentionEndResult.DELETED
-        seen.calls shouldBe listOf("detach:audit_log", "archive", "drop:audit_log")
-        seen.store.objects.keys
-            .toList() shouldBe listOf(key(tenant, id, "audit_log"))
+        val store = Memory()
+        val calls = mutableListOf<String>()
+        open(tenant).use { delete(it, tenant, id, store, calls) } shouldBe DeleteAtRetentionEndResult.DELETED
+        calls shouldBe listOf("detach:audit_log", "archive", "drop:audit_log")
+        store.objects.keys.toList() shouldBe listOf(key(tenant, id, "audit_log"))
         unitState(id) shouldBe "DROPPED"
         members(id) shouldBe "audit_log=DROPPED"
     }
@@ -408,10 +403,11 @@ class RegisteredMemberDeletionDbTest {
             ENTITY,
             PERIOD,
         ) shouldBe null
-        val seen = Seen()
-        open(tenant).use { delete(it, tenant, id, seen) } shouldBe DeleteAtRetentionEndResult.HOLD_IN_FORCE
-        seen.calls shouldBe emptyList()
-        seen.store.objects.size shouldBe 0
+        val store = Memory()
+        val calls = mutableListOf<String>()
+        open(tenant).use { delete(it, tenant, id, store, calls) } shouldBe DeleteAtRetentionEndResult.HOLD_IN_FORCE
+        calls shouldBe emptyList()
+        store.objects.size shouldBe 0
         unitState(id) shouldBe "ATTACHED"
     }
 
@@ -462,14 +458,14 @@ class RegisteredMemberDeletionDbTest {
     fun `INV-AC-28694 a record of a transaction open when the deletion starts is archived after it commits`() {
         val tenant = tenant()
         val id = importedUnit(tenant)
-        val seen = Seen()
+        val store = Memory()
         open(tenant).use { writer ->
             insertImported(dsl(writer), tenant, "DOC-2")
             open(tenant).use { deleter ->
                 val deleterPid = pid(deleter)
                 val deletion =
                     threads.submit<DeleteAtRetentionEndResult> {
-                        delete(deleter, tenant, id, seen)
+                        delete(deleter, tenant, id, store, mutableListOf())
                     }
                 try {
                     awaitLockWait(deleterPid, deletion)
@@ -479,7 +475,7 @@ class RegisteredMemberDeletionDbTest {
                 deletion.bounded() shouldBe DeleteAtRetentionEndResult.DELETED
             }
         }
-        val archived = seen.store.text(key(tenant, id, "prior_evidence"))
+        val archived = store.text(key(tenant, id, "prior_evidence"))
         archived shouldContain "\"DOC-1\""
         archived shouldContain "\"DOC-2\""
         unitState(id) shouldBe "DROPPED"
@@ -510,13 +506,23 @@ class RegisteredMemberDeletionDbTest {
             open(tenant).use { writer ->
                 val deletion =
                     threads.submit<DeleteAtRetentionEndResult> {
-                        delete(deleter, tenant, id, Seen(store))
+                        delete(deleter, tenant, id, store, mutableListOf())
                     }
                 val writing: Future<String?>
                 try {
                     inPut.await(WAIT_SECONDS, TimeUnit.SECONDS) shouldBe true
                     val writerPid = pid(writer)
-                    writing = threads.submit<String?> { refusalOf(writer) { write(it, tenant) } }
+                    writing =
+                        threads.submit<String?> {
+                            try {
+                                write(dsl(writer), tenant)
+                                writer.commit()
+                                null
+                            } catch (e: DataAccessException) {
+                                writer.rollback()
+                                e.sqlState()
+                            }
+                        }
                     awaitLockWait(writerPid, writing)
                 } finally {
                     release.countDown()
@@ -525,28 +531,6 @@ class RegisteredMemberDeletionDbTest {
                 writing.bounded() shouldBe "55000"
             }
         }
-        assertNothingLeft(tenant, id)
-    }
-
-    /** Runs [write] on [writer] and commits: the SQLSTATE of its refusal, else null. */
-    private fun refusalOf(
-        writer: Connection,
-        write: (DSLContext) -> Unit,
-    ): String? =
-        try {
-            write(dsl(writer))
-            writer.commit()
-            null
-        } catch (e: DataAccessException) {
-            writer.rollback()
-            e.sqlState()
-        }
-
-    /** No imported row, no partition table and no attached member of the deleted unit remains. */
-    private fun assertNothingLeft(
-        tenant: UUID,
-        id: String,
-    ) {
         scalar("select count(*) from evidence.prior_evidence where tenant_id = ?", tenant) shouldBe "0"
         scalar("select count(*) from pg_class where relname like ?", "%_$id") shouldBe "0"
         unitState(id) shouldBe "DROPPED"
