@@ -76,13 +76,13 @@ class SampleCheckReadClientTest {
     }
 
     @Test
-    @DisplayName("INV-AC-27606 sample checks an entityRef that is a dot segment makes no call")
-    fun dotSegment() {
-        stub.answer(200, """{"items":[]}""")
-        for (bad in listOf("", ".", "..")) {
-            assertTrue(page(entityRef = bad) is PageReply.Unavailable, bad)
+    @DisplayName("INV-AC-27606 sample checks a blank or dot-segment entityRef is never sent")
+    fun neverSent() {
+        for (bad in listOf("", " ", ".", "..")) {
+            stub.answer(200, """{"items":[]}""")
+            assertTrue(page(entityRef = bad) is PageReply.Unavailable, "'$bad'")
+            assertEquals(0, stub.seen.size, "'$bad'")
         }
-        assertEquals(0, stub.seen.size)
     }
 
     @Test

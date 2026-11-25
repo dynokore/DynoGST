@@ -204,12 +204,12 @@ class AttestationReadClientTest {
     }
 
     @Test
-    @DisplayName("INV-AC-27606 attestations an entityRef cannot leave its path segment")
+    @DisplayName("INV-AC-27606 attestations a blank or dot-segment entityRef is never sent, a look-alike is")
     fun entityRefStaysOneSegment() {
         for (bad in listOf("", " ", ".", "..")) {
             stub.answer(200, """{"items":[]}""")
-            assertTrue(page(entityRef = bad) is PageReply.Unavailable, bad)
-            assertEquals(0, stub.seen.size, bad)
+            assertTrue(page(entityRef = bad) is PageReply.Unavailable, "'$bad'")
+            assertEquals(0, stub.seen.size, "'$bad'")
         }
         stub.answer(200, """{"items":[]}""")
         page(entityRef = "E1/../E2?x=1")
