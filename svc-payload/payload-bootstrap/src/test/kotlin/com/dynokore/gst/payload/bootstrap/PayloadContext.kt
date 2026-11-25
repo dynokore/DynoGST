@@ -1,6 +1,8 @@
 package com.dynokore.gst.payload.bootstrap
 
 import com.dynokore.gst.payload.adapters.PayloadDb
+import com.dynokore.gst.payload.application.build.LayerOneCheck
+import com.dynokore.gst.payload.application.build.NOT_WIRED
 import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer
 import org.springframework.boot.test.context.runner.ApplicationContextRunner
 import org.springframework.boot.test.context.runner.WebApplicationContextRunner
@@ -79,6 +81,15 @@ object PayloadContext {
     /** Over the Testcontainers database; the login password and the binding key come from a mounted secret store. */
     fun online(mountRoot: Path): ApplicationContextRunner {
         secrets(mountRoot)
-        return base(mountRoot).withPropertyValues("spring.datasource.url=${PayloadDb.jdbcUrl}")
+        return base(mountRoot)
+            .withPropertyValues("spring.datasource.url=${PayloadDb.jdbcUrl}")
+            // These builds run no Schematron pack (none is active here), so the production layer-one check, which
+            // fails closed without an active pack (INV-AC-27232), is replaced by the no-op check they ran with.
+            .withBean(
+                "layerOneCheckForBuildFixtures",
+                LayerOneCheck::class.java,
+                { NOT_WIRED },
+                { it.isPrimary = true },
+            )
     }
 }
