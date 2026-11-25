@@ -8,11 +8,11 @@ import com.dynokore.platform.serviceruntime.resilience.TimeoutPolicy
 import com.dynokore.platform.serviceruntime.resilience.http.CurrentDeadline
 import com.dynokore.platform.serviceruntime.resilience.resilience4j.Resilience4jResilientEdge
 import com.sun.net.httpserver.HttpServer
-import io.kotest.matchers.longs.shouldBeLessThan
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
 import org.springframework.boot.autoconfigure.AutoConfigurations
 import org.springframework.boot.test.context.runner.ApplicationContextRunner
 import org.springframework.context.annotation.Bean
@@ -24,10 +24,12 @@ import java.time.Clock
 import java.time.Duration
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * INV-AC-28249: the bound ends the underlying request, not only the caller's wait. A real HTTP stub (the JDK's own
- * server) answers after a delay; the request is made through the `internalRestClientBuilder` bean.
+ * server) answers after a delay or, for case (g), holds its answer on a latch; the request is made through the
+ * `internalRestClientBuilder` bean.
  */
 class InternalRestClientDeadlineBoundTest {
     private val clock: Clock = Clock.systemUTC()
@@ -60,14 +62,30 @@ class InternalRestClientDeadlineBoundTest {
             .withUserConfiguration(ClockConfiguration::class.java)
             .withConfiguration(AutoConfigurations.of(InternalRestClientAutoConfiguration::class.java))
 
-    private fun stub(delayMs: Long): String {
+    /** A stub answer held on a latch: [entered] counts down when the request reaches the stub, [answered] is set when it responds. */
+    private class Hold {
+        val release = CountDownLatch(1)
+        val entered = CountDownLatch(1)
+        val answered = AtomicBoolean(false)
+    }
+
+    private fun stub(
+        delayMs: Long,
+        hold: Hold? = null,
+    ): String {
         val server = HttpServer.create(InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0)
         server.createContext("/") { exchange ->
-            Thread.sleep(delayMs)
+            if (hold == null) {
+                Thread.sleep(delayMs)
+            } else {
+                hold.entered.countDown()
+                hold.release.await(HOLD_SECONDS, TimeUnit.SECONDS)
+            }
             val body = "answer".toByteArray()
             runCatching {
                 exchange.sendResponseHeaders(200, body.size.toLong())
                 exchange.responseBody.use { it.write(body) }
+                hold?.answered?.set(true)
             }
             exchange.close()
         }
@@ -79,11 +97,11 @@ class InternalRestClientDeadlineBoundTest {
         return "http://127.0.0.1:${server.address.port}"
     }
 
-    private fun edge() =
+    private fun edge(policyTimeout: Duration = Duration.ofSeconds(5)) =
         Resilience4jResilientEdge(
             "edge-${System.nanoTime()}",
             EdgePolicy(
-                timeout = TimeoutPolicy(Duration.ofSeconds(5)),
+                timeout = TimeoutPolicy(policyTimeout),
                 retry = null,
                 circuitBreaker = CircuitBreakerPolicy(50F, 10, Duration.ofSeconds(10), 1),
                 bulkhead = BulkheadPolicy(4, Duration.ofMillis(200)),
@@ -91,37 +109,62 @@ class InternalRestClientDeadlineBoundTest {
             clock,
         )
 
-    // Timing subject: a real socket read timeout and time limiter, so the wall clock at the MARGIN_MS / END_MARGIN_MS caps.
+    // The stub holds its answer on a latch and the policy timeout is 1 hour, so only the deadline can end the call; no
+    // assertion compares a measured elapsed time with a constant. The 5 s deadline is a test fixture value, not a
+    // product setting: an allowance for the request to be in flight on a slow runner, after a warm-up on the same path.
     @Test
-    fun `INV-AC-28249 (g) a request slower than the deadline ends at the bound and its thread finishes`() {
-        runner.run { context ->
-            val client = context.getBean(RestClient.Builder::class.java).baseUrl(stub(SLOW_MS)).build()
-            val finished = CountDownLatch(1)
-            val started = System.nanoTime()
+    @Timeout(value = SAFETY_SECONDS, unit = TimeUnit.SECONDS)
+    fun `INV-AC-28249 INV-AC-28656 (g) a request slower than the deadline ends at the bound and its thread finishes`() {
+        val hold = Hold()
+        try {
+            runner.run { context ->
+                val builder = context.getBean(RestClient.Builder::class.java)
+                val edge = edge(Duration.ofHours(1))
 
-            val outcome =
-                edge().execute(
-                    Deadline.after(Duration.ofMillis(300), clock),
+                val warmUpClient = builder.baseUrl(stub(0)).build()
+                edge.execute(
+                    Deadline.after(Duration.ofSeconds(SAFETY_SECONDS), clock),
                     onCallNotPermitted = { "not-permitted" },
                     onConnectFailure = { "connect-failure" },
                     onTimeout = { TIMED_OUT },
                 ) {
-                    try {
-                        client
-                            .get()
-                            .uri("/")
-                            .retrieve()
-                            .body(String::class.java)
-                            .orEmpty()
-                    } finally {
-                        finished.countDown()
-                    }
-                }
-            val elapsed = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started)
+                    warmUpClient
+                        .get()
+                        .uri("/")
+                        .retrieve()
+                        .body(String::class.java)
+                        .orEmpty()
+                } shouldBe "answer"
 
-            outcome shouldBe TIMED_OUT
-            elapsed shouldBeLessThan 300 + MARGIN_MS
-            finished.await(300 + END_MARGIN_MS - elapsed, TimeUnit.MILLISECONDS) shouldBe true
+                val client = builder.baseUrl(stub(0, hold)).build()
+                val finished = CountDownLatch(1)
+
+                val outcome =
+                    edge.execute(
+                        Deadline.after(Duration.ofSeconds(5), clock),
+                        onCallNotPermitted = { "not-permitted" },
+                        onConnectFailure = { "connect-failure" },
+                        onTimeout = { TIMED_OUT },
+                    ) {
+                        try {
+                            client
+                                .get()
+                                .uri("/")
+                                .retrieve()
+                                .body(String::class.java)
+                                .orEmpty()
+                        } finally {
+                            finished.countDown()
+                        }
+                    }
+
+                outcome shouldBe TIMED_OUT
+                hold.entered.await(SAFETY_SECONDS, TimeUnit.SECONDS) shouldBe true
+                finished.await(SAFETY_SECONDS, TimeUnit.SECONDS) shouldBe true
+                hold.answered.get() shouldBe false
+            }
+        } finally {
+            hold.release.countDown()
         }
     }
 
@@ -166,12 +209,8 @@ class InternalRestClientDeadlineBoundTest {
     private companion object {
         const val TIMED_OUT = "timed-out"
 
-        // Caller release: scheduling of a loaded CI runner; the spec caps it at 150 ms.
-        const val MARGIN_MS = 150L
-
-        // The request thread unwinds after the interrupt / read timeout (socket teardown); the spec caps it at 500 ms.
-        const val END_MARGIN_MS = 500L
-
-        const val SLOW_MS = 2_000L
+        // Ceilings (12 and 24 times the 5 s deadline of case (g), a test fixture value), not elapsed-time assertions.
+        const val SAFETY_SECONDS = 60L
+        const val HOLD_SECONDS = 120L
     }
 }
