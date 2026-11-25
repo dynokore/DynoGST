@@ -10,7 +10,6 @@ import com.dynokore.platform.serviceruntime.resilience.ResilienceRegistry
 import org.openapitools.client.infrastructure.RequestConfig
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.core.env.Environment
-import org.springframework.http.InvalidMediaTypeException
 import org.springframework.web.client.RestClient
 import org.springframework.web.client.RestClientException
 import tools.jackson.databind.JsonNode
@@ -107,9 +106,10 @@ internal class OwnerPageRead(
             } catch (_: RestClientException) {
                 // no exception crosses the port
                 unavailable("call failed")
-            } catch (_: InvalidMediaTypeException) {
-                // not a RestClientException: a Content-Type that does not parse (ASVS V7.4: fail closed)
-                unavailable("unreadable Content-Type")
+            } catch (_: IllegalArgumentException) {
+                // not a RestClientException: a header that does not parse, such as Content-Type (InvalidMediaType) or
+                // Content-Length (NumberFormat) (ASVS V7.4: fail closed)
+                unavailable("unreadable answer")
             }
         }
 

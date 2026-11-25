@@ -131,6 +131,37 @@ class SampleCheckReadClientTest {
     }
 
     @Test
+    @DisplayName("INV-AC-27606 sample checks an answer with a non-numeric Content-Length is Unavailable")
+    fun malformedContentLength() {
+        val raw = RawStub()
+        try {
+            val client =
+                SampleCheckReadClient(
+                    TestEdges.builder(),
+                    TestEdges.passThrough,
+                    TestEdges.clock,
+                    MockEnvironment().withProperty(OwningService.EVIDENCE.urlProperty, raw.url),
+                )
+            for (contentLength in MALFORMED_CONTENT_LENGTHS) {
+                for (status in listOf(200, 403, 500)) {
+                    val body = if (status == 200) """{"items":[]}""" else envelope(status, "SRT-$status")
+                    raw.answer(status, contentLength, body)
+                    val reply = CurrentEndUserToken.callWith("Bearer u-1") { client.page("E1", 25, null) }
+                    assertTrue(reply is PageReply.Unavailable, "$status $contentLength $reply")
+                    assertEquals(1, raw.requests.get(), "$status $contentLength")
+                }
+            }
+            // the stub itself is sound: with the true length the same answer is a page
+            val body = """{"items":[]}"""
+            raw.answer(200, body.length.toString(), body)
+            val reply = CurrentEndUserToken.callWith("Bearer u-1") { client.page("E1", 25, null) }
+            assertTrue(reply is PageReply.Ok, "$reply")
+        } finally {
+            raw.stop()
+        }
+    }
+
+    @Test
     @DisplayName("INV-AC-27606 sample checks an answer with a malformed Content-Type is Unavailable")
     fun malformedContentType() {
         for (contentType in MALFORMED_CONTENT_TYPES) {

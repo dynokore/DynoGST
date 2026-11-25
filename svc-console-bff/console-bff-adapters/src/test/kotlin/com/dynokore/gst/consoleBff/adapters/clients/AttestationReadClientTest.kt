@@ -19,12 +19,15 @@ import org.springframework.mock.env.MockEnvironment
 import org.springframework.web.client.RestClient
 import java.net.InetAddress
 import java.net.InetSocketAddress
+import java.net.ServerSocket
 import java.net.URLDecoder
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.function.Supplier
+import kotlin.concurrent.thread
 
 /** One request a [PageStub] received: the raw path and the decoded query parameters. */
 internal data class PageRequest(
@@ -90,6 +93,50 @@ internal class PageStub {
         const val JSON = "application/json"
     }
 }
+
+/**
+ * A stub that writes the response text as it is, for headers the JDK `HttpServer` does not let a test set (it sets
+ * `Content-Length` itself).
+ */
+internal class RawStub {
+    @Volatile private var response = ""
+    val requests = AtomicInteger()
+    private val server = ServerSocket(0, 0, InetAddress.getLoopbackAddress())
+    val url = "http://127.0.0.1:${server.localPort}"
+
+    init {
+        thread(isDaemon = true) {
+            while (!server.isClosed) {
+                runCatching {
+                    server.accept().use { socket ->
+                        val reader = socket.getInputStream().bufferedReader(Charsets.ISO_8859_1)
+                        do {
+                            val line = reader.readLine()
+                        } while (!line.isNullOrEmpty())
+                        requests.incrementAndGet()
+                        socket.getOutputStream().write(response.toByteArray())
+                        socket.getOutputStream().flush()
+                    }
+                }
+            }
+        }
+    }
+
+    fun answer(
+        status: Int,
+        contentLength: String,
+        body: String,
+    ) {
+        response = "HTTP/1.1 $status S\r\nContent-Type: application/json\r\n" +
+            "Content-Length: $contentLength\r\nConnection: close\r\n\r\n$body"
+        requests.set(0)
+    }
+
+    fun stop() = server.close()
+}
+
+/** `Content-Length` values that are not a number. */
+internal val MALFORMED_CONTENT_LENGTHS = listOf("abc", "1x", "99999999999999999999")
 
 /** Starts a context that holds only the client and what it injects; the failure of the start, or null. */
 internal fun startFailure(
@@ -294,6 +341,37 @@ class AttestationReadClientTest {
                 stub.answer(status, body)
                 assertTrue(page() is PageReply.Unavailable, "$status $body")
             }
+        }
+    }
+
+    @Test
+    @DisplayName("INV-AC-27606 attestations an answer with a non-numeric Content-Length is Unavailable")
+    fun malformedContentLength() {
+        val raw = RawStub()
+        try {
+            val client =
+                AttestationReadClient(
+                    TestEdges.builder(),
+                    TestEdges.passThrough,
+                    TestEdges.clock,
+                    MockEnvironment().withProperty(OwningService.TENANCY.urlProperty, raw.url),
+                )
+            for (contentLength in MALFORMED_CONTENT_LENGTHS) {
+                for (status in listOf(200, 403, 500)) {
+                    val body = if (status == 200) """{"items":[]}""" else envelope(status, "SRT-$status")
+                    raw.answer(status, contentLength, body)
+                    val reply = CurrentEndUserToken.callWith("Bearer u-1") { client.page("E1", 25, null) }
+                    assertTrue(reply is PageReply.Unavailable, "$status $contentLength $reply")
+                    assertEquals(1, raw.requests.get(), "$status $contentLength")
+                }
+            }
+            // the stub itself is sound: with the true length the same answer is a page
+            val body = """{"items":[]}"""
+            raw.answer(200, body.length.toString(), body)
+            val reply = CurrentEndUserToken.callWith("Bearer u-1") { client.page("E1", 25, null) }
+            assertTrue(reply is PageReply.Ok, "$reply")
+        } finally {
+            raw.stop()
         }
     }
 
