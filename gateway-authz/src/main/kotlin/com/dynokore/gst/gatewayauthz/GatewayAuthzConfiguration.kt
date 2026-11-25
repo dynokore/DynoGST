@@ -27,10 +27,10 @@ import java.time.Clock
  * The composition of gateway-authz (TPL-18): the key-material cache and its background refresh, readiness, the
  * staleness rule and its metrics, the protective rate limiter, the token verifier and the extAuth
  * Check service. The refresh runs when a [KeyMaterialSource] (the
- * access-svc client) is present.
+ * access-svc client) is present. [ExtAuthzSocketConfiguration] opens the Check service's Unix socket to its group.
  */
 @Configuration(proxyBeanMethods = false)
-@Import(AccessSvcConfiguration::class)
+@Import(AccessSvcConfiguration::class, ExtAuthzSocketConfiguration::class)
 @EnableConfigurationProperties(GatewayAuthzProperties::class)
 class GatewayAuthzConfiguration {
     @Bean

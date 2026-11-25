@@ -13,6 +13,15 @@ include:
       - 'ci/build.gitlab-ci.yml'    # compile, unit tests, lint, Semgrep, Trivy, verification-metadata check
       - 'ci/image.gitlab-ci.yml'    # bootBuildImage, SBOM, image scan, sign, provenance, reproducibility
       - 'ci/publish.gitlab-ci.yml'  # OCI image publish
+  # The keel-report job reads the JUnit XML of unit-test from the main push pipeline and reports the INV-AC numbers in
+  # the testcase names to Keel (the acceptance results of the criteria in ac-keys.tsv).
+  - project: 'keel/tooling'
+    ref: main
+    file: 'keel-report-junit.yml'
+    inputs:
+      runner_tags: [inv-arm64]
+      junit_paths: '**/build/test-results/*/TEST-*.xml'
+      ac_pattern: 'INV-AC-\d+(?!\d)'
 
 variables:
   IMAGE_NAME: "gateway-authz"

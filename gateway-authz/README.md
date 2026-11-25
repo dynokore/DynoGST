@@ -15,6 +15,15 @@ INV-Q-4087, INV-Q-4089; contract INV-API-4001 (getRevocationList, getVerificatio
   (`spring-boot-starter-grpc-server`, grpc-netty-shaded's epoll transport) bound to the Unix socket
   `spring.grpc.server.netty.domain-socket-path` (env `GATEWAY_AUTHZ_SOCKET`), with Envoy's published stubs
   (`io.envoyproxy.controlplane:api`). No call leaves the pod per request (`check/`).
+- **Socket access** (INV-AC-28810; least privilege, NIST SP 800-190): the socket's parent directory gets mode `0770`
+  and the socket mode `0660`, with no permission for others. Before the server binds, the directory is created if it
+  is absent (its own parent must exist: there is no recursive creation) and its mode is changed only if it differs; the
+  socket's mode is set after the bind and before `/health/ready` can answer 200. It fails closed: if the directory
+  cannot be created or is not a directory, or a required mode change fails, the application does not start and the
+  error names the absolute path. **The deployment must give Envoy and gateway-authz a shared group** (they keep
+  distinct users), and that group must be the group of the directory and of the socket; gateway-authz changes no group.
+  Only a directory's owner can change its mode, so a volume root owned by another user is not enough: use a
+  subdirectory that gateway-authz creates or owns.
 - **Route classes** (INV-Q-4083), from the per-route extAuth context the api-gateway chart sets (INV-T-3990):
   `route-class` = `machine-api`, `signed-link`, `ap-notification` or `console`; `path-template` = the route's contract
   path template; on a signed-link route `link-parameter` = the path parameter that carries the link reference. A
