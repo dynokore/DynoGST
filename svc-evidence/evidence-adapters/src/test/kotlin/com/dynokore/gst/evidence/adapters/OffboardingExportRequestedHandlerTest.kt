@@ -9,6 +9,8 @@ import com.dynokore.gst.evidence.application.export.ExportResult
 import com.dynokore.gst.evidence.application.export.ExportScope
 import com.dynokore.gst.evidence.application.export.ExportState
 import com.dynokore.gst.evidence.application.export.ExportTenantEvidence
+import com.dynokore.gst.evidence.application.retention.CustodyHolder
+import com.dynokore.gst.evidence.application.retention.CustodyHolderRecords
 import com.dynokore.platform.outboxandqueue.CausationId
 import com.dynokore.platform.outboxandqueue.ContractViolation
 import com.dynokore.platform.outboxandqueue.CorrelationId
@@ -61,6 +63,22 @@ class OffboardingExportRequestedHandlerTest {
         }
 
     // no source is bound, so the run ends FAILED naming the classes: the handler only has to hand the request over
+    private val stored = mutableListOf<List<Any?>>()
+    private val receivedAt = Instant.parse("2026-11-15T08:31:00Z")
+
+    private val custodyHolders =
+        object : CustodyHolderRecords {
+            override fun record(
+                tenant: TenantId,
+                offboardingRef: String,
+                holder: CustodyHolder,
+                noticeWindowDays: Int?,
+                receivedAt: Instant,
+            ) {
+                stored += listOf(tenant, offboardingRef, holder, noticeWindowDays, receivedAt)
+            }
+        }
+
     private val handler =
         OffboardingExportRequestedHandler(
             ExportTenantEvidence(
@@ -71,6 +89,8 @@ class OffboardingExportRequestedHandlerTest {
                 { published += it },
                 Clock.systemUTC(),
             ),
+            custodyHolders,
+            Clock.fixed(receivedAt, java.time.ZoneOffset.UTC),
         )
 
     private fun envelope(
@@ -148,5 +168,81 @@ class OffboardingExportRequestedHandlerTest {
     fun `INV-AC-22949 a scope ENTITY request without entityRef is refused`() {
         shouldThrow<ContractViolation> { handler.handle(envelope(payload(scope = "ENTITY"))) }
         registered shouldBe emptyList()
+    }
+
+    private fun withMembers(extra: String) = payload().dropLast(1) + "," + extra + "}"
+
+    @Test
+    fun `INV-AC-26713 the holder and the window are stored equal to the event`() {
+        handler.handle(
+            envelope(
+                withMembers(
+                    """"retentionCustodyHolder":{"name":"A Holder","contactEmail":"a@example.test",""" +
+                        """"contactMobile":"+6590000000"},""" +
+                        """"noticeWindowDays":45""",
+                ),
+            ),
+        ) shouldBe HandleOutcome.APPLIED
+        val row = stored.single()
+        row[0] shouldBe TenantId(tenant)
+        row[1] shouldBe "OFF-1"
+        row[2] shouldBe CustodyHolder("A Holder", "a@example.test", "+6590000000")
+        row[3] shouldBe 45
+        row[4] shouldBe receivedAt
+        registered.size shouldBe 1
+    }
+
+    @Test
+    fun `INV-AC-26713 a holder without mobile and without window is stored with nulls`() {
+        handler.handle(
+            envelope(withMembers(""""retentionCustodyHolder":{"name":"A","contactEmail":"a@example.test"}""")),
+        )
+        stored.single()[2] shouldBe CustodyHolder("A", "a@example.test", null)
+        stored.single()[3] shouldBe null
+    }
+
+    @Test
+    fun `INV-AC-26713 an event without the members writes no row and the export job still registers`() {
+        handler.handle(envelope(payload())) shouldBe HandleOutcome.APPLIED
+        stored shouldBe emptyList()
+        registered.size shouldBe 1
+    }
+
+    @Test
+    fun `INV-AC-26713 a tenantRef differing from the envelope tenant writes no row`() {
+        val bad =
+            payload(tenantRef = UUID.randomUUID().toString()).dropLast(1) +
+                ""","retentionCustodyHolder":{"name":"A","contactEmail":"a@example.test"}}"""
+        shouldThrow<ContractViolation> { handler.handle(envelope(bad)) }
+        stored shouldBe emptyList()
+        registered shouldBe emptyList()
+    }
+
+    @Test
+    fun `INV-AC-26713 a malformed holder or window is refused, writes nothing and names no contact value`() {
+        val secret = "secret@example.test"
+        val malformed =
+            listOf(
+                """"retentionCustodyHolder":{"name":"A"}""",
+                """"retentionCustodyHolder":{"name":"A","contactEmail":" "}""",
+                """"retentionCustodyHolder":{"contactEmail":"$secret"}""",
+                """"retentionCustodyHolder":"$secret"""",
+                """"retentionCustodyHolder":{"name":"A","contactEmail":"$secret","contactMobile":5}""",
+                """"retentionCustodyHolder":{"name":"A","contactEmail":"$secret"},"noticeWindowDays":0""",
+                """"retentionCustodyHolder":{"name":"A","contactEmail":"$secret"},"noticeWindowDays":1.5""",
+                """"retentionCustodyHolder":{"name":"A","contactEmail":"$secret"},"noticeWindowDays":"30"""",
+                """"noticeWindowDays":0""",
+            )
+        malformed.forEach { members ->
+            val e = shouldThrow<ContractViolation> { handler.handle(envelope(withMembers(members))) }
+            e.message.orEmpty().contains(secret) shouldBe false
+        }
+        stored shouldBe emptyList()
+        registered shouldBe emptyList()
+    }
+
+    @Test
+    fun `INV-AC-26713 the custody holder never prints its contact values`() {
+        CustodyHolder("A Holder", "a@example.test", "+6590000000").toString() shouldBe "CustodyHolder(redacted)"
     }
 }

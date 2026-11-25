@@ -133,7 +133,11 @@ class OffboardingExportRequestedWireTest {
             log,
             scope,
             dsl,
-            configuration.offboardingExportRequestedHandler(useCase),
+            configuration.offboardingExportRequestedHandler(
+                useCase,
+                configuration.custodyHolderRecords(dsl),
+                fixedClock,
+            ),
             RebuildRequiredSink { },
             fixedClock,
         )

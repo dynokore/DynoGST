@@ -3,6 +3,7 @@ package com.dynokore.gst.evidence.bootstrap
 import com.dynokore.gst.evidence.adapters.events.OffboardingExportFinishedOutbox
 import com.dynokore.gst.evidence.adapters.events.OffboardingExportRequestedHandler
 import com.dynokore.gst.evidence.adapters.persistence.ChainWiring
+import com.dynokore.gst.evidence.adapters.persistence.JooqCustodyHolderRecords
 import com.dynokore.gst.evidence.adapters.persistence.JooqOffboardingExportJobs
 import com.dynokore.gst.evidence.adapters.persistence.JooqReconciliationWorkPapers
 import com.dynokore.gst.evidence.adapters.persistence.JooqSourceDocumentReferences
@@ -14,6 +15,7 @@ import com.dynokore.gst.evidence.application.export.ExportJobs
 import com.dynokore.gst.evidence.application.export.ExportPackageStore
 import com.dynokore.gst.evidence.application.export.ExportResultPublisher
 import com.dynokore.gst.evidence.application.export.ExportTenantEvidence
+import com.dynokore.gst.evidence.application.retention.CustodyHolderRecords
 import com.dynokore.platform.evidencestore.ObjectStore
 import com.dynokore.platform.evidencestore.exportpackage.PackageContentClass
 import com.dynokore.platform.outboxandqueue.ConsumerSubscription
@@ -104,8 +106,14 @@ class OffboardingExportConfiguration {
     ): ExportTenantEvidence = ExportTenantEvidence(sources, jobs, store, integrity, publisher, clock)
 
     @Bean
-    fun offboardingExportRequestedHandler(useCase: ExportTenantEvidence): OffboardingExportRequestedHandler =
-        OffboardingExportRequestedHandler(useCase)
+    fun custodyHolderRecords(dsl: DSLContext): CustodyHolderRecords = JooqCustodyHolderRecords(dsl)
+
+    @Bean
+    fun offboardingExportRequestedHandler(
+        useCase: ExportTenantEvidence,
+        custodyHolders: CustodyHolderRecords,
+        clock: Clock,
+    ): OffboardingExportRequestedHandler = OffboardingExportRequestedHandler(useCase, custodyHolders, clock)
 
     @Bean
     @Suppress("LongParameterList")

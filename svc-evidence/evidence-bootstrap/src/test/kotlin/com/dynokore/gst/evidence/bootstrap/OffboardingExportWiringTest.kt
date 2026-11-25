@@ -169,7 +169,11 @@ class OffboardingExportWiringTest {
             log,
             scope,
             dsl,
-            configuration.offboardingExportRequestedHandler(useCase),
+            configuration.offboardingExportRequestedHandler(
+                useCase,
+                configuration.custodyHolderRecords(dsl),
+                fixedClock,
+            ),
             RebuildRequiredSink { },
             fixedClock,
         )
@@ -484,6 +488,8 @@ class OffboardingExportWiringTest {
                         { },
                         fixedClock,
                     ),
+                    configuration.custodyHolderRecords(DSL.using(SQLDialect.POSTGRES)),
+                    fixedClock,
                 ),
             )
         }.isInstanceOf(IllegalStateException::class.java)
