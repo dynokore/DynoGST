@@ -19,6 +19,11 @@ service-runtime:
   event-log-pool.minimum-idle: 1
   modules.schema: payload
   idempotency.schema: payload
+  # INV-AC-28915: the register edge runs under the published contract timeout (x-timeout: 1000 of getRegisterAndRates),
+  # not the 5 s library default. The brackets keep the characters "->" in the map key.
+  resilience.edges:
+    "[payload-svc->masterdata-svc]":
+      timeout: 1000ms
 management:
   server.port: 8081 # API-33: health, metrics and diagnostics only on the management port, no token
   endpoints.web:
