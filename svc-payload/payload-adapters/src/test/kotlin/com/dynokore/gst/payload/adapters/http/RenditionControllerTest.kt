@@ -22,20 +22,29 @@ import tools.jackson.databind.JsonNode
 import tools.jackson.databind.cfg.DateTimeFeature
 import tools.jackson.databind.json.JsonMapper
 import java.lang.reflect.Proxy
+import java.security.MessageDigest
 import java.time.Instant
 import java.util.Base64
+import java.util.HexFormat
 
 private const val ENTITY = "ENT-0001"
 private const val CHECK_ID = "chk-0001"
 private const val SHA = "e5c62df5dab5c87b6a015ef3d43597074d1eec433b15f51aec63b8582d0e4ab4"
 private const val BY = "5b1f7c0e-2d4a-4c55-9a3e-0c1d2e3f4a5b"
 private val SAMPLE = "%PDF-1.4\n".toByteArray(Charsets.UTF_8)
-private val ARTEFACT = "{\"checkId\":\"chk-0001\",\"result\":\"FAILED\"}".toByteArray(Charsets.UTF_8)
+private val ARTEFACT =
+    (
+        "{\"checkId\":\"chk-0001\",\"checkedAt\":\"2026-03-20T03:20:00Z\",\"checkedBy\":\"$BY\"," +
+            "\"entityRef\":\"ENT-0001\",\"missingWording\":[\"Buyer Created Tax Invoice\"],\"result\":\"FAILED\"," +
+            "\"sampleSha256\":\"$SHA\",\"scenario\":\"SELF_BILLING\",\"submissionType\":\"TYPE_2\",\"textFound\":true}"
+    ).toByteArray(Charsets.UTF_8)
+private const val ARTEFACT_SHA = "e40fe0157e91bbb6f722d2d56f1b49ef2535a63a5aa9381f9ee0fb19d8dce76c"
 
 private fun stored(
     entity: String = ENTITY,
     checkId: String = CHECK_ID,
     result: SampleResult = SampleResult.FAILED,
+    artefact: ByteArray = ARTEFACT,
 ) = StoredSampleCheck(
     checkId,
     entity,
@@ -48,7 +57,7 @@ private fun stored(
     true,
     Instant.parse("2026-03-20T03:20:00Z"),
     BY,
-    ARTEFACT,
+    artefact,
 )
 
 private class Rows(
@@ -171,9 +180,23 @@ class RenditionControllerTest {
         c["checkedBy"].asString() shouldBe BY
         c["findingCode"].asString() shouldBe "PAY-014"
         c["artefactBytes"].asString() shouldBe Base64.getEncoder().encodeToString(ARTEFACT)
+        val served = Base64.getDecoder().decode(c["artefactBytes"].asString())
+        HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(served)) shouldBe ARTEFACT_SHA
         tree["standing"]["open"].asBoolean() shouldBe true
         keys.asked shouldBe listOf(Triple("U1", RENDITION_EVIDENCE_VIEW, ENTITY))
         rows.metadataCalls shouldBe 0
+    }
+
+    @Test
+    fun `INV-AC-27770 artefactBytes are the stored bytes even where the fields cannot reproduce them`() {
+        // The stored bytes keep the nanoseconds of checkedAt that the stored field no longer has.
+        val kept =
+            String(ARTEFACT, Charsets.UTF_8)
+                .replace("03:20:00Z", "03:20:00.123456789Z")
+                .toByteArray(Charsets.UTF_8)
+        rows = Rows(listOf(stored(artefact = kept)), emptyMap())
+        val check = body(sut().getRenditionSampleCheck(ENTITY, CHECK_ID))["check"]
+        check["artefactBytes"].asString() shouldBe Base64.getEncoder().encodeToString(kept)
     }
 
     @Test
@@ -277,5 +300,6 @@ class RenditionControllerTest {
         sut().getRenditionSampleCheckMetadata(ENTITY, CHECK_ID).problem(401, "SRT-003")
         keys.asked shouldBe emptyList()
         rows.metadataCalls shouldBe 0
+        rows.findCalls shouldBe 0
     }
 }
