@@ -44,13 +44,13 @@ class Harness(
     fun connect(
         tenant: UUID,
         adapter: AdapterId,
-        agreedRate: String,
+        agreedRate: String?,
     ) = asTenant(tenant) {
         dsl
             .insertInto(AP_CONNECTION)
             .set(AP_CONNECTION.TENANT_ID, tenant)
             .set(AP_CONNECTION.ADAPTER_ID, adapter.value)
-            .set(AP_CONNECTION.AGREED_RATE, BigDecimal(agreedRate))
+            .set(AP_CONNECTION.AGREED_RATE, agreedRate?.let { BigDecimal(it) })
             .execute()
     }
 

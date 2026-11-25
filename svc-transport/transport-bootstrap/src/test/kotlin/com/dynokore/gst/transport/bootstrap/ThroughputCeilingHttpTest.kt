@@ -228,6 +228,21 @@ class ThroughputCeilingHttpTest {
     }
 
     @Test
+    fun `INV-AC-24957 (4) a connection with no agreed rate answers 422 POL-010 not POL-008 and the ceiling stays none`(
+        @TempDir dir: Path,
+    ) = run(dir) { r ->
+        val tenant = UUID.randomUUID()
+        r.harness.connect(tenant, r.harness.primary, null)
+        val connection = r.harness.primary.value
+        val answer = r.set(connection, "50", r.permitted(tenant))
+        answer.status shouldBe 422
+        answer.body shouldContain "POL-010"
+        answer.body shouldNotContain "POL-008"
+        r.stored(tenant, connection) shouldBe null
+        r.rows(tenant, connection) shouldBe 1
+    }
+
+    @Test
     fun `INV-AC-24957 a ref that names no connection of the tenant answers 404 and nothing is stored`(
         @TempDir dir: Path,
     ) = run(dir) { r ->

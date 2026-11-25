@@ -29,8 +29,7 @@ class ThroughputCeilingCommand(
         connectionRef: String,
         value: BigDecimal,
     ): ApConnection {
-        val before = load(tenant, connectionRef)
-        if (before.agreedRate == null) throw boundUnavailable()
+        load(tenant, connectionRef)
         store(AdapterId(connectionRef), value)
         return load(tenant, connectionRef).toResponse()
     }

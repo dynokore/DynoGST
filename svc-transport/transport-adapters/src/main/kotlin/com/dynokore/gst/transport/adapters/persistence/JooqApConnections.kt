@@ -7,7 +7,7 @@ import com.dynokore.gst.transport.domain.ThroughputCeiling
 import com.dynokore.platform.tenancykernel.TransactionRunner
 import org.jooq.DSLContext
 
-/** The rate fields of the AP connection record of the bound tenant (INV-REQ-1317). */
+/** The rate fields of the AP connection record of the bound tenant (INV-REQ-1317); no agreed rate reads as null. */
 class JooqApConnections(
     private val dsl: DSLContext,
     private val runner: TransactionRunner,
@@ -19,7 +19,7 @@ class JooqApConnections(
                 .from(AP_CONNECTION)
                 .where(AP_CONNECTION.ADAPTER_ID.eq(adapter.value))
                 .fetchOne()
-                ?.let { ThroughputCeiling.restore(checkNotNull(it.value1()), it.value2()) }
+                ?.let { row -> row.value1()?.let { rate -> ThroughputCeiling.restore(rate, row.value2()) } }
         }
 
     override fun saveCeiling(
