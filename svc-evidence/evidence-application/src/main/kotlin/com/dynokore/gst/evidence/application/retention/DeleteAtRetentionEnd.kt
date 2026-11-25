@@ -18,11 +18,9 @@ enum class DeleteAtRetentionEndResult {
 }
 
 /**
- * Decides and orders a retention-end deletion (INV-REQ-639). The unit is locked first, before the registry and every
- * other read, so no statement on a partitioned table precedes the lock and the audited tail hashes are read under it.
- * The first failing check is the result and every refusal returns before the audit and before `detach`, `archive` and
- * `drop`; on success the audit entry comes first (NIST SP 800-53 AU-2), then detach, archive and drop. The actor is a
- * user ID.
+ * Decides and orders a retention-end deletion (INV-REQ-639). The first failing check is the result and every refusal
+ * returns before any audit or lifecycle call; on success the audit entry comes first (NIST SP 800-53 AU-2), then
+ * detach, archive and drop. The actor is a user ID.
  */
 @Suppress("LongParameterList") // one port per fact the ruled design names; each is a separate store
 class DeleteAtRetentionEnd(
@@ -41,7 +39,6 @@ class DeleteAtRetentionEnd(
         actorUserId: String,
         partitionId: String,
     ): DeleteAtRetentionEndResult {
-        lifecycle.lock(partitionId)
         val partition = registry.find(partitionId)
         return when {
             partition == null -> DeleteAtRetentionEndResult.NOT_FOUND
