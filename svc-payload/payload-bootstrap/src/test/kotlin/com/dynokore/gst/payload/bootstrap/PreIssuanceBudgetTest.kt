@@ -64,7 +64,7 @@ class PreIssuanceBudgetTest : OverrideWiringBase() {
 
     private fun draft(gstn: String? = "M90054321K"): String =
         listOfNotNull(
-            "\"entityRef\":\"E-1\"",
+            "\"entityRef\":\"E-001\"",
             "\"currency\":\"SGD\"",
             "\"totalIncludingTax\":\"109.00\"",
             "\"submissionType\":\"TYPE_1A\"",
@@ -80,7 +80,8 @@ class PreIssuanceBudgetTest : OverrideWiringBase() {
     ): T =
         SlowMasterdata(delayMs).use { md ->
             AccessStub().use { access ->
-                withService(localReplica(), access, masterdataUrl = md.url) { service ->
+                val replica = localReplica("u-1" to "transaction.ingest")
+                withService(replica, access, masterdataUrl = md.url) { service ->
                     val context = checkNotNull(service.context)
                     val filters =
                         context
@@ -154,9 +155,9 @@ class PreIssuanceBudgetTest : OverrideWiringBase() {
             val answer = mvc.check(draft(), BUDGET_MS)
             withClue("status ${answer.status}, ${answer.millis} ms, body ${answer.body}") {
                 answer.status shouldBe 200
-                answer.body shouldContain "\"verdict\":\"WARN\""
-                flagsOf(answer.body) shouldBe listOf("REGISTER_UNAVAILABLE")
                 answer.millis shouldBeLessThan BUDGET_MS + MARGIN_MS
+                flagsOf(answer.body) shouldBe listOf("REGISTER_UNAVAILABLE")
+                answer.body shouldContain "\"verdict\":\"WARN\""
             }
         }
     }
