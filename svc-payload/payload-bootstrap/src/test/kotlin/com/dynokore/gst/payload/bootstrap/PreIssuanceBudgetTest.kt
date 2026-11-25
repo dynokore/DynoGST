@@ -155,9 +155,9 @@ class PreIssuanceBudgetTest : OverrideWiringBase() {
             val answer = mvc.check(draft(), BUDGET_MS)
             withClue("status ${answer.status}, ${answer.millis} ms, body ${answer.body}") {
                 answer.status shouldBe 200
-                answer.body shouldContain "\"verdict\":\"WARN\""
-                flagsOf(answer.body) shouldBe listOf("REGISTER_UNAVAILABLE")
                 answer.millis shouldBeLessThan BUDGET_MS + MARGIN_MS
+                flagsOf(answer.body) shouldBe listOf("REGISTER_UNAVAILABLE")
+                answer.body shouldContain "\"verdict\":\"WARN\""
             }
         }
     }
