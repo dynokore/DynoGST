@@ -64,7 +64,7 @@ class PreIssuanceBudgetTest : OverrideWiringBase() {
 
     private fun draft(gstn: String? = "M90054321K"): String =
         listOfNotNull(
-            "\"entityRef\":\"E-001\"",
+            "\"entityRef\":\"E-1\"",
             "\"currency\":\"SGD\"",
             "\"totalIncludingTax\":\"109.00\"",
             "\"submissionType\":\"TYPE_1A\"",
@@ -80,8 +80,7 @@ class PreIssuanceBudgetTest : OverrideWiringBase() {
     ): T =
         SlowMasterdata(delayMs).use { md ->
             AccessStub().use { access ->
-                val replica = localReplica("u-1" to "transaction.ingest")
-                withService(replica, access, masterdataUrl = md.url) { service ->
+                withService(localReplica(), access, masterdataUrl = md.url) { service ->
                     val context = checkNotNull(service.context)
                     val filters =
                         context
