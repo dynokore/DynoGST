@@ -40,6 +40,8 @@ internal class PageStub {
     @Volatile private var status = 200
 
     @Volatile private var body: String? = null
+
+    @Volatile private var contentType = JSON
     val seen = CopyOnWriteArrayList<PageRequest>()
     private val server =
         HttpServer.create(InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0).apply {
@@ -59,7 +61,7 @@ internal class PageStub {
                         x.requestHeaders.getFirst("Authorization"),
                     )
                 val bytes = body?.toByteArray()
-                if (bytes != null) x.responseHeaders.add("Content-Type", "application/json")
+                if (bytes != null) x.responseHeaders.add("Content-Type", contentType)
                 x.sendResponseHeaders(status, bytes?.size?.toLong() ?: -1)
                 bytes?.let { x.responseBody.write(it) }
                 x.close()
@@ -74,13 +76,19 @@ internal class PageStub {
     fun answer(
         status: Int,
         body: String?,
+        contentType: String = JSON,
     ) {
         this.status = status
         this.body = body
+        this.contentType = contentType
         seen.clear()
     }
 
     fun stop() = server.stop(0)
+
+    private companion object {
+        const val JSON = "application/json"
+    }
 }
 
 /** Starts a context that holds only the client and what it injects; the failure of the start, or null. */
@@ -112,6 +120,9 @@ internal fun namesProperty(
 
 /** The base URL values that must stop the start: blank, and an unresolved placeholder. */
 internal val BAD_BASE_URLS = listOf("", "   ", "\${CONSOLE_UNSET_IN_TEST}", "\${CONSOLE_UNSET_IN_TEST}/x")
+
+/** `Content-Type` values that do not parse. */
+internal val MALFORMED_CONTENT_TYPES = listOf("garbage", "a/b;=", "*/json", "application/json;charset=bogus")
 
 /** Cursors that a wrong query encoding would change or expand. */
 internal val HOSTILE_CURSORS = listOf("ra1.a+b/c=.d", "x&limit=500", "{entityRef}", "{unknown}", "%41 #?")
@@ -282,6 +293,19 @@ class AttestationReadClientTest {
             for (status in listOf(403, 404)) {
                 stub.answer(status, body)
                 assertTrue(page() is PageReply.Unavailable, "$status $body")
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("INV-AC-27606 attestations an answer with a malformed Content-Type is Unavailable")
+    fun malformedContentType() {
+        for (contentType in MALFORMED_CONTENT_TYPES) {
+            for (status in listOf(200, 403, 500)) {
+                val body = if (status == 200) """{"items":[]}""" else envelope(status, "SRT-$status")
+                stub.answer(status, body, contentType)
+                assertTrue(page() is PageReply.Unavailable, "$status $contentType")
+                assertEquals(1, stub.seen.size, "$status $contentType")
             }
         }
     }

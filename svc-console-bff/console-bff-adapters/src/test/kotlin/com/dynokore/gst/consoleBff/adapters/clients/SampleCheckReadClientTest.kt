@@ -131,6 +131,19 @@ class SampleCheckReadClientTest {
     }
 
     @Test
+    @DisplayName("INV-AC-27606 sample checks an answer with a malformed Content-Type is Unavailable")
+    fun malformedContentType() {
+        for (contentType in MALFORMED_CONTENT_TYPES) {
+            for (status in listOf(200, 403, 500)) {
+                val body = if (status == 200) """{"items":[]}""" else envelope(status, "SRT-$status")
+                stub.answer(status, body, contentType)
+                assertTrue(page() is PageReply.Unavailable, "$status $contentType")
+                assertEquals(1, stub.seen.size, "$status $contentType")
+            }
+        }
+    }
+
+    @Test
     @DisplayName("INV-AC-27606 sample checks 5xx, a refused connection, an open breaker and a timeout are Unavailable")
     fun unavailable() {
         for (status in listOf(500, 503)) {
