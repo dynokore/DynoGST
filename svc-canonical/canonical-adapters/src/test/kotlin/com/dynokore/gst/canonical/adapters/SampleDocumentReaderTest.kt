@@ -368,7 +368,7 @@ class SampleDocumentReaderTest {
         names shouldBe UpstreamFunction.entries.map { it.name }.toSet()
     }
 
-    /** The columns at the branch point (INV-T-5544 to INV-T-5546 and later tasks); this task adds none. */
+    /** The columns of INV-T-5544 to INV-T-5546 and later tasks; INV-T-28871 added the three source columns. */
     private val expectedColumns =
         mapOf(
             "document" to
@@ -378,7 +378,8 @@ class SampleDocumentReaderTest {
                 "prescribed_period_ref state tenant_id transaction_date",
             "document_version" to
                 "canonical created_at created_by doc_uuid entity_id mapping_pack_version mde_pack_version " +
-                "partition_date scope_pack_version scope_verdict specification_version tenant_id version",
+                "partition_date scope_pack_version scope_verdict source_key source_revision source_system " +
+                    "specification_version tenant_id version",
             "document_line" to
                 "description doc_uuid line_amount line_number quantity tax_amount tax_code tenant_id " +
                 "unit_price version",
