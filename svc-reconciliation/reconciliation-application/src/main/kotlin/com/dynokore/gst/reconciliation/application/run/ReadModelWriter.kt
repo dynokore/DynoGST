@@ -26,6 +26,10 @@ data class DocumentVersionFacts(
     val sgdTotalExcludingTax: BigDecimal?,
     val sgdTotalTax: BigDecimal?,
     val lines: List<DocumentLineFacts>,
+    /** The supplier's UEN, only from an SG_UEN identifier; null otherwise (INV-AC-28552). */
+    val sellerUen: String?,
+    /** The buyer's UEN, only from an SG_UEN identifier; null otherwise (INV-AC-28552). */
+    val buyerUen: String?,
 )
 
 /**

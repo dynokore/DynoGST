@@ -44,6 +44,8 @@ class CanonicalVersionCreatedHandler(
                 sgdTotalExcludingTax = sgdTotal(document, "sgdTotalExcludingTax"),
                 sgdTotalTax = sgdTotal(document, "sgdTotalTax"),
                 lines = lines(document),
+                sellerUen = partyUen(document, "supplier"),
+                buyerUen = partyUen(document, "buyer"),
             )
         return if (writer.recordVersion(event.tenant.toString(), event.entity.value, facts)) {
             HandleOutcome.APPLIED
@@ -100,6 +102,23 @@ class CanonicalVersionCreatedHandler(
             ?.takeUnless { it.isNull }
             ?.let { PayloadReading.decimal(it, name) }
 
+    /**
+     * The UEN of a party: its `identifierValue` only when `identifierScheme` equals `SG_UEN` exactly and the value is
+     * a non-blank string; otherwise null. Never taken from `name` or `gstn` (INV-AC-28552).
+     */
+    private fun partyUen(
+        document: JsonNode,
+        role: String,
+    ): String? {
+        val party = optionalWrapped(document, "parties")?.get(role)?.takeIf { it.isObject }
+        val scheme = party?.get("identifierScheme")?.takeIf { it.isString }?.asString()
+        return party
+            ?.get("identifierValue")
+            ?.takeIf { scheme == SG_UEN && it.isString }
+            ?.asString()
+            ?.takeUnless { it.isBlank() }
+    }
+
     private fun lines(document: JsonNode): List<DocumentLineFacts> {
         val array = wrapped(document, "lines")
         if (!array.isArray) throw ContractViolation("canonicalDocument.lines.value is not an array")
@@ -119,6 +138,8 @@ class CanonicalVersionCreatedHandler(
         }
     }
 }
+
+private const val SG_UEN = "SG_UEN"
 
 internal fun JsonNode.need(name: String): JsonNode =
     get(name)?.takeUnless { it.isNull } ?: throw ContractViolation("the payload has no $name")

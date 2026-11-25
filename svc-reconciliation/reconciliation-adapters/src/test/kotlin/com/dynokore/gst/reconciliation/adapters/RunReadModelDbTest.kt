@@ -91,6 +91,8 @@ class RunReadModelDbTest {
         money.excl?.let(::BigDecimal),
         money.tax?.let(::BigDecimal),
         money.lines,
+        null,
+        null,
     )
 
     private fun purchase(

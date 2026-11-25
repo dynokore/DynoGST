@@ -149,6 +149,8 @@ class RunReadModelHandlersTest {
         sgdTotalExcludingTax = BigDecimal("203.18"),
         sgdTotalTax = BigDecimal("18.29"),
         lines = lines,
+        sellerUen = null,
+        buyerUen = null,
     )
 
     private fun handle(

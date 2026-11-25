@@ -54,10 +54,23 @@ class JooqRunReadModel(
                 .set(DOCUMENT_VERSION.EXCHANGE_RATE, facts.exchangeRate)
                 .set(DOCUMENT_VERSION.SGD_TOTAL_EXCLUDING_TAX, facts.sgdTotalExcludingTax)
                 .set(DOCUMENT_VERSION.SGD_TOTAL_TAX, facts.sgdTotalTax)
+                .set(DOCUMENT_VERSION.SELLER_UEN, facts.sellerUen)
+                .set(DOCUMENT_VERSION.BUYER_UEN, facts.buyerUen)
                 .set(DOCUMENT_VERSION.RECEIVED_AT, Instant.now().atOffset(ZoneOffset.UTC))
                 .onConflictDoNothing()
                 .execute()
         if (inserted == 0) return false
+        insertLines(tenantId, docId, entityRef, facts)
+        upsertPeriod(tenantId, entityRef, docId, facts.docsequence, facts.periodRef)
+        return true
+    }
+
+    private fun insertLines(
+        tenantId: UUID,
+        docId: UUID,
+        entityRef: String,
+        facts: DocumentVersionFacts,
+    ) {
         facts.lines.forEach { line ->
             dsl
                 .insertInto(DOCUMENT_LINE)
@@ -72,8 +85,6 @@ class JooqRunReadModel(
                 .set(DOCUMENT_LINE.TAX_AMOUNT, line.taxAmount)
                 .execute()
         }
-        upsertPeriod(tenantId, entityRef, docId, facts.docsequence, facts.periodRef)
-        return true
     }
 
     override fun reassignPeriod(
