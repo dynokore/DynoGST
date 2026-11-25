@@ -110,6 +110,8 @@ class RegisterWriterWiringTest {
                     SubmissionEvents.ORGANISATION_STRUCTURE_CHANGED_TOPIC,
                 SubmissionEvents.FEED_HEALTH_CHANGED_TYPE to SubmissionEvents.FEED_HEALTH_CHANGED_TOPIC,
                 SubmissionEvents.AGGREGATE_WINDOW_CHANGED_TYPE to SubmissionEvents.AGGREGATE_WINDOW_CHANGED_TOPIC,
+                SubmissionEvents.PRIOR_SUBMISSION_EVIDENCE_IMPORTED_TYPE to
+                    SubmissionEvents.PRIOR_SUBMISSION_EVIDENCE_IMPORTED_TOPIC,
                 "com.dynokore.gst.canonical.DocumentHeld.v1" to "gst.canonical.document-held.v1",
                 "com.dynokore.gst.canonical.DocumentReleased.v1" to "gst.canonical.document-released.v1",
                 SubmissionEvents.RULE_PACK_STAGED_TYPE to SubmissionEvents.RULE_PACK_STAGED_TOPIC,
@@ -151,6 +153,7 @@ class RegisterWriterWiringTest {
                 "identityTripleCorrectedConsumer",
                 "organisationStructureChangedConsumer",
                 "entityNodeProfileChangedConsumer",
+                "priorEvidenceImportedInboxConsumer",
                 "feedHealthChangedConsumer",
                 "aggregateWindowChangedConsumer",
                 "documentHeldConsumer",

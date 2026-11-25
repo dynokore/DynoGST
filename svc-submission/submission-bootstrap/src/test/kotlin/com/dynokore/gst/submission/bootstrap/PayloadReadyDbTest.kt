@@ -377,6 +377,7 @@ class PayloadReadyDbTest {
                 "identityTripleCorrectedConsumer",
                 "organisationStructureChangedConsumer",
                 "entityNodeProfileChangedConsumer",
+                "priorEvidenceImportedInboxConsumer",
                 "feedHealthChangedConsumer",
                 "aggregateWindowChangedConsumer",
                 "documentHeldConsumer",

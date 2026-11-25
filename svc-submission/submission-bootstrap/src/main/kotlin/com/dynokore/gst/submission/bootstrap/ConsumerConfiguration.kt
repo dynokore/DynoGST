@@ -3,6 +3,7 @@ package com.dynokore.gst.submission.bootstrap
 import com.dynokore.gst.submission.adapters.events.JacksonPayloadReadyDataReader
 import com.dynokore.gst.submission.application.arrival.ArrivalPlanning
 import com.dynokore.gst.submission.application.arrival.CodeRaising
+import com.dynokore.gst.submission.application.arrival.PriorSolutionCheck
 import com.dynokore.gst.submission.application.arrival.ScopeCheck
 import com.dynokore.gst.submission.application.ordering.CreditNoteHold
 import com.dynokore.gst.submission.application.queue.InFlightStore
@@ -45,7 +46,7 @@ class ConsumerConfiguration {
     fun payloadReadyDataReader(): PayloadReadyDataReader = JacksonPayloadReadyDataReader()
 
     @Bean
-    @Suppress("LongParameterList") // composition root: the handler takes nine collaborators
+    @Suppress("LongParameterList") // composition root: the handler takes ten collaborators
     fun payloadReadyHandler(
         tenants: TenantContext,
         store: SubmissionStore,
@@ -55,9 +56,21 @@ class ConsumerConfiguration {
         planning: ArrivalPlanning,
         raising: CodeRaising,
         scopeCheck: ScopeCheck,
+        priorSolution: PriorSolutionCheck,
         hold: CreditNoteHold,
     ): PayloadReadyHandler =
-        PayloadReadyHandler(tenants, store, queue, reader, inFlight, planning, raising, scopeCheck, hold)
+        PayloadReadyHandler(
+            tenants,
+            store,
+            queue,
+            reader,
+            inFlight,
+            planning,
+            raising,
+            scopeCheck,
+            priorSolution,
+            hold,
+        )
 
     /**
      * The service declares its own consumer: product-runtime also supplies `EventHandler` beans, so the default

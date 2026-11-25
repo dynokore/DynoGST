@@ -146,6 +146,7 @@ class ExtensionWiringTest {
                 "identityTripleCorrectedConsumer",
                 "organisationStructureChangedConsumer",
                 "entityNodeProfileChangedConsumer",
+                "priorEvidenceImportedInboxConsumer",
                 "feedHealthChangedConsumer",
                 "aggregateWindowChangedConsumer",
                 "documentHeldConsumer",

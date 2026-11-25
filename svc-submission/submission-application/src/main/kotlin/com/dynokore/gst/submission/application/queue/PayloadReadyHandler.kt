@@ -2,6 +2,8 @@ package com.dynokore.gst.submission.application.queue
 
 import com.dynokore.gst.submission.application.arrival.ArrivalPlanning
 import com.dynokore.gst.submission.application.arrival.CodeRaising
+import com.dynokore.gst.submission.application.arrival.PriorSolutionCheck
+import com.dynokore.gst.submission.application.arrival.PriorSolutionOutcome
 import com.dynokore.gst.submission.application.arrival.ScopeCheck
 import com.dynokore.gst.submission.application.arrival.ScopeOutcome
 import com.dynokore.gst.submission.application.ordering.CreditNoteHold
@@ -30,6 +32,9 @@ import java.util.HexFormat
  * The scope check (INV-REQ-722, INV-AC-24505) is the arrival step between the insert and the plan: a credit note whose
  * scope verdict disagrees with its preceding document's is moved to BLOCKED with SUB-013 by [ScopeCheck], and the
  * handler then neither plans nor enqueues it. It runs in the same transaction as the insert.
+ *
+ * The prior-solution check (INV-REQ-1110, INV-AC-28449) follows it: a version held with SUB-017 gets its hold row in
+ * the same transaction and is not cancelled against, planned or enqueued here. An unavailable fact fails the delivery.
  */
 @Suppress("LongParameterList") // the constructor shape is ruled (INV-T-21096 design (2))
 class PayloadReadyHandler(
@@ -41,9 +46,10 @@ class PayloadReadyHandler(
     private val planning: ArrivalPlanning,
     private val raising: CodeRaising,
     private val scopeCheck: ScopeCheck,
+    private val priorSolution: PriorSolutionCheck,
     private val hold: CreditNoteHold,
 ) : EventHandler {
-    @Suppress("ReturnCount") // duplicate, blocked by the scope check, applied: the three outcomes of the arrival step
+    @Suppress("ReturnCount") // duplicate, stopped by an arrival check, applied: the three outcomes of the arrival step
     override fun handle(event: Envelope): HandleOutcome {
         val data = reader.read(event.dataJson)
         val docUuid = data.docUuid
@@ -79,11 +85,21 @@ class PayloadReadyHandler(
             }
             return HandleOutcome.IGNORED
         }
-        if (scopeCheck.check(tenant, docUuid, version) == ScopeOutcome.Blocked) return HandleOutcome.APPLIED
+        if (stopsArrival(tenant, docUuid, version, event.entity.value)) return HandleOutcome.APPLIED
         cancelSuperseded(tenant, docUuid, version)
         plan(tenant, docUuid, version)
         return HandleOutcome.APPLIED
     }
+
+    /** True when the scope check blocks the version or, asked after it, the prior-solution check holds it. */
+    private fun stopsArrival(
+        tenant: TenantId,
+        docUuid: String,
+        version: Int,
+        entityRef: String,
+    ): Boolean =
+        scopeCheck.check(tenant, docUuid, version) == ScopeOutcome.Blocked ||
+            priorSolution.check(tenant, docUuid, version, entityRef) == PriorSolutionOutcome.Held
 
     /**
      * INV-REQ-573 (INV-AC-609): a newer version that reached `READY` cancels every older version of the Doc UUID that

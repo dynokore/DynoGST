@@ -101,6 +101,8 @@ class CompletenessConsumersWiringTest {
                     SubmissionEvents.ORGANISATION_STRUCTURE_CHANGED_TOPIC,
                 feedType to feedTopic,
                 windowType to windowTopic,
+                SubmissionEvents.PRIOR_SUBMISSION_EVIDENCE_IMPORTED_TYPE to
+                    SubmissionEvents.PRIOR_SUBMISSION_EVIDENCE_IMPORTED_TOPIC,
                 "com.dynokore.gst.canonical.DocumentHeld.v1" to "gst.canonical.document-held.v1",
                 "com.dynokore.gst.canonical.DocumentReleased.v1" to "gst.canonical.document-released.v1",
                 SubmissionEvents.RULE_PACK_STAGED_TYPE to "gst.platform.rule-pack-staged.v1",

@@ -2,23 +2,32 @@ package com.dynokore.gst.submission.bootstrap
 
 import com.dynokore.gst.submission.adapters.events.OutboxDocumentCodeRaisedPublisher
 import com.dynokore.gst.submission.adapters.persistence.FilingFactFiledPeriods
+import com.dynokore.gst.submission.adapters.persistence.JooqArrivingDocumentFacts
 import com.dynokore.gst.submission.adapters.persistence.JooqFilingFactStore
+import com.dynokore.gst.submission.adapters.persistence.JooqPriorSolutionHoldStore
 import com.dynokore.gst.submission.adapters.persistence.JooqRaisedCodes
 import com.dynokore.gst.submission.adapters.persistence.JooqRegisteredDocuments
 import com.dynokore.gst.submission.adapters.persistence.JooqScopeBlocks
 import com.dynokore.gst.submission.adapters.persistence.JooqScopeFacts
 import com.dynokore.gst.submission.application.arrival.ArrivalMetrics
 import com.dynokore.gst.submission.application.arrival.ArrivalPlanning
+import com.dynokore.gst.submission.application.arrival.ArrivingDocumentFacts
 import com.dynokore.gst.submission.application.arrival.CodeRaising
 import com.dynokore.gst.submission.application.arrival.CodeSignals
 import com.dynokore.gst.submission.application.arrival.FiledPeriods
+import com.dynokore.gst.submission.application.arrival.PriorSolutionCheck
 import com.dynokore.gst.submission.application.arrival.RaisedCodes
 import com.dynokore.gst.submission.application.arrival.RegisteredDocuments
 import com.dynokore.gst.submission.application.arrival.ScopeBlocks
 import com.dynokore.gst.submission.application.arrival.ScopeCheck
 import com.dynokore.gst.submission.application.arrival.ScopeFacts
 import com.dynokore.gst.submission.application.filing.FilingFactStore
+import com.dynokore.gst.submission.application.migration.ImportedPriorEvidenceStore
+import com.dynokore.gst.submission.application.migration.PriorSolutionHoldStore
+import com.dynokore.gst.submission.application.migration.RaisePriorSolutionHold
 import com.dynokore.gst.submission.application.queue.ErrorCatalogue
+import com.dynokore.gst.submission.application.queue.InFlightStore
+import com.dynokore.gst.submission.application.startdate.MigrationCutoverDates
 import com.dynokore.platform.outboxandqueue.OutboxWriter
 import com.dynokore.platform.tenancykernel.TenantContext
 import io.micrometer.core.instrument.MeterRegistry
@@ -29,9 +38,10 @@ import java.time.Clock
 
 /**
  * Wiring of the arrival handler (INV-AC-21088, INV-AC-21095): the code store, the outbox signal, [CodeRaising], the
- * register and filing readers, the meters and [ArrivalPlanning].
+ * register and filing readers, the meters and [ArrivalPlanning], the scope check and the prior-solution check.
  */
 @Configuration(proxyBeanMethods = false)
+@Suppress("TooManyFunctions") // composition root: one bean function per collaborator of the arrival step
 class ArrivalConfiguration {
     @Bean
     fun raisedCodes(dsl: DSLContext): RaisedCodes = JooqRaisedCodes(dsl)
@@ -85,4 +95,26 @@ class ArrivalConfiguration {
         blocks: ScopeBlocks,
         raising: CodeRaising,
     ): ScopeCheck = ScopeCheck(facts, blocks, raising)
+
+    @Bean
+    fun arrivingDocumentFacts(dsl: DSLContext): ArrivingDocumentFacts = JooqArrivingDocumentFacts(dsl)
+
+    @Bean
+    fun priorSolutionHoldStore(dsl: DSLContext): PriorSolutionHoldStore = JooqPriorSolutionHoldStore(dsl)
+
+    @Bean
+    fun raisePriorSolutionHold(
+        store: PriorSolutionHoldStore,
+        clock: Clock,
+    ): RaisePriorSolutionHold = RaisePriorSolutionHold(store, clock)
+
+    @Bean
+    @Suppress("LongParameterList") // composition root: one parameter per collaborator of the check
+    fun priorSolutionCheck(
+        documents: ArrivingDocumentFacts,
+        cutoverDates: MigrationCutoverDates,
+        evidence: ImportedPriorEvidenceStore,
+        inFlight: InFlightStore,
+        raise: RaisePriorSolutionHold,
+    ): PriorSolutionCheck = PriorSolutionCheck(documents, cutoverDates, evidence, inFlight, raise)
 }

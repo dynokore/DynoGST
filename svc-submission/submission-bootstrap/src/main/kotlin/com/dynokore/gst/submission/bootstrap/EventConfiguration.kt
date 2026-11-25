@@ -102,6 +102,9 @@ object SubmissionEvents {
     const val ACKNOWLEDGEMENT_RECEIVED_TOPIC = "gst.transport.acknowledgement-received.v1"
     const val ACKNOWLEDGEMENT_RECEIVED_TYPE = "com.dynokore.gst.transport.AcknowledgementReceived.v1"
 
+    const val PRIOR_SUBMISSION_EVIDENCE_IMPORTED_TOPIC = "gst.evidence.prior-submission-evidence-imported.v1"
+    const val PRIOR_SUBMISSION_EVIDENCE_IMPORTED_TYPE = "com.dynokore.gst.evidence.PriorSubmissionEvidenceImported.v1"
+
     const val NET_DERIVATION_REFUSED_TOPIC = "gst.canonical.net-derivation-refused.v1"
     const val NET_DERIVATION_REFUSED_TYPE = "com.dynokore.gst.canonical.NetDerivationRefused.v1"
 
@@ -124,8 +127,9 @@ object SubmissionEvents {
      * `AcknowledgementReceived` (producer transport-svc, no content topic, INV-AC-24271, the acknowledgement writer),
      * `FeedHealthChanged` (producer ingestion-svc) and `AggregateWindowChanged` (producer aggregation-svc), no
      * content topic, the last two feeding the completeness rows (INV-REQ-792), and `IdentityTripleCorrected`
-     * (producer masterdata-svc, no content topic, INV-REQ-1006, the stored corrections); submission-svc
-     * is only their subscriber.
+     * (producer masterdata-svc, no content topic, INV-REQ-1006, the stored corrections) and
+     * `PriorSubmissionEvidenceImported` (producer evidence-svc, no content topic, INV-REQ-1109, the imported prior
+     * evidence); submission-svc is only their subscriber.
      */
     val consumed: List<CatalogueEntry> =
         listOf(
@@ -197,6 +201,14 @@ object SubmissionEvents {
                 AGGREGATE_WINDOW_CHANGED_TOPIC,
                 setOf("aggregation-svc"),
                 contentTopic = false,
+                retainedWhileResolvable = false,
+            ),
+            CatalogueEntry(
+                PRIOR_SUBMISSION_EVIDENCE_IMPORTED_TYPE,
+                PRIOR_SUBMISSION_EVIDENCE_IMPORTED_TOPIC,
+                setOf("evidence-svc"),
+                contentTopic = false,
+                recordTopic = false,
                 retainedWhileResolvable = false,
             ),
             CatalogueEntry(
