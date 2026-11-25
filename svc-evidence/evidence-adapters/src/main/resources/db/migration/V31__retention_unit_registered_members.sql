@@ -114,7 +114,8 @@ end
 $$;
 
 -- The importer's lock of one unit, created when missing, held until its transaction ends. It takes no lock on a
--- partitioned table. Owned by the migration login, as create_retention_partition is, which inserts the same row.
+-- partitioned table. Owned by evidence_sys (least privilege for SECURITY DEFINER; INV-ADR-3968 item 6a): the one
+-- right it adds is INSERT on the unit registry, under the tenant policy of that table.
 create function evidence.lock_import_unit(
     p_tenant_id uuid, p_entity_ref text, p_period_from text, p_period_to text)
     returns void
@@ -170,10 +171,12 @@ begin
 end
 $$;
 -- The replaced functions keep their grants; the owner statements are repeated for the migration lint (V21 style).
+grant insert on evidence.retention_partition to evidence_sys;
 grant create on schema evidence to evidence_sys;
 alter function evidence.mark_partition_archived(text, text) owner to evidence_sys;
 alter function evidence.lock_retention_partition(text) owner to evidence_sys;
 alter function evidence.hold_retention_partition(text) owner to evidence_sys;
+alter function evidence.lock_import_unit(uuid, text, text, text) owner to evidence_sys;
 revoke create on schema evidence from evidence_sys;
 revoke all on function evidence.lock_retention_partition(text) from public;
 grant execute on function evidence.lock_retention_partition(text) to evidence_runtime;
