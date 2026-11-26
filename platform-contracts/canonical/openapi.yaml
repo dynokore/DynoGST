@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: canonical API
-  version: 2.3.0
+  version: 2.4.0
   description: >-
     Contract-first source of truth for canonical (API-01, STK-44). The
     `canonical-contract` module generates its server interfaces and DTOs
@@ -451,6 +451,97 @@ paths:
           $ref: '#/components/responses/Error'
         '404':
           $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+  /internal/v1/canonical/ingested-documents:
+    get:
+      operationId: listIngestedDocuments
+      summary: List the document versions a principal submitted in a recording window
+      description: >-
+        Lists the document versions that the principal `submittedBy` submitted
+        and that were recorded in the window `recordedFrom` <= t <
+        `recordedTo`, from the system of record, for incident scoping
+        (INV-REQ-867). The items are ordered by sourceSystem, recordedAt,
+        docUuid and version, with cursor pagination (API-18); no offset and no
+        total count. An item carries no invoice content. The read changes
+        nothing.
+
+
+        The service checks only the scoped permission `submission.view-status`,
+        decided per request by `AuthorityReplica.decide`, never a role name.
+        The answer lists only items of entities the caller is permitted for,
+        filtered before paging. A caller permitted for none of them gets `200`
+        with no item, the same as an empty window, so the answer is no
+        existence oracle (OWASP API1). A permission decision that is
+        unavailable refuses the whole request.
+      tags: [documents]
+      x-principal: reporting
+      x-caller-auth: end-user
+      x-sync-edge: console-bff->canonical-svc
+      x-timeout: 2000
+      x-error-codes: []
+      x-requirements: [INV-REQ-867]
+      x-operation:
+        kind: PERMISSION
+        permission: submission.view-status
+        scope: entity
+        precondition: >-
+          None on recorded state; each item is listed only where the caller is
+          permitted for its entity.
+        reversibility: UNDOABLE
+        repeatKey: "none — a read-only call; it changes nothing and may be repeated."
+      parameters:
+        - name: submittedBy
+          in: query
+          required: true
+          description: The principalRef of the submitting principal.
+          schema:
+            type: string
+            maxLength: 64
+        - name: recordedFrom
+          in: query
+          required: true
+          description: Start of the recording window, inclusive.
+          schema:
+            type: string
+            format: date-time
+        - name: recordedTo
+          in: query
+          required: true
+          description: End of the recording window, exclusive.
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 100
+            maximum: 500
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: One page of ingested document versions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestedDocumentPage'
+              examples:
+                default:
+                  value:
+                    items:
+                      - sourceSystem: "erp-acme"
+                        sourceKey: "ERP-DOC-884213"
+                        sourceRevision: 1
+                        docUuid: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+                        version: 1
+                        entityRef: "E-001"
+                        recordedAt: "2026-03-20T08:00:00Z"
         default:
           $ref: '#/components/responses/Error'
 components:
@@ -1151,6 +1242,41 @@ components:
         releasedAt:
           type: string
           format: date-time
+    IngestedDocument:
+      type: object
+      required: [sourceSystem, sourceKey, sourceRevision, docUuid, version, entityRef, recordedAt]
+      properties:
+        sourceSystem:
+          type: string
+          maxLength: 60
+        sourceKey:
+          type: string
+          maxLength: 128
+        sourceRevision:
+          type: integer
+          minimum: 1
+        docUuid:
+          type: string
+          format: uuid
+        version:
+          type: integer
+          minimum: 1
+        entityRef:
+          type: string
+          maxLength: 40
+        recordedAt:
+          type: string
+          format: date-time
+    IngestedDocumentPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/IngestedDocument'
+        nextCursor:
+          type: string
   responses:
     Error:
       description: Error (API-20 envelope)

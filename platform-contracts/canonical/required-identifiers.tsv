@@ -246,3 +246,7 @@ NET_NOT_POSITIVE	enum_value	schemas/net-derivation-refused-payload.schema.json	I
 entityRef	property	schemas/canonical-version-created-payload.schema.json	INV-REQ-1037
 # INV-T-27132: optional assertionText on the decisions of the DecisionTraceRecorded payload (INV-REQ-1182)
 assertionText	property	schemas/decision-trace-recorded-payload.schema.json	INV-REQ-1182
+# INV-T-28719 (INV-AC-28716): the listing of document versions by submitting principal and recording window (INV-REQ-867).
+listIngestedDocuments	operation	openapi.yaml	INV-REQ-867
+listIngestedDocuments.200	operation_response	openapi.yaml	INV-REQ-867
+listIngestedDocuments.default	operation_response	openapi.yaml	INV-REQ-867

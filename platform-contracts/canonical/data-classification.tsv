@@ -147,3 +147,12 @@ openapi.yaml	ReleasedDocument.releasedAt	NONE
 schemas/canonical-version-created-payload.schema.json	aggregateId	NONE
 schemas/canonical-version-created-payload.schema.json	entityRef	NONE
 schemas/canonical-version-created-payload.schema.json	canonicalDocument.aggregateType	NONE
+openapi.yaml	IngestedDocumentPage.items	NONE
+openapi.yaml	IngestedDocumentPage.nextCursor	NONE
+openapi.yaml	IngestedDocument.sourceSystem	NONE
+openapi.yaml	IngestedDocument.sourceKey	NONE
+openapi.yaml	IngestedDocument.sourceRevision	NONE
+openapi.yaml	IngestedDocument.docUuid	NONE
+openapi.yaml	IngestedDocument.version	NONE
+openapi.yaml	IngestedDocument.entityRef	NONE
+openapi.yaml	IngestedDocument.recordedAt	NONE
