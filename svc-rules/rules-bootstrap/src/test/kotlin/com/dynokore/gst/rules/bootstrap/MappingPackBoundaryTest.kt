@@ -27,6 +27,11 @@ import com.dynokore.platform.serviceruntime.identity.EndUserPrincipalResolver
 import com.dynokore.platform.serviceruntime.identity.WorkloadToken
 import com.dynokore.platform.serviceruntime.identity.WorkloadTokenVerifier
 import com.dynokore.platform.serviceruntime.identity.WorkloadVerification
+import com.dynokore.platform.serviceruntime.replica.EntityProfileChanged
+import com.dynokore.platform.serviceruntime.replica.ProfileEntry
+import com.dynokore.platform.serviceruntime.replica.StructureNode
+import com.dynokore.platform.serviceruntime.replica.StructureNodeKind
+import com.dynokore.platform.serviceruntime.replica.StructureReplica
 import com.dynokore.platform.tenancyjooq.TenancyProbe
 import com.dynokore.platform.tenancykernel.TenantContext
 import com.dynokore.platform.tenancykernel.TenantId
@@ -61,6 +66,7 @@ private const val PLATFORM = "ffffffff-ffff-ffff-ffff-ffffffffffff"
 private const val CONSOLE = "console-bff"
 private const val ALT = "-alt"
 private const val PACKS = "/internal/v1/rules/mapping-packs"
+private const val RATE_SOURCES = "/internal/v1/rules/rate-sources"
 private const val ENTITY = "E-1"
 private const val WAIT_NANOS = 20_000_000_000L
 private const val WAIT_SECONDS = 30L
@@ -1213,6 +1219,15 @@ class MappingPackDefaultsTest(
     }
 
     @Test
+    fun `INV-AC-24949 acceptRateSource is refused with only the default authority and nothing is stored`() {
+        val before = snapshot()
+        val answer = call("POST", "$RATE_SOURCES/RS-1/acceptance", """{"rationale":"seen","expiresOn":"2099-01-01"}""")
+        answer.statusCode() shouldBe 403
+        json(answer).get("code").asString() shouldBe "SRT-004"
+        snapshot() shouldBe before
+    }
+
+    @Test
     fun `draftMappingPack and mapTaxCode are refused with only the defaults and nothing is stored`() {
         val before = snapshot()
         call("POST", PACKS, """{"label":"d-1","entityRef":"$ENTITY"}""").statusCode() shouldBe 403
@@ -1632,6 +1647,355 @@ class MappingPackNoBuildInfoTest(
     fun `no BuildProperties bean refuses the activation with 503 SRT-013 and stores nothing`() {
         context.getBeansOfType(BuildProperties::class.java).isEmpty() shouldBe true
         refusedActivation()
+    }
+
+    companion object {
+        @DynamicPropertySource
+        @JvmStatic
+        fun props(registry: DynamicPropertyRegistry) = registerCatalogue(registry)
+    }
+}
+
+private const val RA_USER_PREFIX = "Bearer ra-user-"
+private const val RATIONALE_LIMIT = 500
+private const val RA_SCOPE_INSERT_PACK =
+    "insert into rules.pack_registry (id, tenant_id, pack_id, pack_type, pack_version, layer, status, " +
+        "effective_from, min_engine_version, registered_by) values (?::uuid, ?::uuid, ?, 'SCOPE', ?, " +
+        "'TENANT_MAPPING', 'ARMED', '2020-01-01'::date, '1.0.0', 'tenancy-probe') returning id"
+private const val RA_SCOPE_INSERT_ARTEFACT =
+    "insert into rules.pack_artefact (id, pack_id, pack_type, pack_version, tenant_id, effective_from, " +
+        "min_engine_version, manifest, checksums, signature, contents, trusted_anchor, registered_by) " +
+        "values (?::uuid, ?, 'SCOPE', ?, ?::uuid, '2020-01-01'::date, '1.0.0', '{}'::jsonb, '{}'::jsonb, ?, " +
+        "?::jsonb, 'anchor', 'tenancy-probe') returning id"
+
+/** What the tenant-scope authority of the acceptance tests was asked, and its switch (probe only). */
+object RateAuthorityProbe {
+    val tenantAsks = CopyOnWriteArrayList<Triple<String, TenantId, String>>()
+
+    @Volatile var denyTenant = false
+
+    fun reset() {
+        tenantAsks.clear()
+        denyTenant = false
+    }
+}
+
+/**
+ * The end user is the user and tenant the token names, so every test owns a tenant. The authority is an object that
+ * overrides `holdsTenant` (a lambda keeps the refusing default). The `RateSourcePort` is not a double: the bean of the
+ * context, with its acceptance store, is under test.
+ */
+@TestConfiguration(proxyBeanMethods = false)
+class RateSourceAcceptanceDoubles {
+    @Bean
+    fun raEndUserPrincipalResolver(): EndUserPrincipalResolver =
+        EndUserPrincipalResolver { authorization ->
+            val rest = authorization?.takeIf { it.startsWith(RA_USER_PREFIX) }?.removePrefix(RA_USER_PREFIX)
+            rest?.split(":")?.takeIf { it.size == 2 }?.let { EndUserPrincipal(it[0], TenantId.of(it[1]), emptySet()) }
+        }
+
+    @Bean
+    fun raWorkloadTokenVerifier(): WorkloadTokenVerifier =
+        WorkloadTokenVerifier { token: WorkloadToken? ->
+            val value = token?.value
+            if (value != null && value.startsWith("wl-")) {
+                WorkloadVerification.Verified("subject-of-" + value.removePrefix("wl-"))
+            } else {
+                WorkloadVerification.Refused("no test token")
+            }
+        }
+
+    @Bean
+    fun packActionAuthority(): PackActionAuthority =
+        object : PackActionAuthority {
+            override fun holds(
+                actor: String,
+                entityRef: String,
+                permission: String,
+            ): Boolean = true
+
+            override fun holdsTenant(
+                actor: String,
+                tenant: TenantId,
+                permission: String,
+            ): Boolean {
+                RateAuthorityProbe.tenantAsks.add(Triple(actor, tenant, permission))
+                return !RateAuthorityProbe.denyTenant && permission == "mapping-pack.approve"
+            }
+        }
+
+    @Bean
+    fun packApprovalDecisionPort(): PackApprovalDecisionPort =
+        PackApprovalDecisionPort { PackApprovalDecision.Allow(false, null, "OPTION-1", emptySet()) }
+
+    @Bean
+    fun holderCopyPort(): HolderCopyPort = HolderCopyPort { HolderCopyResult.Written }
+}
+
+/**
+ * `acceptRateSource` through the wired service on real PostgreSQL, and its effect on the rate-source block of
+ * `approvePack` (INV-T-24951; INV-REQ-504, INV-AC-24949).
+ */
+@SpringBootTest(
+    classes = [RateSourceAcceptanceDoubles::class, VersionedBuild::class, RulesApplication::class],
+    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+    properties = [
+        "service-runtime.idempotency.schema=rules",
+        "service-runtime.workload-identity.callers[0].service=$CONSOLE",
+        "service-runtime.workload-identity.callers[0].subject=subject-of-$CONSOLE",
+        "service-runtime.workload-identity.callers[1].service=$CONSOLE$ALT",
+        "service-runtime.workload-identity.callers[1].subject=subject-of-$CONSOLE$ALT",
+    ],
+)
+class RateSourceAcceptanceBoundaryTest(
+    @Autowired private val replica: StructureReplica,
+    @Autowired private val clock: java.time.Clock,
+    @org.springframework.boot.test.web.server.LocalServerPort port: Int,
+) : MappingPackSupport(port) {
+    private val tenant = newTenant()
+    private val today get() = LocalDate.ofInstant(clock.instant(), java.time.ZoneOffset.UTC)
+
+    @org.junit.jupiter.api.BeforeEach
+    fun arrange() {
+        RateAuthorityProbe.reset()
+        replica.onSnapshotComplete(1)
+    }
+
+    private fun newTenant() = TenantId(UUID.randomUUID())
+
+    private fun user(
+        who: String,
+        of: TenantId = tenant,
+    ) = "$RA_USER_PREFIX$who:$of"
+
+    private fun scopePack(
+        vararg sources: Pair<String, String>,
+        of: TenantId = tenant,
+    ) {
+        val version = "ra-${UUID.randomUUID().toString().take(8)}"
+        val packId = "ra-scope-$version"
+        val list =
+            sources.joinToString(",") {
+                """{"sourceId":"${it.first}","name":"n","bases":["b"],"sourceClass":"${it.second}",""" +
+                    """"sourceReference":"invented"}"""
+            }
+        value(of, RA_SCOPE_INSERT_PACK, UUID.randomUUID().toString(), of.toString(), packId, version)
+        value(
+            of,
+            RA_SCOPE_INSERT_ARTEFACT,
+            UUID.randomUUID().toString(),
+            packId,
+            version,
+            of.toString(),
+            byteArrayOf(1),
+            """{"exchangeRateSources":[$list]}""",
+        )
+    }
+
+    private fun elect(source: String) =
+        replica.accept(
+            EntityProfileChanged(
+                tenant,
+                "ra-entity",
+                StructureNode(
+                    StructureNodeKind.ENTITY,
+                    null,
+                    false,
+                    "E",
+                    "ra-entity",
+                    listOf(ProfileEntry("exchangeRateSource", source, LocalDate.of(2026, 1, 1))),
+                    1,
+                ),
+            ),
+        )
+
+    private fun submitted(): Pair<String, String> {
+        val version = "ra-v-${UUID.randomUUID().toString().take(8)}"
+        val packId = seedPack(version, "SUBMITTED", tenant)
+        deltaRow(tenant, version, "COMPLETE")
+        return packId to version
+    }
+
+    private fun approveOwn(packId: String) = approve(packId, user("user-b"))
+
+    private fun body(
+        rationale: String = "seen",
+        expiresOn: LocalDate = today.plusDays(1),
+    ) = """{"rationale":"$rationale","expiresOn":"$expiresOn"}"""
+
+    private fun acceptSource(
+        sourceId: String,
+        body: String = body(),
+        by: String = "user-c",
+        of: TenantId = tenant,
+        workload: String = CONSOLE,
+    ) = call("POST", "$RATE_SOURCES/$sourceId/acceptance", body, user(by, of), workloadToken(workload))
+
+    private fun stored(of: TenantId = tenant) =
+        rows(of, "select * from rules.rate_source_acceptance order by source_id")
+
+    private fun assertBlocked(
+        packId: String,
+        sourceId: String,
+    ) {
+        val answer = approveOwn(packId)
+        io.kotest.assertions.withClue(answer.body()) {
+            answer.statusCode() shouldBe 422
+            json(answer).get("code").asString() shouldBe "RUL-007"
+            json(answer).get("detail").asString() shouldBe "entries: $sourceId"
+        }
+    }
+
+    @Test
+    fun `INV-AC-24949 an accepted source stops blocking approvePack and the row names the accepting user`() {
+        scopePack("S1" to "INFERRED", "S2" to "INFERRED")
+        elect("S1")
+        val (packId, _) = submitted()
+        assertBlocked(packId, "S1")
+        val expiresOn = today.plusDays(1)
+        // a body member that names another user is not read: the accepting user is the authenticated one
+        val request = """{"rationale":"checked","expiresOn":"$expiresOn","acceptedBy":"mallory"}"""
+        val answer = ok(acceptSource("S1", request))
+        answer.get("sourceId").asString() shouldBe "S1"
+        answer.get("rationale").asString() shouldBe "checked"
+        answer.get("expiresOn").asString() shouldBe expiresOn.toString()
+        answer.get("acceptedBy").asString() shouldBe "user-c"
+        val row = stored().single()
+        row["accepted_by"] shouldBe "user-c"
+        row["source_id"] shouldBe "S1"
+        row["rationale"] shouldBe "checked"
+        row["expires_on"].toString() shouldBe expiresOn.toString()
+        value(
+            tenant,
+            "select accepted_at = ?::timestamptz from rules.rate_source_acceptance",
+            answer.get("acceptedAt").asString(),
+        ) shouldBe true
+        RateAuthorityProbe.tenantAsks.toList() shouldBe listOf(Triple("user-c", tenant, "mapping-pack.approve"))
+        ok(approveOwn(packId)).get("status").asString() shouldBe "APPROVED"
+    }
+
+    @Test
+    fun `INV-AC-24949 an acceptance of the other source leaves approvePack blocked`() {
+        scopePack("S1" to "INFERRED", "S2" to "INFERRED")
+        elect("S1")
+        ok(acceptSource("S2"))
+        assertBlocked(submitted().first, "S1")
+    }
+
+    @Test
+    fun `INV-AC-24949 a bad rationale or an expiry that is not after today is refused and nothing is stored`() {
+        scopePack("S1" to "INFERRED")
+        val before = snapshot()
+        listOf(
+            body(rationale = "y".repeat(RATIONALE_LIMIT + 1)),
+            body(rationale = "   "),
+            body(rationale = ""),
+            body(expiresOn = today),
+            body(expiresOn = today.minusDays(1)),
+        ).forEach {
+            val answer = acceptSource("S1", it)
+            io.kotest.assertions.withClue(it) {
+                answer.statusCode() shouldBe 400
+                json(answer).get("code").asString() shouldBe "SRT-001"
+            }
+        }
+        stored() shouldBe emptyList()
+        snapshot() shouldBe before
+        // look-alike that must pass: the longest rationale and the first day after today
+        ok(acceptSource("S1", body(rationale = "y".repeat(RATIONALE_LIMIT))))
+        stored().size shouldBe 1
+    }
+
+    @Test
+    fun `INV-AC-24949 a caller without mapping-pack approve is refused 403 and nothing is stored`() {
+        scopePack("S1" to "INFERRED")
+        RateAuthorityProbe.denyTenant = true
+        val answer = acceptSource("S1")
+        answer.statusCode() shouldBe 403
+        json(answer).get("code").asString() shouldBe "SRT-004"
+        stored() shouldBe emptyList()
+        RateAuthorityProbe.tenantAsks.toList() shouldBe listOf(Triple("user-c", tenant, "mapping-pack.approve"))
+    }
+
+    @Test
+    fun `a caller outside the sync edge is refused 403 SRT-004 and nothing is stored`() {
+        scopePack("S1" to "INFERRED")
+        val answer = acceptSource("S1", workload = "$CONSOLE$ALT")
+        answer.statusCode() shouldBe 403
+        json(answer).get("code").asString() shouldBe "SRT-004"
+        stored() shouldBe emptyList()
+        RateAuthorityProbe.tenantAsks.toList() shouldBe emptyList()
+    }
+
+    @Test
+    fun `a source that is unknown or not INFERRED is 404 with its own detail, unlike a missing mapping entry`() {
+        scopePack("S1" to "INFERRED", "P1" to "PRIMARY")
+        listOf("P1", "S10", "s1").forEach { id ->
+            val answer = acceptSource(id)
+            answer.statusCode() shouldBe 404
+            json(answer).get("code").asString() shouldBe "SRT-005"
+            json(answer).get("detail").asString() shouldBe "no such inferred rate source: $id"
+        }
+        stored() shouldBe emptyList()
+        val packId = seedPack("ra-e-${UUID.randomUUID().toString().take(8)}", "DRAFT", tenant)
+        val entry =
+            call(
+                "POST",
+                "$PACKS/$packId/entries/S10/source-class-acceptance",
+                """{"rationale":"seen","expiresOn":"2099-01-01","entityRef":"$ENTITY"}""",
+                user("user-c"),
+            )
+        entry.statusCode() shouldBe 404
+        json(entry).get("code").asString() shouldBe "SRT-005"
+        json(entry).get("detail").asString() shouldBe "no such entry: S10"
+    }
+
+    @Test
+    fun `without a scope pack in force the acceptance is 503 and nothing is stored`() {
+        val answer = acceptSource("S1")
+        answer.statusCode() shouldBe 503
+        json(answer).get("code").asString() shouldBe "SRT-013"
+        stored() shouldBe emptyList()
+    }
+
+    @Test
+    fun `a repeat for the same tenant and source replaces the row`() {
+        scopePack("S1" to "INFERRED")
+        ok(acceptSource("S1", body(rationale = "first")))
+        val later = today.plusDays(30)
+        ok(acceptSource("S1", body(rationale = "second", expiresOn = later), by = "user-d"))
+        val row = stored().single()
+        row["rationale"] shouldBe "second"
+        row["expires_on"].toString() shouldBe later.toString()
+        row["accepted_by"] shouldBe "user-d"
+    }
+
+    @Test
+    fun `a tenant session reads no row of another tenant`() {
+        val foreign = newTenant()
+        scopePack("S1" to "INFERRED", of = foreign)
+        ok(acceptSource("S1", of = foreign))
+        val ofForeign = "select count(*) from rules.rate_source_acceptance where tenant_id = '$foreign'"
+        value(foreign, ofForeign) shouldBe 1L
+        value(tenant, ofForeign) shouldBe 0L
+        stored() shouldBe emptyList()
+    }
+
+    @Test
+    fun `the acceptance of a mapping-pack entry with the same text id does not clear the source`() {
+        // the seeded pack holds the entry STD; the scope pack lists a rate source of the same text id
+        scopePack("STD" to "INFERRED")
+        elect("STD")
+        val (packId, version) = submitted()
+        value(
+            tenant,
+            "insert into rules.mapping_entry_acceptance (tenant_id, pack_type, pack_version, entry_id, rationale, " +
+                "expires_on, accepted_by, accepted_iras_code, accepted_source_class) values (?::uuid, 'MAPPING', ?, " +
+                "'STD', 'seen', '2099-01-01', 'user-c', 'SR', 'PRIMARY') returning entry_id",
+            tenant.toString(),
+            version,
+        )
+        assertBlocked(packId, "STD")
     }
 
     companion object {

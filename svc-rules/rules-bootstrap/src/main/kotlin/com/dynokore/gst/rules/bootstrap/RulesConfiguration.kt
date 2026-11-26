@@ -34,6 +34,7 @@ import com.dynokore.gst.rules.adapters.persistence.JooqPackArmingStore
 import com.dynokore.gst.rules.adapters.persistence.JooqPackCurrencyStore
 import com.dynokore.gst.rules.adapters.persistence.JooqPackImportStore
 import com.dynokore.gst.rules.adapters.persistence.JooqPeriodRecordsStore
+import com.dynokore.gst.rules.adapters.persistence.JooqRateSourceAcceptanceStore
 import com.dynokore.gst.rules.adapters.persistence.JooqSamplePageStore
 import com.dynokore.gst.rules.adapters.persistence.PersistedPackRegistry
 import com.dynokore.gst.rules.adapters.persistence.PersistedRegulatoryPackStore
@@ -57,6 +58,7 @@ import com.dynokore.gst.rules.adapters.web.RegistryNamedPackVersions
 import com.dynokore.gst.rules.adapters.web.ReviewPolicyValues
 import com.dynokore.gst.rules.adapters.web.StoredPackDeltaAcknowledgements
 import com.dynokore.gst.rules.adapters.web.unavailable
+import com.dynokore.gst.rules.application.AcceptRateSource
 import com.dynokore.gst.rules.application.AcknowledgePackDelta
 import com.dynokore.gst.rules.application.AcknowledgementPermissionPort
 import com.dynokore.gst.rules.application.ActivePackReader
@@ -79,6 +81,7 @@ import com.dynokore.gst.rules.application.HistoricalSamplePort
 import com.dynokore.gst.rules.application.HolderCopyPort
 import com.dynokore.gst.rules.application.ImportPermissionPort
 import com.dynokore.gst.rules.application.ImportRegulatoryPack
+import com.dynokore.gst.rules.application.InferredRateSourcePort
 import com.dynokore.gst.rules.application.InstallationApproverFactPort
 import com.dynokore.gst.rules.application.LastCompletePeriodPort
 import com.dynokore.gst.rules.application.ListActiveRegulatoryPacks
@@ -100,6 +103,7 @@ import com.dynokore.gst.rules.application.PackEvaluationPort
 import com.dynokore.gst.rules.application.PackEventEmitter
 import com.dynokore.gst.rules.application.PackFeedPoller
 import com.dynokore.gst.rules.application.PackImportStore
+import com.dynokore.gst.rules.application.RateSourceAcceptanceStore
 import com.dynokore.gst.rules.application.RateSourcePort
 import com.dynokore.gst.rules.application.RegulatoryPackStore
 import com.dynokore.gst.rules.application.RunDryRun
@@ -1026,7 +1030,8 @@ class RulesConfiguration {
 
     /**
      * The rate-source block over the structure replica and the SCOPE pack in force (INV-T-16546; INV-Q-14651 A,
-     * INV-Q-16533 A). Without a [StructureReplica] bean the refusing class answers null (INV-T-4972).
+     * INV-Q-16533 A), less the unexpired acceptances of the store (INV-T-24951). Without a [StructureReplica] bean the
+     * refusing class answers null (INV-T-4972).
      */
     @Bean
     @ConditionalOnMissingBean(RateSourcePort::class)
@@ -1034,12 +1039,48 @@ class RulesConfiguration {
         structure: ObjectProvider<StructureReplica>,
         dsl: DSLContext,
         registry: PersistedPackRegistry,
-    ): RateSourcePort {
-        val replica = structure.ifAvailable ?: return RefusingRateSourcePort()
+        acceptances: JooqRateSourceAcceptanceStore,
+    ): RateSourcePort =
+        structure.ifAvailable?.let { replicaRateSourcePort(it, dsl, registry, acceptances) } ?: RefusingRateSourcePort()
+
+    private fun replicaRateSourcePort(
+        replica: StructureReplica,
+        dsl: DSLContext,
+        registry: PersistedPackRegistry,
+        acceptances: RateSourceAcceptanceStore,
+    ): ReplicaRateSourcePort {
         val lookup = ArmedPackLookup(dsl)
-        return ReplicaRateSourcePort(replica) { tenant, asOf ->
+        return ReplicaRateSourcePort(replica, acceptances) { tenant, asOf ->
             lookup.resolve(PackTypes.SCOPE, tenant, asOf)?.let { registry.artefactOf(it)?.contents }
         }
+    }
+
+    // ---- the rate source acceptance (INV-T-24951) ----
+
+    @Bean
+    fun rateSourceAcceptanceStore(
+        dsl: DSLContext,
+        clock: Clock,
+    ): JooqRateSourceAcceptanceStore = JooqRateSourceAcceptanceStore(dsl, clock)
+
+    /**
+     * The acceptance of an INFERRED rate source. Its inferred ids come from the replica port, not from the
+     * [RateSourcePort] bean, which another implementation may replace; without a [StructureReplica] it cannot answer.
+     */
+    @Suppress("LongParameterList") // the composition root names the collaborators of the use case (TPL-18)
+    @Bean
+    fun acceptRateSource(
+        authority: PackActionAuthority,
+        structure: ObjectProvider<StructureReplica>,
+        dsl: DSLContext,
+        registry: PersistedPackRegistry,
+        acceptances: JooqRateSourceAcceptanceStore,
+        clock: Clock,
+    ): AcceptRateSource {
+        val sources: InferredRateSourcePort =
+            structure.ifAvailable?.let { replicaRateSourcePort(it, dsl, registry, acceptances) }
+                ?: InferredRateSourcePort { _, _ -> null }
+        return AcceptRateSource(authority, sources, acceptances, clock)
     }
 
     /**

@@ -33,6 +33,7 @@ internal object OperationOwners {
             "operation\tlistActiveRegulatoryPacks\tINV-T-9880",
             "operation\tdiffMappingPackBundle\tINV-T-26960",
             "operation\tgetPackDeltaAcknowledgement\tINV-T-27762",
+            "operation\tacceptRateSource\tINV-T-24951",
             "channel\tgst.rules.rule-pack-staged.v1\tINV-T-4976",
             "channel\tgst.rules.pack-currency-changed.v1\tINV-T-4976",
             "channel\tgst.rules.example-happened.v1\tnone",

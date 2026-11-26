@@ -7,6 +7,7 @@ import com.dynokore.gst.rules.adapters.persistence.IMPORT_REJECTED_CODE
 import com.dynokore.gst.rules.adapters.persistence.JooqMappingImportRecordStore
 import com.dynokore.gst.rules.adapters.persistence.JooqMappingPackStore
 import com.dynokore.gst.rules.adapters.persistence.JooqPackCorrectionStore
+import com.dynokore.gst.rules.adapters.persistence.JooqRateSourceAcceptanceStore
 import com.dynokore.gst.rules.adapters.persistence.MappingImportRecordRow
 import com.dynokore.gst.rules.adapters.web.MappingPackMapping.activationOf
 import com.dynokore.gst.rules.adapters.web.MappingPackMapping.approvalOf
@@ -15,6 +16,9 @@ import com.dynokore.gst.rules.adapters.web.MappingPackMapping.problemBody
 import com.dynokore.gst.rules.adapters.web.MappingPackMapping.refusalOf
 import com.dynokore.gst.rules.adapters.web.MappingPackMapping.statusOf
 import com.dynokore.gst.rules.application.AcceptEntryCommand
+import com.dynokore.gst.rules.application.AcceptRateSource
+import com.dynokore.gst.rules.application.AcceptRateSourceCommand
+import com.dynokore.gst.rules.application.AcceptRateSourceResult
 import com.dynokore.gst.rules.application.AcknowledgePackDelta
 import com.dynokore.gst.rules.application.AcknowledgePackDeltaResult
 import com.dynokore.gst.rules.application.AcknowledgementPermissionPort
@@ -50,6 +54,7 @@ import com.dynokore.gst.rules.application.RollbackPackResult
 import com.dynokore.gst.rules.application.TenantReviewPolicyReader
 import com.dynokore.gst.rules.contract.api.MappingPacksApi
 import com.dynokore.gst.rules.contract.api.RegulatoryPacksApi
+import com.dynokore.gst.rules.contract.model.AcceptRateSourceRequest
 import com.dynokore.gst.rules.contract.model.AcceptSourceClassEntryRequest
 import com.dynokore.gst.rules.contract.model.ActivateMappingPackRequest
 import com.dynokore.gst.rules.contract.model.ActivatePackRequest
@@ -68,8 +73,10 @@ import com.dynokore.gst.rules.contract.model.MappingPack
 import com.dynokore.gst.rules.contract.model.MappingPackBundlePart
 import com.dynokore.gst.rules.contract.model.MappingPackDiff
 import com.dynokore.gst.rules.contract.model.PackDeltaAcknowledgement
+import com.dynokore.gst.rules.contract.model.RateSourceAcceptance
 import com.dynokore.gst.rules.contract.model.RegulatoryPack
 import com.dynokore.gst.rules.contract.model.ReprocessingRun
+import com.dynokore.gst.rules.contract.model.SubmitForApprovalRequest
 import com.dynokore.gst.rules.domain.pack.GraceEnd
 import com.dynokore.gst.rules.domain.pack.GraceWindow
 import com.dynokore.gst.rules.domain.pack.PackLayers.MAPPING_PACK_TYPE
@@ -129,6 +136,8 @@ open class PacksController(
     private val armedPacks: ArmedPackLookup,
     private val permissions: PackCorrectionPermissionPort,
     private val storedAcknowledgements: StoredPackDeltaAcknowledgements,
+    private val rateSourceAcceptance: AcceptRateSource,
+    private val rateSourceAcceptances: JooqRateSourceAcceptanceStore,
 ) : MappingPacksApi,
     RegulatoryPacksApi {
     /** The armed regulatory packs of the platform layer for the installer; the caller check is the generated one. */
@@ -296,10 +305,58 @@ open class PacksController(
             ResponseEntity.ok(entryAnswer(packId, entryId))
         }
 
+    /**
+     * The acceptance of one INFERRED rate source for the tenant of the call (INV-T-24951; INV-REQ-504). The accepting
+     * user is the authenticated user ID, never a body field. The permission and every check are the use case's, and a
+     * refusal stores nothing.
+     */
+    override fun acceptRateSource(
+        sourceId: String,
+        idempotencyKey: UUID,
+        acceptRateSourceRequest: AcceptRateSourceRequest,
+    ): ResponseEntity<RateSourceAcceptance> =
+        transactions.inTransaction {
+            val command =
+                AcceptRateSourceCommand(
+                    tenants.current(),
+                    actor(),
+                    sourceId,
+                    acceptRateSourceRequest.rationale,
+                    acceptRateSourceRequest.expiresOn,
+                )
+            when (val result = rateSourceAcceptance.accept(command)) {
+                is AcceptRateSourceResult.Accepted -> {
+                    ResponseEntity.ok(acceptanceAnswer(result))
+                }
+
+                is AcceptRateSourceResult.NotPermitted -> {
+                    val forbidden = MappingPackResult.Forbidden(ErrorCode.SRT_004, "the action is not permitted")
+                    throw checkNotNull(refusalOf(forbidden))
+                }
+
+                is AcceptRateSourceResult.Refused -> {
+                    throw checkNotNull(refusalOf(MappingPackResult.Refused(result.reason, names = result.names)))
+                }
+            }
+        }
+
+    private fun acceptanceAnswer(result: AcceptRateSourceResult.Accepted) =
+        result.acceptance.let {
+            RateSourceAcceptance(
+                sourceId = it.sourceId,
+                rationale = it.rationale,
+                expiresOn = it.expiresOn,
+                acceptedBy = it.acceptedBy,
+                acceptedAt = rateSourceAcceptances.acceptedAt(it.tenant, it.sourceId),
+            )
+        }
+
+    // The `clientNote` of the optional body is stored and answered by INV-T-28439; until then the body changes nothing.
     override fun submitForApproval(
         packId: String,
         idempotencyKey: UUID,
         entityRef: String?,
+        submitForApprovalRequest: SubmitForApprovalRequest?,
     ): ResponseEntity<MappingPack> =
         transactions.inTransaction {
             repeatable(authoring.submit(PackActionCommand(actor(), entityRef.orEmpty(), packId)), PackStatus.SUBMITTED)

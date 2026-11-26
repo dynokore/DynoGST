@@ -44,6 +44,8 @@ internal object SchemaInspection {
             "pack_entry_source",
             "mapping_entry_acceptance",
             "mapping_pack_approval",
+            // the acceptances of the rate sources of INV-T-24951, relational
+            "rate_source_acceptance",
             "dry_run_delta",
             "mapping_import_record",
             "dry_run_delta_document",

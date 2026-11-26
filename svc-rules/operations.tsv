@@ -27,3 +27,4 @@ channel	gst.rules.pack-currency-changed.v1	INV-T-4976
 channel	gst.rules.example-happened.v1	none
 operation	diffMappingPackBundle	INV-T-26960
 operation	getPackDeltaAcknowledgement	INV-T-27762
+operation	acceptRateSource	INV-T-24951

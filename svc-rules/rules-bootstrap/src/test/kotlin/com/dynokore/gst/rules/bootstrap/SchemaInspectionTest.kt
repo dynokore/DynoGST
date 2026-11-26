@@ -31,6 +31,7 @@ class SchemaInspectionTest {
             Table("rules", "dry_run_sample_item"),
             Table("rules", "entity_period_set"),
             Table("rules", "entity_period"),
+            Table("rules", "rate_source_acceptance"),
         )
     private val holderColumns = SchemaInspection.HOLDER_COLUMNS.map { Column(holder, it, "text") }
     private val good = registry + holder + Table("rules", "outbox")
@@ -78,13 +79,14 @@ class SchemaInspectionTest {
     }
 
     @Test
-    fun `the registry tables are exactly the nineteen names`() {
+    fun `the registry tables are exactly the listed names`() {
         SchemaInspection.REGISTRY_TABLES shouldBe
             setOf(
                 "pack_registry",
                 "pack_entry_source",
                 "mapping_entry_acceptance",
                 "mapping_pack_approval",
+                "rate_source_acceptance",
                 "dry_run_delta",
                 "mapping_import_record",
                 "dry_run_delta_document",
