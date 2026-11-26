@@ -9,6 +9,7 @@ import com.dynokore.gst.rules.domain.coding.SelfBillingAssignment
 import com.dynokore.gst.rules.domain.coding.Side
 import com.dynokore.gst.rules.domain.coding.SubmissionType
 import com.dynokore.gst.rules.domain.coding.Treatment
+import tools.jackson.databind.json.JsonMapper
 
 /**
  * Decodes the decision sections of a SCENARIO pack (`scenario-pack-handlers.schema.json`, INV-Q-6510): the
@@ -25,15 +26,33 @@ object ScenarioPackContents {
     /** The contract pattern of `gstBasePercent`: 0 to 100, up to six decimals, no sign, no percent mark. */
     private val GST_BASE_PERCENT = Regex("^(100(\\.0{1,6})?|[0-9]{1,2}(\\.[0-9]{1,6})?)$")
 
+    private val mapper = JsonMapper()
+
     fun decode(contents: ByteArray): ScenarioData {
         val root = ContentsNode.root(PACK_TYPE, contents)
         val assignment = root.obj("selfBillingAssignment")
+        refuseNullPercent(root, contents)
         return ScenarioData(
             customerCumIssuer = party(assignment.obj("customerCumIssuer")),
             supplierCumRecipient = party(assignment.obj("supplierCumRecipient")),
             schemeTagSides = root.array("schemeTagSides", min = 1, max = 100).map(::schemeTagSide),
             treatments = root.array("treatments", min = 1, max = 300).map(::treatment),
         )
+    }
+
+    /**
+     * [ContentsNode] reads a JSON null as absent. The contract types `gstBasePercent` as a string, so a present null
+     * is refused and only an absent member means that the pack states none (INV-AC-26687).
+     */
+    private fun refuseNullPercent(
+        root: ContentsNode,
+        contents: ByteArray,
+    ) {
+        mapper.readTree(contents).path("treatments").forEachIndexed { i, item ->
+            if (item.get("gstBasePercent")?.isNull == true) {
+                root.fail("treatments[$i].gstBasePercent", "must be a string")
+            }
+        }
     }
 
     private fun cited(node: ContentsNode) {

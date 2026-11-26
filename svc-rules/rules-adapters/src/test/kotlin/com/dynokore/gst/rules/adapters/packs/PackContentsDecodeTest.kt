@@ -375,8 +375,9 @@ class PackContentsDecodeTest {
                 shouldThrow<PackContentsFailure> { percentOf(""","gstBasePercent":"$it"""") }
             failure.field shouldBe "$.treatments[0].gstBasePercent"
         }
-        listOf("50", "50.5", "true", "[]", "{}").forEach {
-            shouldThrow<PackContentsFailure> { percentOf(""","gstBasePercent":$it""") }
+        listOf("50", "50.5", "true", "[]", "{}", "null").forEach {
+            val failure = shouldThrow<PackContentsFailure> { percentOf(""","gstBasePercent":$it""") }
+            failure.field shouldBe "$.treatments[0].gstBasePercent"
         }
     }
 
@@ -400,6 +401,7 @@ class PackContentsDecodeTest {
                 "invalid percent sign" to percentScenario(""","gstBasePercent":"50%""""),
                 "invalid number" to percentScenario(""","gstBasePercent":50"""),
                 "invalid empty" to percentScenario(""","gstBasePercent":"""""),
+                "invalid null" to percentScenario(""","gstBasePercent":null"""),
             ),
             "scenario-pack-handlers.schema.json",
             ScenarioPackContents::decode,
