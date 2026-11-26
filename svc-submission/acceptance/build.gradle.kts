@@ -15,6 +15,7 @@ dependencies {
     testImplementation(platform(libs.platform.bom))
     testImplementation(libs.platform.outboxAndQueue.api)
     testImplementation(libs.platform.tenancyKernel.api)
+    testImplementation(libs.platform.serviceRuntime.impl)
     testImplementation(libs.jsonSchemaValidator)
     testImplementation(libs.jackson.databind)
     testImplementation(platform(libs.junit.bom))
