@@ -944,3 +944,29 @@ class OperatingProfileApplyKeyTest {
         }
     }
 }
+
+class WorkPaperViewKeyTest {
+    @Test
+    fun `INV-AC-28538 work-paper view is READ held by tax approver, finance viewer and auditor PERMITTED`() {
+        val key = "work-paper.view"
+        assertEquals(PermissionKind.READ, RolePermissions.kind(key))
+        listOf(DeploymentForm.SAAS, DeploymentForm.PRIVATE).forEach { form ->
+            val held =
+                RolePermissions
+                    .cells(form)
+                    .filter { (_, perms) -> perms[key] != null }
+                    .mapValues { (_, perms) -> perms.getValue(key) }
+            assertEquals(
+                mapOf(
+                    "tax.approver" to RoleAllowance.PERMITTED,
+                    "finance.viewer" to RoleAllowance.PERMITTED,
+                    "auditor" to RoleAllowance.PERMITTED,
+                ),
+                held,
+                "$key $form",
+            )
+            assertEquals(held, OperationRoles.rolesFor(form, key), "$key $form")
+        }
+        assertNull(RolePermissions.kind("work-paper.views"))
+    }
+}

@@ -1549,3 +1549,13 @@ permissions:
     cells:
       - {role: tenant.admin, form: SAAS, allowance: PERMITTED}
       - {role: tenant.admin, form: PRIVATE, allowance: PERMITTED}
+  - key: work-paper.view
+    kind: READ
+    row: "View a reconciliation run's work-paper"
+    cells:
+      - {role: tax.approver, form: SAAS, allowance: PERMITTED}
+      - {role: tax.approver, form: PRIVATE, allowance: PERMITTED}
+      - {role: finance.viewer, form: SAAS, allowance: PERMITTED}
+      - {role: finance.viewer, form: PRIVATE, allowance: PERMITTED}
+      - {role: auditor, form: SAAS, allowance: PERMITTED}
+      - {role: auditor, form: PRIVATE, allowance: PERMITTED}
