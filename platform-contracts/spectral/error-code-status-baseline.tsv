@@ -95,8 +95,6 @@ ingestion	submitTransaction	ING-011	no_status
 ingestion	submitTransaction	ING-012	no_status
 ingestion	submitTransaction	ING-016	no_status
 ingestion	submitTransaction	ING-019	status_not_declared
-ingestion	submitTransaction	ING-020	status_not_declared
-ingestion	submitTransaction	ING-021	status_not_declared
 masterdata	bulkResolveCounterparty	MDM-001	no_status
 masterdata	bulkResolveCounterparty	MDM-002	no_status
 masterdata	bulkResolveCounterparty	MDM-003	no_status

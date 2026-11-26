@@ -142,6 +142,29 @@
       "uniqueItems": true,
       "items": { "type": "string", "minLength": 1, "maxLength": 128 },
       "description": "The references (numbers) the customer gave the self-billing invoices that this document derives from (INV-REQ-696). Required for a SALE document of an entity that the Scope pack's self-billing assignment puts on the Type 2 side, a condition canonical-svc enforces by refusing the record request with 400 and SRT-001, not this schema; otherwise optional. Never transmitted to the network: it is retained as evidence (BUYER_INVOICE_REFERENCE) (INV-Q-7045)."
+    },
+    "backfill": {
+      "type": "object",
+      "description": "Optional marker that this transaction is a backfill of a historical transaction (INV-REQ-1086). A request without `backfill` is not a backfill and is unchanged. The object is read by submitTransaction and submitBatch only; a request body of any other operation that reuses this schema does not read it. A transaction whose transactionDate lies outside the window of its situation is refused with 422 and ING-025 and nothing is recorded for it, and so is SILENT_FAILURE_CORRECTION without affectedPeriod; both are decided at intake, not by this schema. The date comparisons are made at intake from configuration or entity data, never from the request.",
+      "properties": {
+        "situation": {
+          "type": "string",
+          "enum": ["EARLY_ADOPTION", "SILENT_FAILURE_CORRECTION", "MID_PERIOD_MIGRATION"],
+          "description": "The situation that calls for the backfill: EARLY_ADOPTION (only from the date submission is activated), SILENT_FAILURE_CORRECTION (the affected period only) or MID_PERIOD_MIGRATION (the current period)."
+        },
+        "affectedPeriod": {
+          "type": "object",
+          "description": "The period in which submission failed silently. Not required by this schema even for SILENT_FAILURE_CORRECTION: a missing period is refused at intake with 422 and ING-025, not with 400.",
+          "properties": {
+            "start": { "type": "string", "format": "date" },
+            "end": { "type": "string", "format": "date" }
+          },
+          "required": ["start", "end"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["situation"],
+      "additionalProperties": false
     }
   },
   "required": ["entityRef", "sourceSystem", "sourceKey", "sourceRevision", "documentFunction", "transactionDate", "currency", "lines"],

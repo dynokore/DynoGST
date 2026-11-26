@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: ingestion API
-  version: 1.20.0
+  version: 1.21.0
   description: >-
     Contract-first source of truth for ingestion (API-01, STK-44). The
     `ingestion-contract` module generates its server interfaces and DTOs
@@ -142,6 +142,18 @@ paths:
         refuses a request without it with `400` and SRT-001 (INV-REQ-696,
         INV-Q-7045).
 
+        The optional `backfill` object (INV-REQ-1086) marks the transaction as
+        a backfill of a historical transaction; its `situation` is
+        `EARLY_ADOPTION`, `SILENT_FAILURE_CORRECTION` or
+        `MID_PERIOD_MIGRATION`, and `SILENT_FAILURE_CORRECTION` also carries
+        `affectedPeriod` with `start` and `end`. A request without `backfill`
+        is not a backfill and is unchanged. A backfill whose transaction date
+        lies outside the window of its situation, or a
+        `SILENT_FAILURE_CORRECTION` without `affectedPeriod`, is refused with
+        `422` and ING-025 and nothing is recorded; the date comparisons are
+        made at intake from configuration or entity data, never from the
+        request.
+
         The inbound limit is 1 MB per document by default (INV-REQ-2761); an
         installation may set a smaller limit and never a larger one. The
         outbound 10 MB IRAS payload limit is a different, fixed limit. A
@@ -161,8 +173,8 @@ paths:
       x-degraded-allow: true
       x-principal-also: certification
       x-timeout: 3000
-      x-error-codes: [ING-001, ING-002, ING-004, ING-005, ING-007, ING-009, ING-011, ING-012, ING-016, ING-019, ING-020, ING-021, ING-023]
-      x-requirements: [INV-REQ-957, INV-REQ-1010, INV-REQ-805, INV-REQ-806, INV-REQ-807, INV-REQ-808, INV-REQ-809, INV-REQ-428, INV-REQ-327, INV-REQ-829, INV-REQ-2761, INV-REQ-1193]
+      x-error-codes: [ING-001, ING-002, ING-004, ING-005, ING-007, ING-009, ING-011, ING-012, ING-016, ING-019, ING-020, ING-021, ING-023, ING-025]
+      x-requirements: [INV-REQ-957, INV-REQ-1010, INV-REQ-805, INV-REQ-806, INV-REQ-807, INV-REQ-808, INV-REQ-809, INV-REQ-428, INV-REQ-327, INV-REQ-829, INV-REQ-2761, INV-REQ-1193, INV-REQ-1086]
       x-operation:
         kind: PERMISSION
         permission: machine.ingestion.channels.write
@@ -262,6 +274,12 @@ paths:
                     transactionDate: "2026-03-20"
                     prescribedPeriodRef: "2026-Q1"
                     reasons: [{ code: "ING-016", field: "/", message: "Derivation incomplete; masterdata-svc unavailable" }]
+        '422':
+          description: >-
+            Refused and nothing recorded: ING-020 over the size limit, ING-021
+            header-marked test request without a workspace, ING-025 for a
+            backfill outside its scope (INV-REQ-1086).
+          $ref: '#/components/responses/Error'
         '503':
           description: >-
             canonical-svc gave no answer within the edge policy or answered
@@ -289,6 +307,14 @@ paths:
         itself is also idempotent on `batchId`. No `Idempotency-Key` header
         for this resource (API-15). At most 10,000 transactions and 50 MB
         (API-49).
+
+        The optional `backfill` object (INV-REQ-1086) is carried by each
+        transaction inside the batch, with the same situations
+        (`EARLY_ADOPTION`, `SILENT_FAILURE_CORRECTION`,
+        `MID_PERIOD_MIGRATION`) and the same refusal, `422` and ING-025, as
+        for `submitTransaction`; a transaction without it is not a backfill
+        and is unchanged. How a refused transaction of an asynchronous batch
+        is reported is decided by the batch intake, not by this contract.
 
         The inbound batch limits are 50 MB and 10,000 transactions by
         default (INV-REQ-2761); an installation may set a smaller limit and
@@ -321,8 +347,8 @@ paths:
       x-degraded-allow: true
       x-principal-also: certification
       x-timeout: 10000
-      x-error-codes: [ING-003, ING-001, ING-002, ING-004, ING-005, ING-007, ING-009, ING-011, ING-012, ING-016, ING-019, ING-020, ING-021]
-      x-requirements: [INV-REQ-957, INV-REQ-1010, INV-REQ-811, INV-REQ-809, INV-REQ-829, INV-REQ-2761]
+      x-error-codes: [ING-003, ING-001, ING-002, ING-004, ING-005, ING-007, ING-009, ING-011, ING-012, ING-016, ING-019, ING-020, ING-021, ING-025]
+      x-requirements: [INV-REQ-957, INV-REQ-1010, INV-REQ-811, INV-REQ-809, INV-REQ-829, INV-REQ-2761, INV-REQ-1086]
       x-operation:
         kind: PERMISSION
         permission: machine.ingestion.channels.write

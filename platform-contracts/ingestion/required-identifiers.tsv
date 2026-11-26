@@ -139,3 +139,12 @@ getTriggerCoverageMap	operation	openapi.yaml	INV-REQ-1008
 IssuanceResult.testMode	schema_property	openapi.yaml	INV-REQ-829
 PreIssuanceVerdict.testMode	schema_property	openapi.yaml	INV-REQ-829
 BatchStatus.testMode	schema_property	openapi.yaml	INV-REQ-829
+backfill	root_property	schemas/transaction-request.schema.json	INV-REQ-1086
+situation	property	schemas/transaction-request.schema.json	INV-REQ-1086
+affectedPeriod	property	schemas/transaction-request.schema.json	INV-REQ-1086
+EARLY_ADOPTION	enum_value	schemas/transaction-request.schema.json	INV-REQ-1086
+SILENT_FAILURE_CORRECTION	enum_value	schemas/transaction-request.schema.json	INV-REQ-1086
+MID_PERIOD_MIGRATION	enum_value	schemas/transaction-request.schema.json	INV-REQ-1086
+submitTransaction.ING-025	operation_error_code	openapi.yaml	INV-REQ-1086
+submitBatch.ING-025	operation_error_code	openapi.yaml	INV-REQ-1086
+submitTransaction.422	operation_response	openapi.yaml	INV-REQ-1086
