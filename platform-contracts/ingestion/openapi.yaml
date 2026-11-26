@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: ingestion API
-  version: 1.19.1
+  version: 1.20.0
   description: >-
     Contract-first source of truth for ingestion (API-01, STK-44). The
     `ingestion-contract` module generates its server interfaces and DTOs
@@ -1335,6 +1335,11 @@ components:
         processedCount: { type: integer }
         heldCount: { type: integer }
         rejectedCount: { type: integer }
+        testMode:
+          type: boolean
+          description: >-
+            True for a result produced under test mode (header or non-production workspace). The service always
+            sends it; a consumer never infers it.
         completedAt: { type: string, format: date-time }
       required: [batchId, state, submittedCount, processedCount, heldCount, rejectedCount]
     AggregateLine:
@@ -1423,6 +1428,11 @@ components:
         reasons:
           type: array
           items: { $ref: '#/components/schemas/ReasonItem' }
+        testMode:
+          type: boolean
+          description: >-
+            True for a result produced under test mode (header or non-production workspace). The service always
+            sends it; a consumer never infers it.
       required: [verdict, reasons]
     IssuanceRequest:
       allOf:
@@ -1460,6 +1470,11 @@ components:
             type: string
             enum: [REGISTER_UNAVAILABLE]
             x-extensible-enum: true
+        testMode:
+          type: boolean
+          description: >-
+            True for a result produced under test mode (header or non-production workspace). The service always
+            sends it; a consumer never infers it.
       required: [docUuid, version, verdict]
     ControlTotalsTaxLine:
       type: object

@@ -136,3 +136,6 @@ stateVersion	property	schemas/feed-health-changed-payload.schema.json	INV-REQ-79
 submitTransaction.ING-023	operation_error_code	openapi.yaml	INV-REQ-1193
 submitTransaction.503	operation_response	openapi.yaml	INV-REQ-1193
 getTriggerCoverageMap	operation	openapi.yaml	INV-REQ-1008
+IssuanceResult.testMode	schema_property	openapi.yaml	INV-REQ-829
+PreIssuanceVerdict.testMode	schema_property	openapi.yaml	INV-REQ-829
+BatchStatus.testMode	schema_property	openapi.yaml	INV-REQ-829
