@@ -67,3 +67,87 @@ fun interface SampleCheckRead {
         cursor: String?,
     ): PageReply<SampleCheckArtefactRecord>
 }
+
+/**
+ * The members of a stored payload sample check that the list join uses (INV-REQ-1036). It holds no byte: neither the
+ * uploaded sample nor the retained artefact bytes. [checkedBy] is the acting user ID, never a role.
+ */
+data class SampleMeta(
+    val checkId: String,
+    val entityRef: String,
+    val scenario: String,
+    val submissionType: String,
+    val sampleSha256: String,
+    val result: String,
+    val textFound: Boolean,
+    val missingWording: List<String>,
+    val checkedAt: Instant,
+    val checkedBy: String,
+    val findingCode: String?,
+)
+
+/**
+ * The members of a stored payload sample check that the single read uses: those of [SampleMeta] and the uploaded
+ * [sampleContent]. It is not a data class, so no generated text or equality touches the bytes.
+ */
+@Suppress("LongParameterList") // one parameter per member of the payload record, as fixed by INV-T-27776
+class SampleRecord(
+    val checkId: String,
+    val entityRef: String,
+    val scenario: String,
+    val submissionType: String,
+    val sampleContent: ByteArray,
+    val sampleSha256: String,
+    val result: String,
+    val textFound: Boolean,
+    val missingWording: List<String>,
+    val checkedAt: Instant,
+    val checkedBy: String,
+    val findingCode: String?,
+)
+
+/** The metadata of one sample check with the PAY-014 standing of its entity at read time. */
+data class SampleMetaReply(
+    val meta: SampleMeta,
+    val standingOpen: Boolean,
+)
+
+/** The answer of a payload read of one sample check. A refusal carries the owner's error envelope unchanged. */
+sealed interface SampleReply<out T> {
+    data class Ok<out T>(
+        val value: T,
+    ) : SampleReply<T>
+
+    data class Forbidden(
+        val refusal: OwnerRefusal,
+    ) : SampleReply<Nothing>
+
+    data class NotFound(
+        val refusal: OwnerRefusal,
+    ) : SampleReply<Nothing>
+
+    data class Invalid(
+        val refusal: OwnerRefusal,
+    ) : SampleReply<Nothing>
+
+    /** No answer, or one that cannot be read. */
+    data class Unavailable(
+        val reason: String,
+    ) : SampleReply<Nothing>
+}
+
+/** getRenditionSampleCheckMetadata of payload-svc, used by the list join only. No exception crosses this port. */
+fun interface SampleMetaRead {
+    fun read(
+        entityRef: String,
+        checkId: String,
+    ): SampleReply<SampleMetaReply>
+}
+
+/** getRenditionSampleCheck of payload-svc, used by the single read only. No exception crosses this port. */
+fun interface SampleRecordRead {
+    fun read(
+        entityRef: String,
+        checkId: String,
+    ): SampleReply<SampleRecord>
+}
