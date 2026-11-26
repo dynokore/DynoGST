@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: evidence API
-  version: 1.22.0
+  version: 1.22.1
   description: >-
     Contract-first source of truth for evidence (API-01, STK-44). The
     `evidence-contract` module generates its server interfaces and DTOs
@@ -1220,7 +1220,11 @@ paths:
         `acknowledgementRef` is left unchanged and counted in
         `alreadyImportedCount`. A record already imported with a different
         `acknowledgementRef` refuses the whole call with 409; imported
-        evidence is never overwritten. Each record is filed in the retention
+        evidence is never overwritten. A record whose `acknowledgementRef` is
+        already held by an imported record of another identity in the tenant,
+        or by a record of another identity in the same request, refuses the
+        whole call with 409 and nothing is recorded; the 409 body names no
+        other record and no other entity. Each record is filed in the retention
         partition of the period of its `transactionDate` and held under the
         same retention rule as the evidence the System produced, for the rest
         of the statutory period (INV-REQ-1112); `deleteAtRetentionEnd` is the
