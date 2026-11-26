@@ -63,6 +63,8 @@ The key `rendition-evidence.view` (row "Read the rendition evidence of an entity
 
 The key `operating-profile.apply` (row "Apply an operating profile", WRITE) is held by `tenant.admin` PERMITTED and `entity.admin` WITHIN_SCOPE in SAAS and PRIVATE, every other role DENIED; it guards the operation `applyOperatingProfile` of console-bff, decided per request by `AuthorityReplica.decide`, never by a role name; `addedRows` now holds 60 labels (INV-T-27579, owner ruling of 2026-11-22 option A; least privilege NIST SP 800-53 AC-6, deny by default OWASP ASVS V4.1).
 
+The keys `workspace.create` (row "Create a workspace", WRITE) and `workspace.archive` (row "Archive a workspace", WRITE) are held by `tenant.admin` PERMITTED in SAAS and PRIVATE, every other role DENIED; the operations `createWorkspace` and `archiveWorkspace` are allowed only when `AuthorityReplica.decideTenant` permits the key, otherwise 403 SRT-004 and no row is written, never a role-name check; `addedRows` now holds 62 labels (INV-T-24912, INV-REQ-1125, owner ruling of 2026-11-18 option A; least privilege NIST SP 800-53 AC-6, access control enforced on every request OWASP ASVS V4.1.1).
+
 ## What the build checks (`checkRolePermissions`, wired into `check`; also run by `generateRolePermissionCatalogue`)
 
 `RolePermissionsChecker` reports: a role set that differs from the 19 names; a role whose forms differ; a key that
