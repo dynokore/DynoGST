@@ -19,6 +19,7 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import java.time.LocalDate
 
@@ -380,6 +381,7 @@ class PackContentsDecodeTest {
     }
 
     @Test
+    @DisplayName("INV-AC-26687 a gstBasePercent of 100.5 is refused at pack import")
     fun `INV-AC-26687 a gstBasePercent of 100 point 5 is refused at pack import`() {
         val failure = shouldThrow<PackContentsFailure> { percentOf(""","gstBasePercent":"100.5"""") }
         failure.field shouldBe "$.treatments[0].gstBasePercent"
