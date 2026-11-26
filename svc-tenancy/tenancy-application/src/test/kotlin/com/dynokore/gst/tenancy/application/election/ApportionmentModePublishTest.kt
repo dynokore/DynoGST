@@ -27,11 +27,13 @@ import java.util.UUID
 /**
  * INV-AC-26600: the apportionmentMode entry is published on EntityProfileChanged when the election is stored or an
  * approved change is applied (cases E1 to E6), over the in-memory ports of the purchase date basis test.
+ * INV-AC-26474: its five cases prove the live publish with the dates of that criterion.
  */
 class ApportionmentModePublishTest {
     private val tenant = TenantId(UUID.fromString("00000000-0000-0000-0000-0000000000a1"))
     private val first = LocalDate.of(2026, 1, 1)
     private val july = LocalDate.of(2026, 7, 1)
+    private val august = LocalDate.of(2026, 8, 1)
     private val now = Instant.parse("2026-06-01T01:00:00Z")
     private val requester = "identity:USR-001"
     private val approver = "identity:USR-002"
@@ -244,6 +246,63 @@ class ApportionmentModePublishTest {
     @Test
     fun `INV-AC-26600 the attribute name equals the constant and the text apportionmentMode`() {
         assertEquals("apportionmentMode", APPORTIONMENT_MODE_ATTRIBUTE)
+    }
+
+    @Test
+    fun `INV-AC-26474 case 1 the first election publishes one event with one item and one profile entry`() {
+        assertInstanceOf(ElectionOutcome.Done::class.java, record("CLAIMABLE_PORTION", july))
+        val event = published.single()
+        assertEquals(listOf(item(null, "CLAIMABLE_PORTION")), event.changedAttributes)
+        assertEquals(listOf(entry("CLAIMABLE_PORTION", july)), event.node.profile)
+    }
+
+    @Test
+    fun `INV-AC-26474 case 2 a pending change publishes nothing`() {
+        record("CLAIMABLE_PORTION", july)
+        published.clear()
+        assertInstanceOf(ElectionOutcome.Pending::class.java, record("ENTIRE_INVOICE", august))
+        assertEquals(emptyList<EntityProfileChange>(), published)
+    }
+
+    @Test
+    fun `INV-AC-26474 case 3 the approval publishes one event with the old value and both entries`() {
+        record("CLAIMABLE_PORTION", july)
+        val pending =
+            assertInstanceOf(ElectionOutcome.Pending::class.java, record("ENTIRE_INVOICE", august)).change
+        published.clear()
+        current = approver
+        assertInstanceOf(
+            ElectionOutcome.Approved::class.java,
+            commands.approveElectionChange("E-001", pending.changeRef),
+        )
+        val event = published.single()
+        assertEquals(listOf(item("CLAIMABLE_PORTION", "ENTIRE_INVOICE")), event.changedAttributes)
+        assertEquals(
+            listOf(entry("CLAIMABLE_PORTION", july), entry("ENTIRE_INVOICE", august)),
+            event.node.profile,
+        )
+    }
+
+    @Test
+    fun `INV-AC-26474 case 4 an exact repeat of the first election publishes nothing`() {
+        record("CLAIMABLE_PORTION", july)
+        published.clear()
+        val repeat = assertInstanceOf(ElectionOutcome.Done::class.java, record("CLAIMABLE_PORTION", july))
+        assertTrue(repeat.repeated)
+        assertEquals(emptyList<EntityProfileChange>(), published)
+    }
+
+    @Test
+    fun `INV-AC-26474 case 5 a purchase date basis event holds the apportionment entry and no apportionment item`() {
+        record("CLAIMABLE_PORTION", july)
+        published.clear()
+        assertInstanceOf(ElectionOutcome.Done::class.java, record("INVOICE_DATE", august))
+        val event = published.single()
+        assertEquals(listOf(ChangedAttribute("purchaseDateBasis", null, "INVOICE_DATE")), event.changedAttributes)
+        assertEquals(
+            listOf(entry("CLAIMABLE_PORTION", july), ProfileEntry("purchaseDateBasis", "INVOICE_DATE", august)),
+            event.node.profile,
+        )
     }
 
     private class Elections : ElectionPolicyStore {
