@@ -1,6 +1,8 @@
 package com.dynokore.gst.rules.adapters.packs
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 import org.junit.jupiter.api.Test
 
@@ -139,10 +141,75 @@ class PackContentsChecksTest {
         refusal(bad, "CALENDAR") shouldBe "safetyMargin is absent"
     }
 
+    private fun party(
+        direction: String,
+        type: String,
+    ) = """{"direction":"$direction","submissionType":"$type","sourceClass":"INFERRED","sourceReference":"s"}"""
+
+    private fun treatment(member: String = "") =
+        """{"tag":"ZZTEST","side":"SUPPLY","categoryCode":"NA","rateBasis":"FIXED","rate":"0",""" +
+            """"sourceClass":"PRIMARY","sourceReference":"s"$member}"""
+
+    /** The members of the four sections the handlers schema requires, without the surrounding braces. */
+    private fun handlerSections(treatments: String = "[${treatment()}]") =
+        """"selfBillingAssignment":{"customerCumIssuer":${party("PURCHASE", "TYPE_3")},""" +
+            """"supplierCumRecipient":${party("SALE", "TYPE_2")}},""" +
+            """"schemeTagSides":[{"tag":"ZZTEST","side":"SUPPLY","handling":"HANDLED",""" +
+            """"sourceClass":"PRIMARY","sourceReference":"s"}],""" +
+            """"treatments":$treatments,""" +
+            """"approvableSchemes":[{"scheme":"ZZTEST","sourceClass":"PRIMARY","sourceReference":"s"}]"""
+
+    private fun percentContents(member: String) = "{${handlerSections("[${treatment(member)}]")}}".toByteArray()
+
+    private fun decodeMessage(contents: ByteArray) =
+        shouldThrow<PackContentsFailure> { ScenarioPackContents.decode(contents) }.message
+
+    @Test
+    fun `INV-AC-26687 complete scenario contents pass with gstBasePercent 50 and with none`() {
+        refusal(percentContents(""","gstBasePercent":"50""""), "SCENARIO") shouldBe null
+        refusal(percentContents(""), "SCENARIO") shouldBe null
+    }
+
+    @Test
+    fun `INV-AC-26687 a gstBasePercent of 100 point 5 is refused with the decoder's message`() =
+        refusedAs(""""100.5"""")
+
+    @Test
+    fun `INV-AC-26687 an invalid gstBasePercent is refused with the decoder's message`() {
+        listOf(""""101"""", """"50%"""", "50", "null").forEach(::refusedAs)
+    }
+
+    private fun refusedAs(value: String) {
+        val contents = percentContents(""","gstBasePercent":$value""")
+        val answer = refusal(contents, "SCENARIO")
+        answer shouldBe decodeMessage(contents)
+        answer shouldContain "$.treatments[0].gstBasePercent"
+    }
+
+    @Test
+    fun `INV-AC-26687 contents that cannot be decoded are refused and nothing is thrown`() {
+        listOf(
+            "not json",
+            "{",
+            "{${handlerSections(""""none"""")}}",
+            "{${handlerSections("""{"a":${treatment()}}""")}}",
+        ).forEach {
+            val contents = it.toByteArray()
+            val answer = refusal(contents, "SCENARIO")
+            answer shouldNotBe null
+            answer shouldBe decodeMessage(contents)
+        }
+    }
+
+    @Test
+    fun `INV-AC-26687 the pack type Scenario is not checked as the scenario pack type`() {
+        refusal(percentContents(""","gstBasePercent":"100.5""""), "Scenario") shouldBe null
+    }
+
     private fun scenario(vararg items: String) =
         (
             """{"renditionWording":[{"scenario":"S","submissionType":"TYPE_2",""" +
-                """"requiredWording":[${items.joinToString(",")}]}]}"""
+                """"requiredWording":[${items.joinToString(",")}]}],${handlerSections()}}"""
         ).toByteArray()
 
     @Test
@@ -157,7 +224,7 @@ class PackContentsChecksTest {
 
     @Test
     fun `INV-AC-1727 a scenario pack without renditionWording passes this check`() {
-        refusal("""{"treatments":[]}""".toByteArray(), "SCENARIO") shouldBe null
+        refusal("{${handlerSections()}}".toByteArray(), "SCENARIO") shouldBe null
     }
 
     @Test

@@ -8,6 +8,8 @@ import tools.jackson.databind.JsonNode
  * The checks of pack contents that JSON Schema cannot express, run at the import after the contents load (INV-T-6567):
  * the calendar pack's defaults and one source row per entry (INV-Q-6554, INV-Q-6556; INV-REQ-1117, INV-REQ-1279,
  * INV-REQ-774, INV-AC-1727), and the source class of each required rendition wording of a scenario pack (INV-Q-6556).
+ * A scenario pack that passes the wording check is then decoded, so that what the decoder refuses is refused at the
+ * import and not at a later read (INV-AC-26687, INV-T-26688).
  * A pack type is matched by exact equality with the registry's value, so no look-alike casing is checked as another
  * type. The answer names the first failing item; the pack is never defaulted or partially accepted.
  */
@@ -17,16 +19,29 @@ class PackContentsChecks : PackContentsCheck {
         contents: ByteArray,
     ): String? =
         when (packType) {
-            PackTypes.CALENDAR.value -> guarded(packType, contents, CalendarPackChecks::refusal)
-            PackTypes.SCENARIO.value -> guarded(packType, contents, ScenarioRenditionChecks::refusal)
-            PackTypes.BREACH_TERMS.value -> guarded(packType, contents) { decodedOrNull(contents) }
-            else -> null
+            PackTypes.CALENDAR.value -> {
+                guarded(packType, contents, CalendarPackChecks::refusal)
+            }
+
+            PackTypes.SCENARIO.value -> {
+                guarded(packType, contents) { root ->
+                    ScenarioRenditionChecks.refusal(root) ?: decodeRefusal { ScenarioPackContents.decode(contents) }
+                }
+            }
+
+            PackTypes.BREACH_TERMS.value -> {
+                guarded(packType, contents) { decodeRefusal { BreachTermsPackContents.decode(contents) } }
+            }
+
+            else -> {
+                null
+            }
         }
 
-    /** Runs the BREACH_TERMS decoder; its failure is the refusal text, success is no refusal. */
-    private fun decodedOrNull(contents: ByteArray): String? =
+    /** Runs a pack type's decoder; its failure is the refusal text, success is no refusal. */
+    private fun decodeRefusal(decode: () -> Any): String? =
         try {
-            BreachTermsPackContents.decode(contents)
+            decode()
             null
         } catch (e: PackContentsFailure) {
             e.message
