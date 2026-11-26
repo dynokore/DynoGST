@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: tenancy API
-  version: 2.5.0
+  version: 2.6.0
   description: 'Contract-first source of truth for tenancy (API-01, STK-44), replacing the INV-T-2849
     scaffold (INV-T-2857, T13). Internal API only (SDS/04-api-standards §1): organisation structure and
     each entity''s regulatory profile, called by console-bff (commands), control-plane-svc (tenant provisioning
@@ -226,6 +226,79 @@ paths:
                     entityRef: ENT-3F2A9C
                     outcome: PASSED
                     recordedAt: "2026-09-27T02:00:00Z"
+        "400":
+          $ref: '#/components/responses/Error'
+        "401":
+          $ref: '#/components/responses/Error'
+        "403":
+          $ref: '#/components/responses/Error'
+        "404":
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+    get:
+      operationId: listSandboxCertifications
+      summary: List an entity's recorded sandbox certification results (INV-REQ-1008)
+      description: >-
+        The certification-results resumption point of the onboarding-to-go-live flow (INV-REQ-1008): every
+        certification run recorded by certifySandbox for the entity, so a flow resumes in a new session from
+        the state the service holds. Every run is its own record (certifySandbox repeats are never merged).
+        The order is total: recordedAt ascending, then sequence ascending.
+
+
+        The list pages by cursor (API-18, INV-REQ-826): limit defaults to 100 and is at most 500 (a larger value
+        is refused with 400); cursor is opaque and integrity-protected, bound to the principal and the sort that
+        produced it, and valid for at least 24 hours (another principal or an expired cursor is refused with 400);
+        nextCursor is omitted on the last page; there is no offset and no total count.
+      tags:
+      - periods
+      x-principal: filing-workflow
+      x-caller-auth: end-user
+      x-sync-edge: console-bff->tenancy-svc
+      x-timeout: 2000
+      x-requirements:
+      - INV-REQ-1008
+      x-error-codes: []
+      parameters:
+      - name: entityRef
+        in: path
+        required: true
+        description: The registered entity's opaque reference.
+        schema:
+          type: string
+          maxLength: 64
+        example: ENT-3F2A9C
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 100
+          minimum: 1
+          maximum: 500
+      - name: cursor
+        in: query
+        required: false
+        description: Opaque, integrity-protected cursor (API-18).
+        schema:
+          type: string
+          maxLength: 512
+      responses:
+        "200":
+          description: Certification records, recordedAt ascending then sequence ascending
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SandboxCertificationListResponse'
+              examples:
+                default:
+                  value:
+                    items:
+                    - suiteVersion: '2026.1'
+                      outcome: PASSED
+                      recordedBy: identity:USR-009
+                      recordedAt: "2026-10-18T09:30:00Z"
+                      sequence: 1
         "400":
           $ref: '#/components/responses/Error'
         "401":
@@ -4008,6 +4081,55 @@ components:
           properties:
             outcome:
               const: PASSED
+    SandboxCertificationListResponse:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 500
+          items:
+            $ref: '#/components/schemas/SandboxCertificationRecord'
+        nextCursor:
+          type: string
+          maxLength: 512
+          description: Omitted on the last page (API-14, API-18).
+    SandboxCertificationRecord:
+      type: object
+      required:
+      - suiteVersion
+      - outcome
+      - recordedBy
+      - recordedAt
+      - sequence
+      properties:
+        suiteVersion:
+          type: string
+          maxLength: 32
+        outcome:
+          type: string
+          enum:
+          - PASSED
+          - FAILED
+        failedScenarios:
+          type: array
+          maxItems: 500
+          items:
+            type: string
+            maxLength: 128
+        recordedBy:
+          type: string
+          maxLength: 128
+          description: The acting user ID (INV-Q-10647), never a role.
+        recordedAt:
+          type: string
+          format: date-time
+        sequence:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Unique per entity; breaks ties of recordedAt.
     CertificationResponse:
       type: object
       required:

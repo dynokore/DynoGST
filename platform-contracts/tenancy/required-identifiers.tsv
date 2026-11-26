@@ -253,3 +253,12 @@ SubmissionScopeResponse.currentPeriod	schema_property	openapi.yaml	INV-REQ-1086
 # INV-T-26650 adds the filingDueInstant and safetyMarginSeconds rows (INV-REQ-1019): the optional filing due instant and safety margin members of the PeriodDueDateChanged payload schema.
 filingDueInstant	property	schemas/period-due-date-changed-payload.schema.json	INV-REQ-1019
 safetyMarginSeconds	property	schemas/period-due-date-changed-payload.schema.json	INV-REQ-1019
+# INV-T-26216 adds the listSandboxCertifications row (INV-REQ-1008): the read of the certification-results resumption point.
+listSandboxCertifications	operation	openapi.yaml	INV-REQ-1008
+# INV-T-26216 (ruling: a new operation satisfies the response completeness check in full): one operation_response row per response of listSandboxCertifications.
+listSandboxCertifications.200	operation_response	openapi.yaml	INV-REQ-1008
+listSandboxCertifications.400	operation_response	openapi.yaml	INV-REQ-1008
+listSandboxCertifications.401	operation_response	openapi.yaml	INV-REQ-1008
+listSandboxCertifications.403	operation_response	openapi.yaml	INV-REQ-1008
+listSandboxCertifications.404	operation_response	openapi.yaml	INV-REQ-1008
+listSandboxCertifications.default	operation_response	openapi.yaml	INV-REQ-1008

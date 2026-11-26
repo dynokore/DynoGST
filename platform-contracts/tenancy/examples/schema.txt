@@ -52,3 +52,4 @@
 ../schemas/entity-profile-changed-payload.schema.json entity-profile-changed-payload-*.json
 ../schemas/offboarding-export-requested-payload.schema.json offboarding-export-requested-payload-*.json
 ../openapi.yaml#/components/schemas/RenditionAttestationRecord rendition-attestation-record-*.json
+../openapi.yaml#/components/schemas/SandboxCertificationRecord sandbox-certification-record-*.json

@@ -10,7 +10,7 @@ failed=0
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 H='flow\tstep\tservice\toperationId\tgap'
 PA=pack-authoring-to-activation; OG=onboarding-to-go-live; PR=period-readiness-to-filing
-BASE="$H\n$PA\tdraft\trules\tgetMappingPack\t-\n$PA\tdry-run-result\trules\tgetDryRun\t-\n$PA\tapproval\trules\tgetMappingPack\t-\n$PA\tacknowledgements\trules\tgetPackDeltaAcknowledgement\t-\n$OG\tcoverage-map\tingestion\tgetTriggerCoverageMap\t-\n$OG\tgap-report\tmasterdata\tgetGapReport\t-\n$OG\tcertification-results\ttenancy\tUNREAD\tINV-Q-14102\n$PR\tverdict\tsubmission\tgetReadiness\t-\n$PR\tdrain-progress\tsubmission\tUNREAD\tINV-Q-14102\n$PR\tresidual-list\tsubmission\tUNREAD\tINV-Q-14102\ncompensation\taffected-population-definition\trules\tUNREAD\tINV-Q-14102\n"
+BASE="$H\n$PA\tdraft\trules\tgetMappingPack\t-\n$PA\tdry-run-result\trules\tgetDryRun\t-\n$PA\tapproval\trules\tgetMappingPack\t-\n$PA\tacknowledgements\trules\tgetPackDeltaAcknowledgement\t-\n$OG\tcoverage-map\tingestion\tgetTriggerCoverageMap\t-\n$OG\tgap-report\tmasterdata\tgetGapReport\t-\n$OG\tcertification-results\ttenancy\tlistSandboxCertifications\t-\n$PR\tverdict\tsubmission\tgetReadiness\t-\n$PR\tdrain-progress\tsubmission\tUNREAD\tINV-Q-14102\n$PR\tresidual-list\tsubmission\tUNREAD\tINV-Q-14102\ncompensation\taffected-population-definition\trules\tUNREAD\tINV-Q-14102\n"
 get() { printf '  %s:\n    get:\n      operationId: %s\n      responses:\n        "%s": {description: ok%s}\n' "$1" "$2" "$3" "$4"; }
 mkroot() { # name, table (printf format) -> $T/<name>
   d="$T/$1"; mkdir -p "$d/catalogue"
@@ -20,13 +20,13 @@ mkroot() { # name, table (printf format) -> $T/<name>
   get /g getGapReport 200 "$B" >> "$d/masterdata/openapi.yaml"
   { get /r getReadiness 200 "$B"; printf '  /drain:\n    post: {operationId: drainPeriod, responses: {"200": {description: ok, content: {application/json: {schema: {type: object}}}}}}\n'; } >> "$d/submission/openapi.yaml"
     get /c getTriggerCoverageMap 200 "$B" >> "$d/ingestion/openapi.yaml"
-  for s in tenancy; do sed -i 's/^paths:$/paths: {}/' "$d/$s/openapi.yaml"; done
+  get /s listSandboxCertifications 200 "$B" >> "$d/tenancy/openapi.yaml"
   printf "$2" > "$d/catalogue/flow-resumption.tsv"
 }
 run() { python3 "$CHECK" "$T/$1" 2>&1; }
 expect_pass() {
   out=$(run "$1"); rc=$?
-  if [ $rc -ne 0 ] || [ "$out" != "flow resumption: 11 points, 4 unread" ]; then echo "gst-ci: FAIL — '$1' rejected:"; echo "$out"; failed=1; else echo "gst-ci: self-test '$1' passed as expected"; fi
+  if [ $rc -ne 0 ] || [ "$out" != "flow resumption: 11 points, 3 unread" ]; then echo "gst-ci: FAIL — '$1' rejected:"; echo "$out"; failed=1; else echo "gst-ci: self-test '$1' passed as expected"; fi
 }
 expect_fail() { # name, finding (whole line)
   out=$(run "$1"); rc=$?
@@ -61,11 +61,12 @@ mkroot no-content "$BASE"; sed -i '/operationId: getDryRun/,$ s/, content: {appl
 mut unread-unpinned '9s/getReadiness\t-/UNREAD\tINV-Q-14102/'; expect_fail unread-unpinned "${P}line 9: $PR verdict is not pinned UNREAD"
 mut ack-unread-unpinned '5s/getPackDeltaAcknowledgement\t-/UNREAD\tINV-Q-14102/'; expect_fail ack-unread-unpinned "${P}line 5: $PA acknowledgements is not pinned UNREAD"
 mut gap-mapped '2s/-$/INV-Q-14102/';                 expect_fail gap-mapped "${P}line 2: gap 'INV-Q-14102' must be '-'"
-mut gap-unread '8s/INV-Q-14102$/-/';                  expect_fail gap-unread "${P}line 8: gap '-' must be 'INV-Q-14102'"
+mut gap-unread '10s/INV-Q-14102$/-/';                 expect_fail gap-unread "${P}line 10: gap '-' must be 'INV-Q-14102'"
 mut coverage-map-unread-unpinned '6s/getTriggerCoverageMap\t-/UNREAD\tINV-Q-14102/'; expect_fail coverage-map-unread-unpinned "${P}line 6: $OG coverage-map is not pinned UNREAD"
+mut certification-results-unread-unpinned '8s/listSandboxCertifications\t-/UNREAD\tINV-Q-14102/'; expect_fail certification-results-unread-unpinned "${P}line 8: $OG certification-results is not pinned UNREAD"
 mut missing-point '/\tcoverage-map\t/d';              expect_fail missing-point "${P}resumption point ($OG, coverage-map) has no line"
 # each pinned point mapped in turn: line number, flow, step, service
-for spec in "8 $OG certification-results tenancy" "10 $PR drain-progress submission" "11 $PR residual-list submission" "12 compensation affected-population-definition rules"; do
+for spec in "10 $PR drain-progress submission" "11 $PR residual-list submission" "12 compensation affected-population-definition rules"; do
   set -- $spec; n=case-$3
   mkroot "$n" "$BASE"; sed -i "$1"'s/UNREAD\tINV-Q-14102/getMappingPack\t-/' "$(TSV $n)"
   expect_fail "$n" "${P}line $1: $2 $3 is pinned UNREAD but maps to operationId 'getMappingPack'"
