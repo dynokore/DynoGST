@@ -52,3 +52,7 @@ taxableAmount	property	schemas/aggregate-ready-payload.schema.json	INV-REQ-437
 MISSED	enum_value	schemas/aggregate-window-changed-payload.schema.json	INV-REQ-413
 findingCode	property	schemas/aggregate-window-changed-payload.schema.json	INV-REQ-413
 spanKnown	property	schemas/aggregate-window-changed-payload.schema.json	INV-REQ-413
+# INV-T-28769 (INV-AC-28763): the listing of intake receipts by submitting principal and recording window (INV-REQ-867).
+listAggregationIntake	operation	openapi.yaml	INV-REQ-867
+listAggregationIntake.200	operation_response	openapi.yaml	INV-REQ-867
+listAggregationIntake.default	operation_response	openapi.yaml	INV-REQ-867

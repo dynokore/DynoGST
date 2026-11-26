@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: aggregation API
-  version: 2.1.1
+  version: 2.2.0
   description: >-
     Contract-first source of truth for aggregation (API-01, STK-44). The
     `aggregation-contract` module generates its server interfaces and DTOs
@@ -397,6 +397,107 @@ paths:
                     nextCursor: "c2VlbjoyMA"
         default:
           $ref: '#/components/responses/Error'
+  /internal/v1/aggregation/intake-receipts:
+    get:
+      operationId: listAggregationIntake
+      summary: List the intake receipts a principal submitted in a recording window
+      description: >-
+        Lists the intake receipts that the principal `submittedBy` submitted
+        and that were recorded in the window `recordedFrom` <= t <
+        `recordedTo`, for incident scoping (INV-REQ-867). The items are
+        ordered by sourceKey, recordedAt, sourceRevision, entityRef and
+        intakeOperation (`BATCH` before `TRANSACTIONS`), with cursor
+        pagination (API-18); the cursor holds all five of these values; no
+        offset and no total count. One (entityRef, sourceKey,
+        sourceRevision) tuple accepted by both `intakeAggregationBatch` and
+        `intakeAggregationTransactions` is two items. An item carries no
+        invoice content. The read changes nothing.
+
+
+        The service checks only the scoped permission `submission.view-status`,
+        decided per request by `AuthorityReplica.decide`, never a role name.
+        The answer lists only items of entities the caller is permitted for,
+        filtered before paging. A caller permitted for none of them gets `200`
+        with no item, the same as an empty window, so the answer is no
+        existence oracle (OWASP API1). A permission decision that is
+        unavailable refuses the whole request.
+      tags: [intake]
+      x-principal: reporting
+      x-caller-auth: end-user
+      x-sync-edge: console-bff->aggregation-svc
+      x-timeout: 2000
+      x-error-codes: []
+      x-requirements: [INV-REQ-867]
+      x-operation:
+        kind: PERMISSION
+        permission: submission.view-status
+        scope: entity
+        precondition: >-
+          None on recorded state; each item is listed only where the caller is
+          permitted for its entity.
+        reversibility: UNDOABLE
+        repeatKey: "none — a read-only call; it changes nothing and may be repeated."
+      parameters:
+        - name: submittedBy
+          in: query
+          required: true
+          description: The principalRef of the submitting principal.
+          schema:
+            type: string
+            maxLength: 64
+        - name: recordedFrom
+          in: query
+          required: true
+          description: Start of the recording window, inclusive.
+          schema:
+            type: string
+            format: date-time
+        - name: recordedTo
+          in: query
+          required: true
+          description: End of the recording window, exclusive.
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 100
+            maximum: 500
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: One page of intake receipts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntakeReceiptPage'
+              examples:
+                default:
+                  value:
+                    items:
+                      - intakeOperation: "BATCH"
+                        entityRef: "E-001"
+                        sourceKey: "POS-FEED-0001"
+                        sourceRevision: 1
+                        aggregateType: "POS"
+                        recordedAt: "2026-03-20T08:00:00Z"
+                        aggregateIds: ["AGG-4471"]
+                      - intakeOperation: "TRANSACTIONS"
+                        entityRef: "E-001"
+                        sourceKey: "POS-FEED-0002"
+                        sourceRevision: 1
+                        aggregateType: "POS"
+                        recordedAt: "2026-03-20T09:00:00Z"
+                        aggregateIds: []
+        default:
+          $ref: '#/components/responses/Error'
 components:
   parameters:
     FlowContext:
@@ -680,6 +781,36 @@ components:
           type: string
           description: Opaque cursor of the next page (API-18); omitted on the last page.
       required: [aggregateId, items]
+    IntakeReceiptPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/IntakeReceipt'
+        nextCursor:
+          type: string
+          description: Opaque cursor of the next page (API-18); omitted on the last page.
+      required: [items]
+    IntakeReceipt:
+      type: object
+      properties:
+        intakeOperation:
+          type: string
+          enum: [BATCH, TRANSACTIONS]
+          description: BATCH - accepted by intakeAggregationBatch; TRANSACTIONS - accepted by intakeAggregationTransactions.
+        entityRef: { type: string, maxLength: 40 }
+        sourceKey: { type: string, minLength: 1, maxLength: 128 }
+        sourceRevision: { type: integer, minimum: 1 }
+        aggregateType:
+          type: string
+          enum: [POS, STI, PCP]
+        recordedAt: { type: string, format: date-time }
+        aggregateIds:
+          type: array
+          description: The aggregates that hold the receipt's data; empty while no aggregate holds it.
+          items: { type: string, maxLength: 40 }
+      required: [intakeOperation, entityRef, sourceKey, sourceRevision, aggregateType, recordedAt, aggregateIds]
   responses:
     Error:
       description: Error (API-20 envelope)
