@@ -14,3 +14,4 @@
 ../openapi.yaml#/components/schemas/ValidationOverrideList validation-override-list-*.json
 ../openapi.yaml#/components/schemas/RenditionSampleCheckRecord rendition-sample-check-record-*.json
 ../openapi.yaml#/components/schemas/RenditionSampleCheckMetadata rendition-sample-check-metadata-*.json
+../schemas/acceptance-calendar.schema.json acceptance-calendar-*.json

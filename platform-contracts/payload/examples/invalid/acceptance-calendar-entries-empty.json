@@ -1,0 +1,12 @@
+{
+  "calendars": [
+    {
+      "family": "SYNTH",
+      "releaseOrder": [
+        "SYNTH-A",
+        "SYNTH-B"
+      ],
+      "entries": []
+    }
+  ]
+}

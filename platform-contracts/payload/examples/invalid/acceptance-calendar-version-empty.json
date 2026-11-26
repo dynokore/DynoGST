@@ -1,0 +1,16 @@
+{
+  "calendars": [
+    {
+      "family": "SYNTH",
+      "releaseOrder": [
+        "SYNTH-A"
+      ],
+      "entries": [
+        {
+          "version": "",
+          "acceptedFrom": "2000-01-01"
+        }
+      ]
+    }
+  ]
+}

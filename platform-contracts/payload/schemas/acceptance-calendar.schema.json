@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://platform-contracts.invoice.internal/payload/schemas/acceptance-calendar.schema.json",
+  "title": "PayloadAcceptanceCalendar",
+  "description": "Document an installation loads under its configuration key payload.acceptance-calendar: per specification family, the release order (oldest first) and the acceptance window of each release (acceptedFrom and acceptedTo inclusive; absent acceptedTo means open-ended). Read by svc-payload and mapped to AcceptanceCalendar.of(order, entries) of integration-canon. This schema publishes the shape only; no calendar row is part of the contract. Rules this schema cannot express stay with the loader of svc-payload, which gets them from AcceptanceCalendar.of: (1) every version of an entry occurs in releaseOrder; (2) acceptedTo is not before acceptedFrom. Additive-only within a major version (API-41). The schema stays open to unknown members (API-41 tolerant reader); the loader of svc-payload refuses unknown members (fail closed).",
+  "type": "object",
+  "properties": {
+    "calendars": {
+      "type": "array",
+      "minItems": 1,
+      "description": "One calendar per specification family.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "family": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40,
+            "description": "The specification family."
+          },
+          "releaseOrder": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "description": "Release codes of the family, oldest first.",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            }
+          },
+          "entries": {
+            "type": "array",
+            "minItems": 1,
+            "description": "Acceptance window per release.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "version": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64,
+                  "description": "Release code; must occur in releaseOrder (checked by the loader)."
+                },
+                "acceptedFrom": {
+                  "type": "string",
+                  "format": "date",
+                  "description": "First accepted date, inclusive."
+                },
+                "acceptedTo": {
+                  "type": "string",
+                  "format": "date",
+                  "description": "Last accepted date, inclusive; absent means open-ended."
+                }
+              },
+              "required": [
+                "version",
+                "acceptedFrom"
+              ]
+            }
+          }
+        },
+        "required": [
+          "family",
+          "releaseOrder",
+          "entries"
+        ]
+      }
+    }
+  },
+  "required": [
+    "calendars"
+  ]
+}
