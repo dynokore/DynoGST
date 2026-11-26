@@ -148,13 +148,15 @@ class FilingWiringTest {
      */
     class LiveFilingAuthority {
         @Bean
-        fun liveFilingAuthority(): AuthorityFallback =
+        fun filingAccessDouble(): AuthorityFallback =
             AuthorityFallback { key, _ ->
                 FallbackResult.Found(AuthorityVerdict(key.action == "machine.filing.confirm"))
             }
     }
 
     private val loader = javaClass.classLoader
+    private val servletDoubles =
+        listOf(BreakGlassTestBeans::class.java, AmbiguousForP3::class.java, LiveFilingAuthority::class.java)
     private val keys: KeyPair = KeyPairGenerator.getInstance("RSA").apply { initialize(KEY_BITS) }.generateKeyPair()
 
     private fun token(): String {
@@ -223,16 +225,8 @@ class FilingWiringTest {
                 )
         BreakGlassDoubles.reset(BreakGlassTestBeans.BEFORE_E)
         SubmissionContext
-            .startServlet(
-                dir,
-                listOf(
-                    BreakGlassTestBeans::class.java,
-                    AmbiguousForP3::class.java,
-                    LiveFilingAuthority::class.java,
-                ),
-                properties,
-                loader,
-            ).use { context ->
+            .startServlet(dir, servletDoubles, properties, loader)
+            .use { context ->
                 val key =
                     OperatorSessionKey(
                         "mk",
