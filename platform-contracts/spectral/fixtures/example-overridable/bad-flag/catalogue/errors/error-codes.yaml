@@ -1,0 +1,7 @@
+error_codes:
+- code: PAY-011
+  severity: BLOCK
+  disposition: OVERRIDABLE
+- code: PAY-009
+  severity: BLOCK
+  disposition: MANUAL

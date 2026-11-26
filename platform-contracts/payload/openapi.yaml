@@ -139,13 +139,13 @@ paths:
                   value:
                     verdict: "BLOCK"
                     reasons:
-                      - { code: "PAY-011", message: "Wrongful GST charge: the Supplier GSTN is not registered on the invoice date", field: "supplierGstn", severity: "BLOCK", overridable: false }
+                      - { code: "PAY-011", message: "Wrongful GST charge: the Supplier GSTN is not registered on the invoice date", field: "supplierGstn", severity: "BLOCK", overridable: true }
                 type2Warn:
                   summary: TYPE_2 with a wrongful GST charge (PAY-011) is WARN
                   value:
                     verdict: "WARN"
                     reasons:
-                      - { code: "PAY-011", message: "Wrongful GST charge: the Supplier GSTN is not registered on the invoice date", field: "supplierGstn", severity: "WARN", overridable: false }
+                      - { code: "PAY-011", message: "Wrongful GST charge: the Supplier GSTN is not registered on the invoice date", field: "supplierGstn", severity: "WARN", overridable: true }
                 registerUnavailable:
                   summary: Register unavailable — WARN with the flag, never BLOCK on that ground
                   value: { verdict: "WARN", reasons: [], flags: ["REGISTER_UNAVAILABLE"] }

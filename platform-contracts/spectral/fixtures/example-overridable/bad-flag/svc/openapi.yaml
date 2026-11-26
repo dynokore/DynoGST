@@ -1,0 +1,17 @@
+openapi: 3.0.3
+info: { title: fixture, version: "1" }
+paths:
+  /x:
+    post:
+      operationId: fixtureOp
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              examples:
+                blocked:
+                  value:
+                    reasons:
+                      - { code: "PAY-011", message: m, severity: "BLOCK", overridable: false }
+                      - { code: "PAY-009", message: m, severity: "BLOCK", overridable: false }
