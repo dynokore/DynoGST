@@ -123,8 +123,8 @@ class JooqExposureWindowStore(
         )
 
     /**
-     * [bound] rounded up to a whole microsecond, the resolution of `created_at`: the driver would round a finer bound to
-     * the nearest one. For stored values, `>=` and `<` the rounded bound mean the same as against [bound] itself.
+     * [bound] rounded up to a whole microsecond, the resolution of `created_at`: the driver would round a finer bound
+     * to the nearest one. For stored values, `>=` and `<` the rounded bound mean the same as against [bound] itself.
      */
     private fun atStoredPrecision(bound: Instant): OffsetDateTime {
         val floor = bound.truncatedTo(ChronoUnit.MICROS)
