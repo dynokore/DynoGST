@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://platform-contracts.invoice.internal/rules/schemas/unreviewed-activation-recorded-payload.schema.json",
+  "title": "UnreviewedActivationRecordedPayload",
+  "description": "Payload of the UnreviewedActivationRecorded event (INV-REQ-952, INV-NOTE-3#def:FR-AB.5): a regulatory pack was activated for the tenant after its grace window expired without review. It is a fact for the next period's readiness output, never an error or a blocker. packType and packVersion carry the bounds of RegulatoryPack.packType and RegulatoryPack.version in openapi.yaml; this schema is the single source of those two bounds for the submission contract. Within a major version this schema is additive-only (API-41, FR-K.4): a field is never removed, renamed, retyped or made required.",
+  "type": "object",
+  "properties": {
+    "tenantId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "The tenant whose activation proceeded without review."
+    },
+    "packType": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 40,
+      "description": "The type of the activated regulatory pack."
+    },
+    "packVersion": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 16,
+      "description": "The version of the activated regulatory pack."
+    },
+    "effectiveFrom": {
+      "type": "string",
+      "format": "date",
+      "description": "The effective date of the activated pack."
+    },
+    "reviewed": {
+      "type": "boolean",
+      "enum": [
+        false
+      ],
+      "description": "Always false: the activation proceeded without the tenant's review."
+    }
+  },
+  "required": [
+    "tenantId",
+    "packType",
+    "packVersion",
+    "effectiveFrom",
+    "reviewed"
+  ],
+  "additionalProperties": true
+}

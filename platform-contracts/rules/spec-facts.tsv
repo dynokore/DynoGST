@@ -23,3 +23,7 @@ openapi.yaml	/components/schemas/EvaluationResult/properties/supplyType/enum	abs
 openapi.yaml	/paths/~1internal~1v1~1rules~1regulatory-packs~1{packType}~1{version}~1approval/post/x-operation/role	equals	"regulatory.approver"	INV-REQ-489
 openapi.yaml	/paths/~1internal~1v1~1rules~1documents~1evaluations/post/x-requirements	contains	"INV-REQ-364"	INV-REQ-364
 openapi.yaml	/paths/~1internal~1v1~1rules~1pre-issuance-drafts~1evaluations/post/x-requirements	contains	"INV-REQ-364"	INV-REQ-364
+schemas/unreviewed-activation-recorded-payload.schema.json	/required	equals	["tenantId","packType","packVersion","effectiveFrom","reviewed"]	INV-REQ-952
+schemas/unreviewed-activation-recorded-payload.schema.json	/properties/reviewed/enum	equals	[false]	INV-REQ-952
+schemas/unreviewed-activation-recorded-payload.schema.json	/properties/packType/maxLength	equals	40	INV-REQ-952
+schemas/unreviewed-activation-recorded-payload.schema.json	/properties/packVersion/maxLength	equals	16	INV-REQ-952

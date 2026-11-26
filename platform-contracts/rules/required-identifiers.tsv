@@ -464,3 +464,5 @@ acceptRateSource.400	operation_response	openapi.yaml	INV-REQ-504
 acceptRateSource.403	operation_response	openapi.yaml	INV-REQ-504
 acceptRateSource.404	operation_response	openapi.yaml	INV-REQ-504
 acceptRateSource.default	operation_response	openapi.yaml	INV-REQ-504
+UnreviewedActivationRecorded	asyncapi_message	asyncapi.yaml	INV-REQ-952
+reviewed	root_property	schemas/unreviewed-activation-recorded-payload.schema.json	INV-REQ-952

@@ -1,7 +1,7 @@
 asyncapi: 3.1.0
 info:
   title: rules events
-  version: 1.4.0
+  version: 1.5.0
   description: >-
     Every event rules produces or consumes (API-43, STK-45), wrapped at
     publish time in the CloudEvents 1.0.2 envelope every service shares
@@ -35,6 +35,11 @@ channels:
     messages:
       PackCurrencyChanged:
         $ref: '#/components/messages/PackCurrencyChanged'
+  rulesUnreviewedActivationRecorded:
+    address: 'gst.rules.unreviewed-activation-recorded.v1'
+    messages:
+      UnreviewedActivationRecorded:
+        $ref: '#/components/messages/UnreviewedActivationRecorded'
   rulesExampleHappened:
     address: 'gst.rules.example-happened.v1'
     messages:
@@ -56,6 +61,13 @@ operations:
       $ref: '#/channels/rulesPackCurrencyChanged'
     messages:
       - $ref: '#/channels/rulesPackCurrencyChanged/messages/PackCurrencyChanged'
+  publishUnreviewedActivationRecorded:
+    action: send
+    description: UnreviewedActivationRecorded — recorded in model/architecture/events.yaml (INV-REQ-952).
+    channel:
+      $ref: '#/channels/rulesUnreviewedActivationRecorded'
+    messages:
+      - $ref: '#/channels/rulesUnreviewedActivationRecorded/messages/UnreviewedActivationRecorded'
   publishExampleHappened:
     action: send
     description: Placeholder operation (INV-T-2849 scaffold) — replace with a real one.
@@ -95,6 +107,18 @@ components:
       contentType: application/cloudevents+json
       payload:
         $ref: './schemas/pack-currency-changed-payload.schema.json'
+    UnreviewedActivationRecorded:
+      name: com.dynokore.gst.rules.UnreviewedActivationRecorded.v1
+      title: UnreviewedActivationRecorded
+      summary: UnreviewedActivationRecorded — a pack was activated after an unreviewed grace window (INV-REQ-952).
+      description: >-
+        Event UnreviewedActivationRecorded (model/architecture/events.yaml, INV-REQ-952).
+        Emitted by: rules-svc. Consumed by: submission-svc. Delivery: At-least-once. Payload: tenant, pack type,
+        pack version, effective date, reviewed false. The next period's readiness output carries it as a fact, not
+        as an error and not as a blocker.
+      contentType: application/cloudevents+json
+      payload:
+        $ref: './schemas/unreviewed-activation-recorded-payload.schema.json'
     ExampleHappened:
       name: com.dynokore.gst.rules.ExampleHappened.v1
       title: ExampleHappened
