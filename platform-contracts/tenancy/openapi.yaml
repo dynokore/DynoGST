@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: tenancy API
-  version: 2.3.1
+  version: 2.4.0
   description: 'Contract-first source of truth for tenancy (API-01, STK-44), replacing the INV-T-2849
     scaffold (INV-T-2857, T13). Internal API only (SDS/04-api-standards §1): organisation structure and
     each entity''s regulatory profile, called by console-bff (commands), control-plane-svc (tenant provisioning
@@ -376,7 +376,7 @@ paths:
     post:
       operationId: suspendEntity
       summary: Stop submission for a live entity; ingestion continues (SDS §31.2.4)
-      description: Stop submission for a live entity; ingestion continues (SDS §31.2.4).
+      description: 'Stop submission for a live entity; ingestion continues (SDS §31.2.4). A repeat on an entity that is already SUSPENDED is a no-op; an entity in any other state than LIVE or SUSPENDED is refused with 409 and the code TNC-015.'
       tags:
       - entities
       x-principal: filing-workflow
@@ -386,7 +386,8 @@ paths:
       x-requirements:
       - FR-AC.1
       - FR-AC.7
-      x-error-codes: []
+      x-error-codes:
+      - TNC-015
       x-operation:
         role: entity.admin
         scope: entity
@@ -433,6 +434,8 @@ paths:
         "403":
           $ref: '#/components/responses/Error'
         "404":
+          $ref: '#/components/responses/Error'
+        "409":
           $ref: '#/components/responses/Error'
         default:
           $ref: '#/components/responses/Error'

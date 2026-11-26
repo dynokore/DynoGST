@@ -195,6 +195,8 @@ CertifySandboxRequest.failedScenarios	schema_property	openapi.yaml	INV-REQ-987
 CertificationResponse.failedScenarios	schema_property	openapi.yaml	INV-REQ-987
 OffboardTenantRequest.handoverStatementRef	schema_property	openapi.yaml	INV-REQ-956
 deregisterEntity.TNC-008	operation_error_code	openapi.yaml	INV-REQ-956
+suspendEntity.TNC-015	operation_error_code	openapi.yaml	INV-REQ-963
+suspendEntity.409	operation_response	openapi.yaml	INV-REQ-963
 offboardTenant.TNC-008	operation_error_code	openapi.yaml	INV-REQ-956
 offboardTenant.TNC-009	operation_error_code	openapi.yaml	INV-REQ-956
 offboardTenant.TNC-010	operation_error_code	openapi.yaml	INV-REQ-956
