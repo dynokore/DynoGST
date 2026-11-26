@@ -1,0 +1,12 @@
+{
+  "entityRef": "ent-1",
+  "prescribedPeriod": "UNKNOWN-SPAN",
+  "window": {
+    "from": "2027-01-01",
+    "to": "2027-01-31"
+  },
+  "state": "MISSED",
+  "findingCode": "ING-027",
+  "spanKnown": "false",
+  "stateVersion": 1
+}

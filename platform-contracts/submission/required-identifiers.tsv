@@ -322,3 +322,8 @@ constitution	property	schemas/identity-triple-reprocessing-requested-payload.sch
 effectiveFrom	property	schemas/identity-triple-reprocessing-requested-payload.schema.json	INV-REQ-1006
 changeRef	property	schemas/identity-triple-reprocessing-requested-payload.schema.json	INV-REQ-1006
 docUuids	property	schemas/identity-triple-reprocessing-requested-payload.schema.json	INV-REQ-1006
+windows	property	openapi.yaml	INV-REQ-413
+EntityFinding.windows	schema_property	openapi.yaml	INV-REQ-413
+FindingWindow.from	schema_property	openapi.yaml	INV-REQ-413
+FindingWindow.to	schema_property	openapi.yaml	INV-REQ-413
+FindingWindow.spanKnown	schema_property	openapi.yaml	INV-REQ-413

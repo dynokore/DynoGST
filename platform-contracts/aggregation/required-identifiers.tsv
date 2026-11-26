@@ -49,3 +49,6 @@ claimableInputTax	property	openapi.yaml	INV-REQ-441
 # INV-T-23666: taxable amount on the aggregation PCP lines and intake
 taxableAmount	property	openapi.yaml	INV-REQ-437
 taxableAmount	property	schemas/aggregate-ready-payload.schema.json	INV-REQ-437
+MISSED	enum_value	schemas/aggregate-window-changed-payload.schema.json	INV-REQ-413
+findingCode	property	schemas/aggregate-window-changed-payload.schema.json	INV-REQ-413
+spanKnown	property	schemas/aggregate-window-changed-payload.schema.json	INV-REQ-413

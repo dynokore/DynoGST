@@ -36,12 +36,22 @@
     },
     "state": {
       "type": "string",
-      "description": "Window state.",
+      "description": "Window state. MISSED means a due window part whose closing run could not make its aggregate; a later CLOSED for the same part clears it.",
       "enum": [
         "OPEN",
         "CLOSED",
-        "LATE"
+        "LATE",
+        "MISSED"
       ]
+    },
+    "findingCode": {
+      "type": "string",
+      "const": "ING-027",
+      "description": "The code of catalogue/errors/error-codes.yaml for the missed window finding. Present only when state is MISSED."
+    },
+    "spanKnown": {
+      "type": "boolean",
+      "description": "Absent or true: the window part has a known period span. False, only with state MISSED: a held window whose span is not known; prescribedPeriod is then exactly UNKNOWN-SPAN, and window.from and window.to are the first and last day of the aggregation window."
     },
     "aggregateId": {
       "type": "string",

@@ -131,7 +131,7 @@ paths:
       x-caller-auth: end-user
       x-timeout: 3000
       x-error-codes: [SRT-004]
-      x-requirements: [INV-REQ-555, INV-REQ-1168, INV-REQ-814, INV-REQ-951, INV-REQ-1250, INV-REQ-1006, INV-REQ-895]
+      x-requirements: [INV-REQ-555, INV-REQ-1168, INV-REQ-814, INV-REQ-951, INV-REQ-1250, INV-REQ-1006, INV-REQ-895, INV-REQ-413]
       parameters:
         - $ref: '#/components/parameters/EntityRef'
         - $ref: '#/components/parameters/PeriodRef'
@@ -2201,7 +2201,9 @@ components:
           description: >-
             Present only while a finding of the entity is open (the open
             rendition finding of INV-REQ-648, INV-AC-674). It is advisory:
-            `ready` and `tiers` never depend on it.
+            `ready` and `tiers` never depend on it. The second kind is the open
+            missed aggregation window finding of the period, advisory like the
+            first.
         filingDateRecorded:
           type: boolean
           description: >-
@@ -2540,7 +2542,31 @@ components:
         raisedAt:
           type: string
           format: date-time
+        windows:
+          type: array
+          maxItems: 400
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/FindingWindow'
+          description: >-
+            The open missed aggregation windows of the period when `code` is the
+            window finding code.
       required: [code, raisedAt]
+    FindingWindow:
+      type: object
+      properties:
+        from:
+          type: string
+          format: date
+        to:
+          type: string
+          format: date
+        spanKnown:
+          type: boolean
+          description: >-
+            Absent or true: a known part of the period. False: a held window
+            whose period span is unknown, listed in every period of the entity.
+      required: [from, to]
     ApproverAlert:
       type: object
       properties:
