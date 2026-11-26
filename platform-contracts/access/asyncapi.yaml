@@ -1,7 +1,7 @@
 asyncapi: 3.1.0
 info:
   title: access events
-  version: 1.14.0
+  version: 1.15.0
   description: >-
     Every event access produces or consumes (API-43, STK-45), wrapped at
     publish time in the CloudEvents 1.0.2 envelope every service shares
@@ -51,6 +51,11 @@ channels:
     messages:
       AccessAlertRaised:
         $ref: '#/components/messages/AccessAlertRaised'
+  accessAccessAlertStateSettled:
+    address: 'gst.access.access-alert-state-settled.v1'
+    messages:
+      AccessAlertStateSettled:
+        $ref: '#/components/messages/AccessAlertStateSettled'
 
   accessMessageRequested:
     address: 'gst.access.message-requested.v1'
@@ -109,6 +114,14 @@ operations:
       $ref: '#/channels/accessAccessAlertRaised'
     messages:
       - $ref: '#/channels/accessAccessAlertRaised/messages/AccessAlertRaised'
+
+  publishAccessAlertStateSettled:
+    action: send
+    description: AccessAlertStateSettled — catalogued in model/architecture/events.yaml (INV-REQ-895).
+    channel:
+      $ref: '#/channels/accessAccessAlertStateSettled'
+    messages:
+      - $ref: '#/channels/accessAccessAlertStateSettled/messages/AccessAlertStateSettled'
 
   publishMessageRequested:
     action: send
@@ -257,6 +270,16 @@ components:
       contentType: application/cloudevents+json
       payload:
         $ref: './schemas/access-alert-raised-payload.schema.json'
+
+    AccessAlertStateSettled:
+      name: com.dynokore.gst.access.AccessAlertStateSettled.v1
+      title: AccessAlertStateSettled
+      summary: AccessAlertStateSettled — catalogued in model/architecture/events.yaml (INV-REQ-895).
+      description: >-
+        Emitted by: access-svc. Consumed by: submission-svc. Delivery: At-least-once.
+      contentType: application/cloudevents+json
+      payload:
+        $ref: './schemas/access-alert-state-settled-payload.schema.json'
 
     MessageRequested:
       name: com.dynokore.gst.access.MessageRequested.v1

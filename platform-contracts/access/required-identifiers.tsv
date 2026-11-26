@@ -204,3 +204,12 @@ issueFlowContext.default	operation_response	openapi.yaml	INV-REQ-1202
 issueFlowContext.SRT-001	operation_error_code	openapi.yaml	INV-REQ-1202
 issueFlowContext.SRT-004	operation_error_code	openapi.yaml	INV-REQ-1202
 issueFlowContext.SRT-013	operation_error_code	openapi.yaml	INV-REQ-1202
+# INV-T-26554. INV-REQ-895: the settled-state payload members and enum values of AccessAlertStateSettled.
+accCode	property	schemas/access-alert-state-settled-payload.schema.json	INV-REQ-895
+entityRef	property	schemas/access-alert-state-settled-payload.schema.json	INV-REQ-895
+state	property	schemas/access-alert-state-settled-payload.schema.json	INV-REQ-895
+stateVersion	property	schemas/access-alert-state-settled-payload.schema.json	INV-REQ-895
+settledAt	property	schemas/access-alert-state-settled-payload.schema.json	INV-REQ-895
+RAISED	enum_value	schemas/access-alert-state-settled-payload.schema.json	INV-REQ-895
+CLEARED	enum_value	schemas/access-alert-state-settled-payload.schema.json	INV-REQ-895
+ACC-001	enum_value	schemas/access-alert-state-settled-payload.schema.json	INV-REQ-895

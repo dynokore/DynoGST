@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://platform-contracts.invoice.internal/access/schemas/access-alert-state-settled-payload.schema.json",
+  "title": "AccessAlertStateSettledPayload",
+  "description": "Payload of the AccessAlertStateSettled event (catalogued in model/architecture/events.yaml, INV-REQ-895; class: domain): the settled state of the ACC-001 alert of one entity. Within a major version this schema is additive-only (API-41, FR-K.4): a field is never removed, renamed, retyped or made required.",
+  "type": "object",
+  "properties": {
+    "accCode": {
+      "type": "string",
+      "description": "The catalogued ACC alert code; only ACC-001 is settled by this event.",
+      "enum": [
+        "ACC-001"
+      ]
+    },
+    "entityRef": {
+      "type": "string",
+      "description": "The entity the alert concerns: the same value as the entity of the scope entity:<entityRef> of AccessAlertRaised.",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "state": {
+      "type": "string",
+      "description": "RAISED while the entity has no active tax.approver, CLEARED once it has one again.",
+      "enum": [
+        "RAISED",
+        "CLEARED"
+      ]
+    },
+    "stateVersion": {
+      "type": "integer",
+      "description": "Strictly increasing per entity and code, so a consumer ignores a stale or repeated event.",
+      "minimum": 1
+    },
+    "settledAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the state was settled."
+    }
+  },
+  "required": [
+    "accCode",
+    "entityRef",
+    "state",
+    "stateVersion",
+    "settledAt"
+  ],
+  "additionalProperties": true
+}

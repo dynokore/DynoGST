@@ -45,3 +45,4 @@
 ../schemas/signed-link-invalidated-payload.schema.json signed-link-invalidated-*.json
 ../openapi.yaml#/components/schemas/AuthorityIncarnationResponse authority-incarnation-response-*.json
 ../schemas/signed-link-outcome-recorded-payload.schema.json signed-link-outcome-recorded-*.json
+../schemas/access-alert-state-settled-payload.schema.json access-alert-state-settled-*.json
