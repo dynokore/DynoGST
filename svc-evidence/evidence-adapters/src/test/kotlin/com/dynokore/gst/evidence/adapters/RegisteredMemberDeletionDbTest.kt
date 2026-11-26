@@ -948,6 +948,35 @@ class RegisteredMemberDeletionDbTest {
         }
     }
 
+    @Test
+    fun `INV-AC-28694 an import locks all its units before it creates a member`() {
+        val tenant = tenant()
+        open(tenant).use { holder ->
+            lockImportUnit(holder, tenant, PERIOD_Q2)
+            open(tenant).use { importer ->
+                val importerPid = pid(importer)
+                val importing: Future<String?>
+                try {
+                    importing =
+                        startWaiting(importer) {
+                            refusalOf(importer) { import(importer, tenant, "DOC-1" to DATE_A, "DOC-2" to DATE_Q2) }
+                        }
+                    // Creating the member of the first unit would hold this on the parent while the second waits.
+                    scalar(
+                        "select count(*) from pg_locks where pid = ? and mode = 'AccessExclusiveLock' " +
+                            "and relation = 'evidence.prior_evidence'::regclass",
+                        importerPid,
+                    ) shouldBe "0"
+                } finally {
+                    holder.commit()
+                }
+                importing.bounded() shouldBe null
+            }
+        }
+        rowsIn(tenant, PERIOD) shouldBe "1"
+        rowsIn(tenant, PERIOD_Q2) shouldBe "1"
+    }
+
     private fun lockImportUnit(
         c: Connection,
         tenant: UUID,
