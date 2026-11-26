@@ -5,3 +5,5 @@ openapi.yaml	/components/schemas/CreateConnectionRequest/properties/environmentT
 openapi.yaml	/components/schemas/CreateConnectionRequest/properties/environmentTag/enum	equals	["PRODUCTION","SANDBOX"]	INV-REQ-834
 openapi.yaml	/components/schemas/CorrectCounterpartyDataRequest/properties/field/enum	equals	["legalName","addressLine1","addressLine2","postalCode"]	INV-REQ-886
 openapi.yaml	/components/schemas/CorrectCounterpartyDataRequest/properties/field/x-extensible-enum	absent	-	INV-REQ-886
+openapi.yaml	/components/schemas/GapReport/properties/rows/items/properties/findingClass/enum	equals	["UEN_ABSENT","UEN_INVALID","GST_REGISTER_CONFLICT","ADDRESS_INCOMPLETE","DUPLICATE_UEN","SCHEME_STATUS_MISSING"]	INV-REQ-316
+openapi.yaml	/components/schemas/GapReport/properties/rows/items/properties/findingClass/x-extensible-enum	equals	true	INV-REQ-316

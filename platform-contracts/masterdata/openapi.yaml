@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: masterdata API
-  version: 1.28.0
+  version: 1.29.0
   description: >-
     Contract-first source of truth for masterdata (API-01, STK-44). The
     `masterdata-contract` module generates its server interfaces and DTOs
@@ -23,6 +23,8 @@ info:
     calls it. The gap report (INV-REQ-316) and the connection records
     (INV-REQ-834, INV-REQ-835) are added by INV-T-4912; counterparty-list
     and directory-lookup reads stay out of this file's declared scope.
+    The gap-report finding class `SCHEME_STATUS_MISSING` (INV-REQ-2445) lists
+    a counterparty with documents blocked by RUL-011; it carries no error code.
   contact:
     name: masterdata (see CODEOWNERS)
 servers:
@@ -2110,12 +2112,12 @@ components:
               counterpartyRef: { type: string, maxLength: 40 }
               findingClass:
                 type: string
-                enum: [UEN_ABSENT, UEN_INVALID, GST_REGISTER_CONFLICT, ADDRESS_INCOMPLETE, DUPLICATE_UEN]
+                enum: [UEN_ABSENT, UEN_INVALID, GST_REGISTER_CONFLICT, ADDRESS_INCOMPLETE, DUPLICATE_UEN, SCHEME_STATUS_MISSING]
                 x-extensible-enum: true
               errorCode:
                 type: string
                 pattern: '^[A-Z]{2,10}-[0-9]{3}$'
-                description: MDM-002, MDM-003, MDM-007, MDM-006 for the first four classes; absent for DUPLICATE_UEN.
+                description: MDM-002, MDM-003, MDM-007, MDM-006 for the first four classes; absent for DUPLICATE_UEN and SCHEME_STATUS_MISSING.
             required: [counterpartyRef, findingClass]
         notChecked:
           type: array

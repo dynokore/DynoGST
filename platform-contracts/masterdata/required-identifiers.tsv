@@ -263,3 +263,4 @@ IdentityTripleChange.change.REMOVED	schema_enum_value	openapi.yaml	INV-REQ-1128
 exportIdentityTriples	operation	openapi.yaml	INV-REQ-1128
 exportIdentityTriples.200	operation_response	openapi.yaml	INV-REQ-1128
 exportIdentityTriples.default	operation_response	openapi.yaml	INV-REQ-1128
+SCHEME_STATUS_MISSING	enum_value	openapi.yaml	INV-REQ-316
