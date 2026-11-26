@@ -62,4 +62,19 @@ class PinnedContractOperationsTest {
         matching.single()[1] shouldBe "operation"
         matching.single()[2] shouldBe "INV-T-27013"
     }
+
+    @Test
+    @DisplayName(
+        "INV-AC-29131 the pinned contract holds listSandboxCertifications " +
+            "and the table lists it once for the serving task",
+    )
+    fun `INV-AC-29131 the pinned contract holds listSandboxCertifications listed once for the serving task`() {
+        val name = "listSandboxCertifications"
+        val operations = OperationsGate.contractOperations(File(contractDir, "openapi.yaml").readText())
+        (name in operations) shouldBe true
+        val matching = tableRows().filter { it[0] == name }
+        matching.size shouldBe 1
+        matching.single()[1] shouldBe "operation"
+        matching.single()[2] shouldBe "INV-T-29134"
+    }
 }

@@ -67,6 +67,7 @@ class PeriodDueDateEditRefusedTest {
             "getCalendarPackDelta",
             "listPeriodRecords",
             "listRenditionAttestations",
+            "listSandboxCertifications",
             "recordExtension",
         )
     }

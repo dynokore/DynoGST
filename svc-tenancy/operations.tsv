@@ -60,3 +60,4 @@ getCalendarPackDelta	operation	INV-T-16829	done
 OffboardingExportRequested	channel	INV-T-22966	done
 listRenditionAttestations	operation	INV-T-27611	done
 getSubmissionScope	operation	INV-T-27013	done
+listSandboxCertifications	operation	INV-T-29134	pending
