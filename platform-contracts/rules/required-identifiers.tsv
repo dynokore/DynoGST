@@ -445,3 +445,22 @@ EvaluationResult.gstBasePercent	schema_property	openapi.yaml	INV-REQ-1805
 SubmitForApprovalRequest.clientNote	schema_property	openapi.yaml	INV-REQ-997
 MappingPack.clientNote	schema_property	openapi.yaml	INV-REQ-997
 submitForApproval.400	operation_response	openapi.yaml	INV-REQ-997
+# INV-T-24950 (INV-REQ-504): acceptRateSource and its two schemas. The contract has no row kind for a bare schema name, so each schema is pinned by its properties as schema_property rows.
+acceptRateSource	operation	openapi.yaml	INV-REQ-504
+AcceptRateSourceRequest.rationale	schema_property	openapi.yaml	INV-REQ-504
+AcceptRateSourceRequest.expiresOn	schema_property	openapi.yaml	INV-REQ-504
+RateSourceAcceptance.sourceId	schema_property	openapi.yaml	INV-REQ-504
+RateSourceAcceptance.rationale	schema_property	openapi.yaml	INV-REQ-504
+RateSourceAcceptance.expiresOn	schema_property	openapi.yaml	INV-REQ-504
+RateSourceAcceptance.acceptedBy	schema_property	openapi.yaml	INV-REQ-504
+RateSourceAcceptance.acceptedAt	schema_property	openapi.yaml	INV-REQ-504
+rationale	property	openapi.yaml	INV-REQ-504
+expiresOn	property	openapi.yaml	INV-REQ-504
+sourceId	property	openapi.yaml	INV-REQ-504
+acceptedBy	property	openapi.yaml	INV-REQ-504
+acceptedAt	property	openapi.yaml	INV-REQ-504
+acceptRateSource.200	operation_response	openapi.yaml	INV-REQ-504
+acceptRateSource.400	operation_response	openapi.yaml	INV-REQ-504
+acceptRateSource.403	operation_response	openapi.yaml	INV-REQ-504
+acceptRateSource.404	operation_response	openapi.yaml	INV-REQ-504
+acceptRateSource.default	operation_response	openapi.yaml	INV-REQ-504
