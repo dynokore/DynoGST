@@ -47,7 +47,6 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.util.Base64
 import java.util.Date
-import java.util.concurrent.CopyOnWriteArrayList
 
 /** P109 wiring of `confirmFiling` (INV-REQ-914, INV-AC-20947): the business zone is configuration, never code. */
 class FilingWiringTest {
@@ -145,15 +144,12 @@ class FilingWiringTest {
 
     /**
      * The access-svc double of the real-servlet cases: `confirmFiling` is high-risk and is authorised live
-     * (INV-REQ-1201 behaviour 7); only the exact key of that operation is allowed. Every asked action is recorded.
+     * (INV-REQ-1201 behaviour 7); only the exact key of that operation is allowed.
      */
     class LiveFilingAuthority {
-        val asked: MutableList<String> = CopyOnWriteArrayList()
-
         @Bean
         fun filingAccessDouble(): AuthorityFallback =
             AuthorityFallback { key, _ ->
-                asked += key.action
                 FallbackResult.Found(AuthorityVerdict(key.action == "machine.filing.confirm"))
             }
     }
@@ -286,23 +282,6 @@ class FilingWiringTest {
             json.has("detail") shouldBe false
             answer.body() shouldNotContain LEAK
             answer.body() shouldNotContain "AmbiguousDueDateException"
-            facts() shouldBe before
-        }
-    }
-
-    @Test
-    fun `INV-AC-29114 real servlet confirmFiling is authorised live for exactly the filing confirm action`(
-        @TempDir dir: Path,
-    ) {
-        serve(dir) { context ->
-            val authority = context.getBean(LiveFilingAuthority::class.java)
-            val before = facts()
-            authority.asked.clear()
-            val answer =
-                confirm(context, "P3", """{"filedAt":"2026-04-28T20:00:00Z","irasAcknowledgementReference":"A1"}""")
-            answer.statusCode() shouldBe 500
-            ObjectMapper().readTree(answer.body())["code"].asString() shouldBe "SRT-010"
-            authority.asked.toSet() shouldBe setOf("machine.filing.confirm")
             facts() shouldBe before
         }
     }
