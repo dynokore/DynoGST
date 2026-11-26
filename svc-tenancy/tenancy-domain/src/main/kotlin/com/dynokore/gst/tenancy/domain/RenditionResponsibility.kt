@@ -13,6 +13,14 @@ enum class Renderer {
     }
 }
 
+/** The document classes of every entity: the four submission types of the Scenario pack contract (INV-AC-27909). */
+object DocumentClasses {
+    val ALL: List<String> = listOf("TYPE_1A", "TYPE_1B", "TYPE_2", "TYPE_3")
+
+    /** True only when [text] equals one of [ALL] as a whole string (case-sensitive, no trimming). */
+    fun isKnown(text: String): Boolean = text in ALL
+}
+
 /** The state of the attestation of one document class (INV-REQ-1034): a PAY-014 finding requests it again. */
 enum class AttestationState {
     CURRENT,

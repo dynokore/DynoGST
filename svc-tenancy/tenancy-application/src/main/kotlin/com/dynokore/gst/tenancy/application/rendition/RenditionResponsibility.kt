@@ -1,6 +1,7 @@
 package com.dynokore.gst.tenancy.application.rendition
 
 import com.dynokore.gst.tenancy.domain.AttestationState
+import com.dynokore.gst.tenancy.domain.DocumentClasses
 import com.dynokore.gst.tenancy.domain.Renderer
 import com.dynokore.gst.tenancy.domain.RenditionRules
 import com.dynokore.platform.tenancykernel.TransactionRunner
@@ -55,7 +56,7 @@ sealed interface RecordRenditionOutcome {
     /** 404 SRT-005: no such entity. */
     data object NotFound : RecordRenditionOutcome
 
-    /** 400 SRT-001: unknown renderer or empty document class; nothing is stored. */
+    /** 400 SRT-001: unknown renderer, or an empty or unknown document class; nothing is stored. */
     data class Invalid(
         val reason: String,
     ) : RecordRenditionOutcome
@@ -86,6 +87,10 @@ class RecordRenditionResponsibility(
 
             documentClass.isBlank() -> {
                 RecordRenditionOutcome.Invalid("documentClass is required")
+            }
+
+            !DocumentClasses.isKnown(documentClass) -> {
+                RecordRenditionOutcome.Invalid("documentClass must be one of ${DocumentClasses.ALL.joinToString(", ")}")
             }
 
             else -> {

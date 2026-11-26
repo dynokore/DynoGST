@@ -64,6 +64,7 @@ class EntityLifecycleTest {
         )
     private val authority = ActionAuthority { person, _, action -> action in grants[person].orEmpty() }
     private var coverage = TriggerCoverage { emptyList() }
+    private var rendition = RenditionCoverage { emptyList() }
     private var unsubmitted = UnsubmittedDocuments { _, _ -> 0 }
     private var finalPeriod: FinalPeriod = FinalPeriod { _, _ -> PeriodOutcome.Done(emptyList()) }
     private var publishFailure = false
@@ -178,6 +179,7 @@ class EntityLifecycleTest {
             { tenant },
             { onDate },
             { tenantState },
+            rendition,
         )
 
     private fun suspend() =
@@ -301,6 +303,59 @@ class EntityLifecycleTest {
         assertTrue(again.repeated)
         assertEquals("LIVE", current.lifecycleState)
         assertEquals(1, outbox.size)
+    }
+
+    // ---- rendition responsibility (INV-AC-27909) ----
+
+    @Test
+    fun `INV-AC-27909 goLive is refused naming each missing document class`() {
+        certify(CertificationOutcome.PASSED)
+        rendition = RenditionCoverage { ref -> listOf("TYPE_1B", "TYPE_3").takeIf { ref == "E1" }.orEmpty() }
+        assertEquals(
+            "RENDITION_RESPONSIBILITY_INCOMPLETE: TYPE_1B; RENDITION_RESPONSIBILITY_INCOMPLETE: TYPE_3",
+            refused(live()),
+        )
+        assertUntouched()
+    }
+
+    @Test
+    fun `INV-AC-27909 goLive with unreadable rendition records is refused naming the unknown item`() {
+        certify(CertificationOutcome.PASSED)
+        rendition = RenditionCoverage { throw UnavailableInput("rendition records") }
+        assertEquals("RENDITION_RESPONSIBILITY_UNKNOWN", refused(live()))
+        assertUntouched()
+    }
+
+    @Test
+    fun `INV-AC-27909 the unbound rendition port fails closed and is the default`() {
+        assertThrows(UnavailableInput::class.java) { UnboundRenditionCoverage().missing("E1") }
+        certify(CertificationOutcome.PASSED)
+        val defaulted =
+            GoLive(
+                tx,
+                structure,
+                SecondConfirmation(authority),
+                coverage,
+                certifications,
+                ElectionGate(ElectionStatusQueries(tx, structure, policies, facts)),
+                lifecycleStore,
+                statuses,
+                { emptyList() },
+                publisher,
+                { tenant },
+                { onDate },
+                { tenantState },
+            )
+        assertEquals("RENDITION_RESPONSIBILITY_UNKNOWN", refused(defaulted.handle(caller, "E1", "identity:USR-0040")))
+        assertUntouched()
+    }
+
+    @Test
+    fun `INV-AC-27909 any other failure of the rendition port propagates`() {
+        certify(CertificationOutcome.PASSED)
+        rendition = RenditionCoverage { error("broken adapter") }
+        assertThrows(IllegalStateException::class.java) { live() }
+        assertUntouched()
     }
 
     // ---- go-live date (INV-AC-27010) ----

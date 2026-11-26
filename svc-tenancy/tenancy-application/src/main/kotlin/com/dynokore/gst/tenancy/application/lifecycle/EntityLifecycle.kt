@@ -43,6 +43,17 @@ class UnboundTriggerCoverage : TriggerCoverage {
     override fun uncovered(entityRef: String): List<String> = throw UnavailableInput(GoLiveGate.COVERAGE_UNKNOWN)
 }
 
+/** The document classes of [DocumentClasses] with no CURRENT rendition attestation record (INV-AC-27909). */
+fun interface RenditionCoverage {
+    /** The missing classes (empty when complete); throws [UnavailableInput] when the records cannot be read. */
+    fun missing(entityRef: String): List<String>
+}
+
+/** The binding of the rendition port until the adapter slice wires the real one: go-live is refused. */
+class UnboundRenditionCoverage : RenditionCoverage {
+    override fun missing(entityRef: String): List<String> = throw UnavailableInput(GoLiveGate.RENDITION_UNKNOWN)
+}
+
 /**
  * Writes the stored lifecycle state of an entity in the caller's transaction (adapter: the boundary slice).
  * [activatedOn] is the date of a transition to LIVE (null for every other state); the store records it as the
@@ -155,7 +166,7 @@ internal class LifecycleWriter(
 /**
  * goLive (INV-REQ-987, INV-REQ-963, INV-REQ-875): refused 403 unless the confirmer is another person who holds
  * `entity-config.confirm`; a repeat on a live entity is a no-op; refused 422 POL-014 naming every unmet item of
- * trigger coverage, sandbox certification (latest record) and elections.
+ * trigger coverage, sandbox certification (latest record), elections and rendition responsibility.
  */
 @Suppress("LongParameterList")
 class GoLive internal constructor(
@@ -168,6 +179,7 @@ class GoLive internal constructor(
     private val writer: LifecycleWriter,
     private val today: () -> LocalDate,
     private val tenantStates: TenantStates,
+    private val rendition: RenditionCoverage = UnboundRenditionCoverage(),
 ) {
     @Suppress("LongParameterList")
     constructor(
@@ -184,6 +196,7 @@ class GoLive internal constructor(
         tenant: () -> TenantId,
         today: () -> LocalDate,
         tenantStates: TenantStates,
+        rendition: RenditionCoverage = UnboundRenditionCoverage(),
     ) : this(
         tx,
         structure,
@@ -194,6 +207,7 @@ class GoLive internal constructor(
         LifecycleWriter(structure, lifecycle, statuses, extras, publisher, tenant),
         today,
         tenantStates,
+        rendition,
     )
 
     fun handle(
@@ -227,11 +241,12 @@ class GoLive internal constructor(
     private fun gateAndWrite(entity: EntityRecord): LifecycleOutcome {
         val on = today()
         val uncovered = runCatching { coverage.uncovered(entity.ref) }
+        val missing = runCatching { rendition.missing(entity.ref) }
         val decision = elections.check(entity.ref, on)
         return if (decision == ElectionGateDecision.EntityNotFound) {
             LifecycleOutcome.NotFound
         } else {
-            val unmet = GoLiveGate.unmet(facts(entity, uncovered, decision))
+            val unmet = GoLiveGate.unmet(facts(entity, uncovered, missing, decision))
             if (unmet.isEmpty()) {
                 writer.write(entity, LifecycleState.LIVE, on)
                 LifecycleOutcome.Done(entity.ref, LifecycleState.LIVE)
@@ -244,20 +259,30 @@ class GoLive internal constructor(
     private fun facts(
         entity: EntityRecord,
         uncovered: Result<List<String>>,
+        missing: Result<List<String>>,
         decision: ElectionGateDecision,
     ): GoLiveFacts {
         val latest = certifications.latest(entity.ref)
         val outstanding = (decision as? ElectionGateDecision.Refused)?.outstanding.orEmpty().map { it.name }
-        val unavailable = uncovered.exceptionOrNull()
-        if (unavailable != null && unavailable !is UnavailableInput) throw unavailable
+        val unavailable = unavailableInput(uncovered)
+        val unreadable = unavailableInput(missing)
         return GoLiveFacts(
             uncovered.getOrDefault(emptyList()),
             latest?.outcome,
             latest?.failedScenarios.orEmpty(),
             outstanding,
+            missingRenditionClasses = missing.getOrDefault(emptyList()),
+            renditionUnknown = unreadable != null,
             coverageUnknown = unavailable != null,
             tenantOpen = tenantStates.current() == TenantState.OPEN.name,
         )
+    }
+
+    /** The [UnavailableInput] of a failed port read, or null on success; any other failure propagates. */
+    private fun unavailableInput(read: Result<List<String>>): Throwable? {
+        val failure = read.exceptionOrNull()
+        if (failure != null && failure !is UnavailableInput) throw failure
+        return failure
     }
 }
 

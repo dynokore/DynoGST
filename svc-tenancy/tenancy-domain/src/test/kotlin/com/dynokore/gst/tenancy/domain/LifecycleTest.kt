@@ -7,7 +7,53 @@ import org.junit.jupiter.api.Test
 
 /** The pure rules of the lifecycle changes. */
 class LifecycleTest {
-    private val met = GoLiveFacts(emptyList(), CertificationOutcome.PASSED, emptyList(), emptyList(), tenantOpen = true)
+    private val met =
+        GoLiveFacts(
+            emptyList(),
+            CertificationOutcome.PASSED,
+            emptyList(),
+            emptyList(),
+            missingRenditionClasses = emptyList(),
+            renditionUnknown = false,
+            tenantOpen = true,
+        )
+
+    private fun renditionItem(documentClass: String) = "RENDITION_RESPONSIBILITY_INCOMPLETE: $documentClass"
+
+    @Test
+    fun `INV-AC-27909 no record gives one item per document class in the order of the list`() {
+        val unmet = GoLiveGate.unmet(met.copy(missingRenditionClasses = DocumentClasses.ALL.reversed()))
+        assertEquals(listOf("TYPE_1A", "TYPE_1B", "TYPE_2", "TYPE_3").map(::renditionItem), unmet)
+    }
+
+    @Test
+    fun `INV-AC-27909 only the missing classes are named and none when all four are current`() {
+        assertEquals(
+            listOf(renditionItem("TYPE_1B"), renditionItem("TYPE_3")),
+            GoLiveGate.unmet(met.copy(missingRenditionClasses = listOf("TYPE_1B", "TYPE_3"))),
+        )
+        assertEquals(emptyList<String>(), GoLiveGate.unmet(met.copy(missingRenditionClasses = emptyList())))
+    }
+
+    @Test
+    fun `INV-AC-27909 unreadable records give the unknown item and no per-class item`() {
+        val facts = met.copy(missingRenditionClasses = DocumentClasses.ALL, renditionUnknown = true)
+        assertEquals(listOf("RENDITION_RESPONSIBILITY_UNKNOWN"), GoLiveGate.unmet(facts))
+    }
+
+    @Test
+    fun `INV-AC-27909 the rendition items follow the existing items`() {
+        val facts =
+            met.copy(
+                tenantOpen = false,
+                outstandingElections = listOf("ISSUANCE_MODE"),
+                missingRenditionClasses = listOf("TYPE_2"),
+            )
+        assertEquals(
+            listOf("tenant not open", "required elections outstanding: ISSUANCE_MODE", renditionItem("TYPE_2")),
+            GoLiveGate.unmet(facts),
+        )
+    }
 
     @Test
     fun `go-live gate with every item met names nothing`() {
@@ -31,6 +77,8 @@ class LifecycleTest {
                     CertificationOutcome.FAILED,
                     listOf("s1", "s2"),
                     listOf("ISSUANCE_MODE"),
+                    missingRenditionClasses = emptyList(),
+                    renditionUnknown = false,
                     tenantOpen = true,
                 ),
             )

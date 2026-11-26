@@ -20,6 +20,10 @@ data class GoLiveFacts(
     val failedScenarios: List<String>,
     /** The names of the required elections not yet recorded. */
     val outstandingElections: List<String>,
+    /** The document classes with no CURRENT rendition record (INV-AC-27909). */
+    val missingRenditionClasses: List<String>,
+    /** True when the rendition records could not be read: the item is unmet and named as unknown. */
+    val renditionUnknown: Boolean,
     /** True when the coverage port could not answer: the item is unmet and named as unknown. */
     val coverageUnknown: Boolean = false,
     /** True only when the stored tenant state equals OPEN (INV-Q-8097 B); any other value is unmet. */
@@ -33,8 +37,10 @@ enum class TenantState { SCHEDULED, OPEN, CLOSED }
 object GoLiveGate {
     const val COVERAGE_UNKNOWN = "trigger coverage unknown"
     const val TENANT_NOT_OPEN = "tenant not open"
+    const val RENDITION_INCOMPLETE = "RENDITION_RESPONSIBILITY_INCOMPLETE"
+    const val RENDITION_UNKNOWN = "RENDITION_RESPONSIBILITY_UNKNOWN"
 
-    /** One text per unmet item, in the order coverage, certification, elections; empty when go-live is allowed. */
+    /** One text per unmet item, in the order coverage, certification, elections, rendition; empty when allowed. */
     fun unmet(facts: GoLiveFacts): List<String> =
         buildList {
             if (!facts.tenantOpen) add(TENANT_NOT_OPEN)
@@ -49,7 +55,20 @@ object GoLiveGate {
             if (facts.outstandingElections.isNotEmpty()) {
                 add("required elections outstanding: ${facts.outstandingElections.joinToString(", ")}")
             }
+            addRendition(facts)
         }
+
+    /** Every named class gives an item, in the order of [DocumentClasses.ALL]; unreadable records give one item. */
+    private fun MutableList<String>.addRendition(facts: GoLiveFacts) {
+        if (facts.renditionUnknown) {
+            add(RENDITION_UNKNOWN)
+            return
+        }
+        facts.missingRenditionClasses
+            .sortedBy(
+                DocumentClasses.ALL::indexOf,
+            ).forEach { add("$RENDITION_INCOMPLETE: $it") }
+    }
 }
 
 /** The rules of the lifecycle changes that need no port. */

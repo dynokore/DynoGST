@@ -8,6 +8,19 @@ import org.junit.jupiter.api.Test
 
 class RenditionRulesTest {
     @Test
+    fun `INV-AC-27909 the document classes are the four submission types in order`() {
+        assertEquals(listOf("TYPE_1A", "TYPE_1B", "TYPE_2", "TYPE_3"), DocumentClasses.ALL)
+    }
+
+    @Test
+    fun `INV-AC-27909 a document class is known only by exact equality`() {
+        listOf("TYPE_1A", "TYPE_1B", "TYPE_2", "TYPE_3").forEach { assertTrue(DocumentClasses.isKnown(it), it) }
+        listOf("TAX_INVOICE", "tax_invoice", "type_1a", "TYPE_2 ", "", "TYPE_1").forEach {
+            assertFalse(DocumentClasses.isKnown(it), "'$it'")
+        }
+    }
+
+    @Test
     fun `attester equal to the caller is accepted, a different one is not`() {
         assertTrue(RenditionRules.attesterIsCaller("u-1", "u-1"))
         assertFalse(RenditionRules.attesterIsCaller("u-2", "u-1"))
