@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: aggregation API
-  version: 2.1.0
+  version: 2.1.1
   description: >-
     Contract-first source of truth for aggregation (API-01, STK-44). The
     `aggregation-contract` module generates its server interfaces and DTOs
@@ -58,7 +58,7 @@ paths:
       x-sync-edge: ingestion-svc->aggregation-svc
       x-flow-context: required
       x-error-codes: [ING-006, ING-018, ING-002, ING-022]
-      x-requirements: [INV-REQ-957, INV-REQ-1010, FR-4.5, FR-4.8, FR-4.9, FR-4.14, FR-10.15, "C-3", "C-8", FR-AE.73]
+      x-requirements: [INV-REQ-957, INV-REQ-1010, FR-4.5, FR-4.8, FR-4.9, FR-4.14, FR-10.15, "C-3", "C-8", FR-AE.73, INV-REQ-410, INV-REQ-434, INV-REQ-436]
       x-operation:
         role: ingest
         scope: entity

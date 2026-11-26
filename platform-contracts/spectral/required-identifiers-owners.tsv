@@ -6,3 +6,5 @@
 # ruling matches ^INV-Q-[0-9]+$. A line exempts one cell of one row, never a table or a row. Malformed, duplicate or unknown-row
 # lines are findings naming the line number. No data line is present.
 table	identifier	kind	file	old_requirement	new_requirement	ruling
+aggregation/required-identifiers.tsv	intakeAggregationBatch.ING-002	operation_error_code	openapi.yaml	INV-Q-11260	INV-REQ-434	INV-Q-11260
+aggregation/required-identifiers.tsv	intakeAggregationBatch.ING-022	operation_error_code	openapi.yaml	INV-Q-11264	INV-REQ-436	INV-Q-11264

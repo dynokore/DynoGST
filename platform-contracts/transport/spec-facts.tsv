@@ -1,3 +1,4 @@
 file	pointer	relation	value	requirement
 openapi.yaml	/components/schemas/ApNotification/properties/kind/x-extensible-enum	absent	-	INV-REQ-957
 openapi.yaml	/components/schemas/ApNotification/properties/kind/enum	equals	["ACKNOWLEDGEMENT","DELIVERY_STATUS","INBOUND_NETWORK_DOCUMENT","REJECTION"]	INV-REQ-957
+openapi.yaml	/paths/~1v1~1ap~1{adapterId}~1notifications/post/x-requirements	contains	"INV-REQ-585"	INV-REQ-585
