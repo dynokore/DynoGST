@@ -12,7 +12,10 @@ import org.jooq.Condition
 import org.jooq.DSLContext
 import org.jooq.Record
 import org.jooq.impl.DSL
+import java.time.Instant
+import java.time.OffsetDateTime
 import java.time.ZoneOffset
+import java.time.temporal.ChronoUnit
 
 /**
  * TPL-11. jOOQ only, read-only. The DSLContext is the one of the open `canonical` transaction; the tenant condition is
@@ -115,7 +118,17 @@ class JooqExposureWindowStore(
         DSL.and(
             DOCUMENT_VERSION.TENANT_ID.eq(tenants.current().value),
             DOCUMENT_VERSION.CREATED_BY.eq(window.principalRef),
-            DOCUMENT_VERSION.CREATED_AT.ge(window.recordedFrom.atOffset(ZoneOffset.UTC)),
-            DOCUMENT_VERSION.CREATED_AT.lt(window.recordedTo.atOffset(ZoneOffset.UTC)),
+            DOCUMENT_VERSION.CREATED_AT.ge(atStoredPrecision(window.recordedFrom)),
+            DOCUMENT_VERSION.CREATED_AT.lt(atStoredPrecision(window.recordedTo)),
         )
+
+    /**
+     * [bound] rounded up to a whole microsecond, the resolution of `created_at`: the driver would round a finer bound to
+     * the nearest one. For stored values, `>=` and `<` the rounded bound mean the same as against [bound] itself.
+     */
+    private fun atStoredPrecision(bound: Instant): OffsetDateTime {
+        val floor = bound.truncatedTo(ChronoUnit.MICROS)
+        val ceiling = if (floor == bound) floor else floor.plus(1, ChronoUnit.MICROS)
+        return ceiling.atOffset(ZoneOffset.UTC)
+    }
 }

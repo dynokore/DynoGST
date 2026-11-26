@@ -242,6 +242,25 @@ class ExposureWindowDbTest {
     }
 
     @Test
+    fun `INV-AC-28717 E7 sub-microsecond bounds are compared exactly by both reads`() {
+        val atT = seed("entity-a", at = inside)
+        val next = seed("entity-b", at = inside.plusNanos(MICROSECOND))
+        val permitted = setOf("entity-a", "entity-b")
+        // Below, at and above the half microsecond, where rounding to the nearest one changes its direction.
+        listOf(1L, 400L, 500L, 600L, 999L).forEach { nanos ->
+            val bound = inside.plusNanos(nanos)
+            val upTo = ExposureWindow(principal, from, bound)
+            val since = ExposureWindow(principal, bound, to)
+            tenants.bind(TenantId(tenant), SignedBindings.ACTOR) {
+                useCase.entityRefs(upTo) shouldBe setOf("entity-a")
+                useCase.page(upTo, permitted, ALL) shouldBe listOf(atT)
+                useCase.entityRefs(since) shouldBe setOf("entity-b")
+                useCase.page(since, permitted, ALL) shouldBe listOf(next)
+            }
+        }
+    }
+
+    @Test
     fun `INV-AC-28717 P1 of two revisions naming one version in their results only the linked one is listed, once`() {
         val document = seedDocument("entity-a")
         val first = seedEvent(Event(key = "invoice-${document.first}"), document.first)
