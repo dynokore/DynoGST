@@ -442,3 +442,6 @@ raised	property	schemas/mde-pack-contents.schema.json	INV-REQ-578
 field	property	schemas/mde-pack-contents.schema.json	INV-REQ-578
 gstBasePercent	property	schemas/scenario-pack-handlers.schema.json	INV-REQ-1805
 EvaluationResult.gstBasePercent	schema_property	openapi.yaml	INV-REQ-1805
+SubmitForApprovalRequest.clientNote	schema_property	openapi.yaml	INV-REQ-997
+MappingPack.clientNote	schema_property	openapi.yaml	INV-REQ-997
+submitForApproval.400	operation_response	openapi.yaml	INV-REQ-997

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: rules API
-  version: 2.10.2
+  version: 2.11.0
   description: >-
     Contract-first source of truth for rules (API-01, STK-44). The
     `rules-contract` module generates its server interfaces and DTOs
@@ -711,13 +711,17 @@ paths:
         is refused, and for an existing pack a value different from the pack's
         `entityRef` is refused with 403 SRT-004. rules-svc enforces the
         refusal, not the schema.
+        The optional body carries `clientNote`, the plain-language note the
+        agent writes for the client signatory (INV-REQ-997). It is stored
+        fixed with the pack version. A call with no body stays valid. A body
+        that the schema refuses is answered 400 SRT-001 and nothing is changed.
       tags: [mapping-packs]
       x-principal: filing-workflow
       x-caller-auth: end-user
       x-sync-edge: console-bff->rules-svc
       x-timeout: 2000
       x-error-codes: []
-      x-requirements: [INV-REQ-957, INV-REQ-1010, FR-B.3]
+      x-requirements: [INV-REQ-957, INV-REQ-1010, FR-B.3, INV-REQ-997]
       x-operation:
         role: tax.operator
         scope: tenant
@@ -734,6 +738,12 @@ paths:
           required: true
           schema: { type: string, maxLength: 40 }
         - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitForApprovalRequest'
       responses:
         '200':
           description: >-
@@ -744,7 +754,10 @@ paths:
                 $ref: '#/components/schemas/MappingPack'
               examples:
                 default:
-                  value: { packId: "MAP-0042", status: "SUBMITTED" }
+                  value: { packId: "MAP-0042", status: "SUBMITTED", clientNote: "The new mapping moves your zero-rated export lines to standard-rated from 1 January." }
+        '400':
+          description: The body is refused by its schema (SRT-001); nothing is changed.
+          $ref: '#/components/responses/Error'
         '404':
           description: The pack or entry does not exist for this entity (SRT-005).
           $ref: '#/components/responses/Error'
@@ -1934,6 +1947,13 @@ components:
     MappingPack:
       type: object
       properties:
+        clientNote:
+          type: string
+          minLength: 1
+          maxLength: 1000
+          description: >-
+            The optional plain-language note the agent writes for the client signatory, shown beside the outcome
+            summary as plain text, fixed with the pack version, never pack entries or codes. Present on the answers of `submitForApproval` and `getMappingPack` when the submission carried one, absent otherwise.
         entityRef:
           type: string
           minLength: 1
@@ -2275,6 +2295,16 @@ components:
           maxLength: 40
           description: Present only when a draft was created.
       required: [importId, importedAt, actorRef, fileHash, fileName, rowCount, dryRunResult, appliedCount]
+    SubmitForApprovalRequest:
+      type: object
+      properties:
+        clientNote:
+          type: string
+          minLength: 1
+          maxLength: 1000
+          description: >-
+            The optional plain-language note the agent writes for the client signatory, shown beside the outcome
+            summary as plain text, fixed with the pack version, never pack entries or codes.
     AcceptSourceClassEntryRequest:
       type: object
       properties:

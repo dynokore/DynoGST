@@ -6,6 +6,7 @@
 ../openapi.yaml#/components/schemas/MapTaxCodeRequest map-tax-code-request-*.json
 ../openapi.yaml#/components/schemas/DraftMappingPackRequest draft-mapping-pack-request-*.json
 ../openapi.yaml#/components/schemas/AcceptSourceClassEntryRequest accept-source-class-entry-request-*.json
+../openapi.yaml#/components/schemas/SubmitForApprovalRequest submit-for-approval-request-*.json
 ../openapi.yaml#/components/schemas/ActivateMappingPackRequest activate-mapping-pack-request-*.json
 ../openapi.yaml#/components/schemas/RegulatoryPack regulatory-pack-*.json
 ../openapi.yaml#/components/schemas/PackDeltaAcknowledgement pack-delta-acknowledgement-*.json
