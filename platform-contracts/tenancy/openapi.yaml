@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: tenancy API
-  version: 2.4.0
+  version: 2.5.0
   description: 'Contract-first source of truth for tenancy (API-01, STK-44), replacing the INV-T-2849
     scaffold (INV-T-2857, T13). Internal API only (SDS/04-api-standards §1): organisation structure and
     each entity''s regulatory profile, called by console-bff (commands), control-plane-svc (tenant provisioning
@@ -2367,7 +2367,7 @@ paths:
     post:
       operationId: recordRenditionResponsibility
       summary: Record who renders each document class, with attestation (SDS §7, SCR-14.1)
-      description: Record who renders each document class, with attestation (SDS §7, SCR-14.1).
+      description: Record who renders each document class, with attestation (SDS §7, SCR-14.1). The documentClass is one of TYPE_1A, TYPE_1B, TYPE_2 and TYPE_3 (the submissionType values of the Scenario pack), compared by exact equality; any other text is answered 400 with SRT-001 and nothing is stored.
       tags:
       - entities
       x-principal: filing-workflow
@@ -2404,7 +2404,7 @@ paths:
             examples:
               default:
                 value:
-                  documentClass: TAX_INVOICE
+                  documentClass: TYPE_1A
                   renderer: SELF
                   attestedBy: identity:USR-009
       responses:
@@ -2418,7 +2418,7 @@ paths:
                 default:
                   value:
                     entityRef: ENT-3F2A9C
-                    documentClass: TAX_INVOICE
+                    documentClass: TYPE_1A
                     renderer: SELF
         "400":
           $ref: '#/components/responses/Error'
@@ -3576,7 +3576,7 @@ paths:
                 default:
                   value:
                     items:
-                    - documentClass: TAX_INVOICE
+                    - documentClass: TYPE_1A
                       renderer: AGENT
                       attestedBy: identity:USR-009
                       attestedAt: "2026-10-18T09:30:00Z"
