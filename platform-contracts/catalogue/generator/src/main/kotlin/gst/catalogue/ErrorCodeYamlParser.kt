@@ -12,6 +12,12 @@ import java.io.File
  * keeping the raw text alongside every reduction so nothing is silently discarded.
  */
 object ErrorCodeYamlParser {
+    /**
+     * Longest willTransmit or residualRisk text: the maxLength of `OverridePreview.willTransmit`
+     * in console-bff/openapi.yaml (1000 at platform-contracts c73ac521).
+     */
+    const val MAX_TEXT_LENGTH = 1000
+
     private val codePattern = Regex("^([A-Z]+)-(\\d{3})$")
     private val severityPattern = Regex("^(BLOCK|HOLD|WARN|INFO)\\b")
     private val dispositionPattern = Regex("^(AUTO_RETRY|AUTO_RELEASE|MANUAL|OVERRIDABLE|TERMINAL)\\b")
@@ -75,6 +81,18 @@ object ErrorCodeYamlParser {
 
         val owner = ((row["owner"] as? String) ?: error("gst-catalogue: $code has no 'owner' in $file")).trim()
 
+        val willTransmit = optionalText(row, "willTransmit", code, file)
+        val residualRisk = optionalText(row, "residualRisk", code, file)
+        if ((willTransmit == null) != (residualRisk == null)) {
+            error("gst-catalogue: $code carries only one of willTransmit and residualRisk in $file; both or neither.")
+        }
+        if (willTransmit != null && disposition != Disposition.OVERRIDABLE) {
+            error(
+                "gst-catalogue: $code carries willTransmit and residualRisk but its disposition is " +
+                    "'$dispositionRaw' in $file; the members belong to OVERRIDABLE codes only.",
+            )
+        }
+
         return ParsedErrorCode(
             code = code,
             area = area,
@@ -87,7 +105,26 @@ object ErrorCodeYamlParser {
             disposition = disposition,
             dispositionRaw = dispositionRaw,
             owner = owner,
+            willTransmit = willTransmit,
+            residualRisk = residualRisk,
         )
+    }
+
+    /** Reads an optional single-line text member; null when the key is absent. */
+    private fun optionalText(
+        row: Map<String, Any?>,
+        key: String,
+        code: String,
+        file: File,
+    ): String? {
+        if (!row.containsKey(key)) return null
+        val text = (row[key] as? String)?.trim() ?: error("gst-catalogue: $code's '$key' is not a string in $file.")
+        if (text.isEmpty()) error("gst-catalogue: $code's '$key' is blank in $file.")
+        if (text.contains('\n') || text.contains('\r')) error("gst-catalogue: $code's '$key' holds a line break in $file.")
+        if (text.length > MAX_TEXT_LENGTH) {
+            error("gst-catalogue: $code's '$key' has ${text.length} characters, more than $MAX_TEXT_LENGTH in $file.")
+        }
+        return text
     }
 
     /**

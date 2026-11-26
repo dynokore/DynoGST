@@ -41,4 +41,6 @@ data class ParsedErrorCode(
     val disposition: Disposition?,
     val dispositionRaw: String,
     val owner: String,
+    val willTransmit: String? = null,
+    val residualRisk: String? = null,
 )

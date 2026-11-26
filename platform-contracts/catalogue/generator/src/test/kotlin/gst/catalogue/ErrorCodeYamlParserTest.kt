@@ -3,6 +3,7 @@ package gst.catalogue
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.nio.file.Files
 
@@ -113,5 +114,66 @@ class ErrorCodeYamlParserTest {
                 """.trimIndent(),
             )
         assertEquals("dcd475a1d6ceb2b19bf53afcdd563da589bb9faf", ErrorCodeYamlParser.readPinnedCommit(file))
+    }
+
+    private fun memberRow(
+        disposition: String = "OVERRIDABLE",
+        members: String,
+    ) = yamlFile(
+        "error_codes:\n- code: PAY-006\n  condition: c\n  severity: BLOCK\n  disposition: $disposition\n  owner: Finance\n$members",
+    )
+
+    private fun parseFails(file: java.io.File): String =
+        assertThrows(IllegalStateException::class.java) { ErrorCodeYamlParser.parse(file) }.message!!
+
+    @Test
+    fun `a row with both members parses them`() {
+        val row = ErrorCodeYamlParser.parse(memberRow(members = "  willTransmit: Sent as entered.\n  residualRisk: Possible rejection.\n")).single()
+        assertEquals("Sent as entered.", row.willTransmit)
+        assertEquals("Possible rejection.", row.residualRisk)
+    }
+
+    @Test
+    fun `a row with neither member has both null`() {
+        val row = ErrorCodeYamlParser.parse(memberRow(members = "")).single()
+        assertNull(row.willTransmit)
+        assertNull(row.residualRisk)
+    }
+
+    @Test
+    fun `a row with only willTransmit fails naming its code`() {
+        assertTrue(parseFails(memberRow(members = "  willTransmit: x\n")).contains("PAY-006"))
+        assertTrue(parseFails(memberRow(members = "  residualRisk: x\n")).contains("PAY-006"))
+    }
+
+    @Test
+    fun `a blank text fails`() {
+        parseFails(memberRow(members = "  willTransmit: '   '\n  residualRisk: x\n"))
+        parseFails(memberRow(members = "  willTransmit: x\n  residualRisk: ''\n"))
+    }
+
+    @Test
+    fun `a non-string text fails`() {
+        parseFails(memberRow(members = "  willTransmit: 5\n  residualRisk: x\n"))
+    }
+
+    @Test
+    fun `a text with a line break fails`() {
+        parseFails(memberRow(members = "  willTransmit: \"a\\nb\"\n  residualRisk: x\n"))
+    }
+
+    @Test
+    fun `a text of MAX_TEXT_LENGTH plus one characters fails and exactly MAX_TEXT_LENGTH parses`() {
+        val n = ErrorCodeYamlParser.MAX_TEXT_LENGTH
+        parseFails(memberRow(members = "  willTransmit: ${"a".repeat(n + 1)}\n  residualRisk: x\n"))
+        parseFails(memberRow(members = "  willTransmit: x\n  residualRisk: ${"a".repeat(n + 1)}\n"))
+        val row = ErrorCodeYamlParser.parse(memberRow(members = "  willTransmit: ${"a".repeat(n)}\n  residualRisk: ${"b".repeat(n)}\n")).single()
+        assertEquals(n, row.willTransmit!!.length)
+        assertEquals(n, row.residualRisk!!.length)
+    }
+
+    @Test
+    fun `a TERMINAL row with both members fails`() {
+        assertTrue(parseFails(memberRow(disposition = "TERMINAL", members = "  willTransmit: x\n  residualRisk: y\n")).contains("PAY-006"))
     }
 }

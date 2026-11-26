@@ -50,7 +50,8 @@ object KotlinEmitter {
             appendLine(" */")
             appendLine(
                 "enum class ErrorCode(val code: String, val condition: String, val severity: Severity, " +
-                    "val disposition: Disposition?, val owner: String) {",
+                    "val disposition: Disposition?, val owner: String, " +
+                    "val willTransmit: String?, val residualRisk: String?) {",
             )
             rows.forEach { row -> appendLine("    ${entryLine(row)},") }
             appendLine("    ;")
@@ -65,7 +66,8 @@ object KotlinEmitter {
         val constantName = "${row.area}_${"%03d".format(row.number)}"
         val dispositionLiteral = row.disposition?.let { "Disposition.$it" } ?: "null"
         return "${constantName}(\"${row.code}\", ${row.conditionCore.kotlinStringLiteralBody()}, " +
-            "Severity.${row.severity}, $dispositionLiteral, ${row.owner.kotlinStringLiteralBody()})"
+            "Severity.${row.severity}, $dispositionLiteral, ${row.owner.kotlinStringLiteralBody()}, " +
+            "${row.willTransmit?.kotlinStringLiteralBody() ?: "null"}, ${row.residualRisk?.kotlinStringLiteralBody() ?: "null"})"
     }
 
     /** The escaped body of a Kotlin string literal, quotes included. */

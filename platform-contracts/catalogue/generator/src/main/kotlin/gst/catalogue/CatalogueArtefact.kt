@@ -47,9 +47,12 @@ object CatalogueArtefact {
         // disposition revision (INV-REQ-1183 behaviour #3) from an undocumented,
         // disallowed repurposing.
         val revisionNote = row.revisionNote?.jsonString() ?: "null"
+        val members =
+            (row.willTransmit?.let { ", \"willTransmit\": ${it.jsonString()}" } ?: "") +
+                (row.residualRisk?.let { ", \"residualRisk\": ${it.jsonString()}" } ?: "")
         return "{ \"code\": ${row.code.jsonString()}, \"condition\": ${row.conditionCore.jsonString()}, " +
             "\"severity\": \"${row.severity}\", \"disposition\": $disposition, " +
-            "\"owner\": ${row.owner.jsonString()}, \"revisionNote\": $revisionNote }"
+            "\"owner\": ${row.owner.jsonString()}, \"revisionNote\": $revisionNote$members }"
     }
 
     private fun String.jsonString(): String {
