@@ -120,6 +120,17 @@ resolveAmendmentHold	operation	openapi.yaml	INV-REQ-2588
 ResolveAmendmentHoldRequest.decision	schema_property	openapi.yaml	INV-REQ-2588
 ResolveAmendmentHoldRequest.evidenceRef	schema_property	openapi.yaml	INV-REQ-2588
 AmendmentHoldResolution.holdReleased	schema_property	openapi.yaml	INV-REQ-2588
+resolvePriorSolutionHold	operation	openapi.yaml	INV-REQ-1110
+ResolvePriorSolutionHoldRequest.reason	schema_property	openapi.yaml	INV-REQ-1110
+ResolvePriorSolutionHoldRequest.evidenceRef	schema_property	openapi.yaml	INV-REQ-1110
+resolvePriorSolutionHold.SRT-001	operation_error_code	openapi.yaml	INV-REQ-1110
+resolvePriorSolutionHold.SRT-004	operation_error_code	openapi.yaml	INV-REQ-1110
+resolvePriorSolutionHold.SRT-005	operation_error_code	openapi.yaml	INV-REQ-1110
+resolvePriorSolutionHold.200	operation_response	openapi.yaml	INV-REQ-1110
+resolvePriorSolutionHold.400	operation_response	openapi.yaml	INV-REQ-1110
+resolvePriorSolutionHold.403	operation_response	openapi.yaml	INV-REQ-1110
+resolvePriorSolutionHold.404	operation_response	openapi.yaml	INV-REQ-1110
+resolvePriorSolutionHold.default	operation_response	openapi.yaml	INV-REQ-1110
 approveFilingGateOverride	operation	openapi.yaml	INV-REQ-1293
 getFilingGateOverrides	operation	openapi.yaml	INV-REQ-1293
 PendingFilingGateOverride.entityRef	schema_property	openapi.yaml	INV-REQ-1293

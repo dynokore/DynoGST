@@ -61,6 +61,7 @@ activatePack	activateMappingPack	rules	-
 activatePack	armRegulatoryPack	rules	-
 importMappingSpreadsheet	importMappingSpreadsheet	rules	-
 resolveAmendmentHold	resolveAmendmentHold	submission	-
+resolvePriorSolutionHold	resolvePriorSolutionHold	submission	-
 withdrawDocument	withdrawSubmission	submission	-
 answerQuestionnaire	answerQuestionnaire	tenancy	-
 changeFilingFrequency	changeFilingFrequency	tenancy	-
