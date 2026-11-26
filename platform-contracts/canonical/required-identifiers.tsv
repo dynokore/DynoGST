@@ -131,6 +131,7 @@ RecordDocumentRequest.sourceTimeZone	schema_property	openapi.yaml	INV-REQ-68
 RecordDocumentRequest.transactionDate	schema_property	openapi.yaml	INV-REQ-68
 DocumentVersion.prescribedPeriodRef	schema_property	openapi.yaml	INV-REQ-68
 recordDocument.PER-011	operation_error_code	openapi.yaml	INV-REQ-67
+recordDocument.PER-012	operation_error_code	openapi.yaml	INV-REQ-987
 recordDocument.PER-009	operation_error_code	openapi.yaml	INV-REQ-68
 # INV-T-16160. Row for the ruling INV-Q-16151 A: recordDocument declares ING-024 (debit note held for review, VP-54).
 recordDocument.ING-024	operation_error_code	openapi.yaml	INV-REQ-1315

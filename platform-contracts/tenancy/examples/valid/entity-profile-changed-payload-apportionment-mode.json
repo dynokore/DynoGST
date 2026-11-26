@@ -1,0 +1,10 @@
+{
+  "entityRef": "E-001",
+  "changedAttributes": [
+    {
+      "attribute": "apportionmentMode",
+      "newValue": "CLAIMABLE_PORTION"
+    }
+  ],
+  "effectiveDate": "2026-07-01"
+}

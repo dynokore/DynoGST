@@ -48,3 +48,4 @@ openapi.yaml	/paths/~1internal~1v1~1tenancy~1entities~1{entityRef}~1deregister/p
 openapi.yaml	/paths/~1internal~1v1~1tenancy~1tenants~1{tenantRef}~1offboarding/post/x-requirements	contains	"INV-REQ-956"	INV-REQ-956
 openapi.yaml	/paths/~1internal~1v1~1tenancy~1tenants~1{tenantRef}~1open/post/x-requirements	contains	"INV-REQ-8100"	INV-REQ-8100
 openapi.yaml	/paths/~1internal~1v1~1tenancy~1tenants~1{tenantRef}~1close/post/x-requirements	contains	"INV-REQ-8100"	INV-REQ-8100
+schemas/entity-profile-changed-payload.schema.json	/properties/node/properties/profile/items/properties/attribute/description	equals	"Attribute name, e.g. legalName, gstRegistrationNumber, filingFrequency. The attribute apportionmentMode carries the entity's elected apportionment submission mode (VP-23, INV-REQ-1284): its value is CLAIMABLE_PORTION or ENTIRE_INVOICE and it takes effect from effectiveDate."	INV-REQ-1284

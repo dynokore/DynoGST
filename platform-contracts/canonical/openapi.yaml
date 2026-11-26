@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: canonical API
-  version: 2.4.0
+  version: 2.5.0
   description: >-
     Contract-first source of truth for canonical (API-01, STK-44). The
     `canonical-contract` module generates its server interfaces and DTOs
@@ -76,7 +76,10 @@ paths:
         transaction date basis is held with PER-011, and a document whose
         transaction date no period record covers is held with PER-009; both
         are answered `202`, release by themselves and are re-derived on
-        release (INV-REQ-67, INV-REQ-68). A request that needs
+        release (INV-REQ-67, INV-REQ-68). A purchase recorded before the
+        entity has elected its apportionment submission mode is held with
+        PER-012 (INV-REQ-987), answered `202` and released by itself when the
+        election is recorded. A request that needs
         `postingTimestamp` and lacks it, or whose `sourceTimeZone` is not an
         IANA zone id, is refused with `400` and SRT-001 and nothing is
         recorded.
@@ -107,8 +110,8 @@ paths:
       x-flow-context: required
       parameters:
         - $ref: '#/components/parameters/FlowContext'
-      x-error-codes: [ING-002, ING-005, ING-011, ING-012, ING-016, ING-019, ING-013, ING-017, PER-009, PER-011, ING-024, SUB-007]
-      x-requirements: [INV-REQ-957, INV-REQ-1010, INV-REQ-547, INV-REQ-806, INV-REQ-327, INV-REQ-430, INV-REQ-431, INV-REQ-793, INV-REQ-1192, INV-REQ-714, INV-REQ-432, INV-REQ-67, INV-REQ-68, INV-REQ-696]
+      x-error-codes: [ING-002, ING-005, ING-011, ING-012, ING-016, ING-019, ING-013, ING-017, PER-009, PER-011, ING-024, SUB-007, PER-012]
+      x-requirements: [INV-REQ-957, INV-REQ-1010, INV-REQ-547, INV-REQ-806, INV-REQ-327, INV-REQ-430, INV-REQ-431, INV-REQ-793, INV-REQ-1192, INV-REQ-714, INV-REQ-432, INV-REQ-67, INV-REQ-68, INV-REQ-696, INV-REQ-987]
       x-operation:
         role: ingest
         scope: entity
@@ -192,9 +195,12 @@ paths:
             more than one document needs a decision (ING-017), a purchase
             arrived before the entity elected its purchase transaction date
             basis (PER-011), or no period record covers the transaction date
-            (PER-009); released automatically on recovery (ING-016), on
-            acceptance (ING-013), when the election is recorded (PER-011) or
-            when the period is generated (PER-009), and re-derived on release
+            (PER-009), or a purchase arrived before the entity elected its
+            apportionment submission mode (PER-012); released automatically on
+            recovery (ING-016), on acceptance (ING-013), when the election is
+            recorded (PER-011), when the apportionment election is recorded
+            (PER-012) or when the period is generated (PER-009), and
+            re-derived on release
             (INV-REQ-67, INV-REQ-68). A debit note is held with ING-024 when
             the entity elected HOLD_FOR_REVIEW (VP-54) and is released by a
             person.

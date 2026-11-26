@@ -22,3 +22,4 @@ schemas/canonical-version-created-payload.schema.json	/properties/canonicalDocum
 schemas/canonical-version-created-payload.schema.json	/properties/canonicalDocument/properties/supplyType/properties/value/x-extensible-enum	equals	["STANDARD_RATED","ZERO_RATED","EXEMPT","OUT_OF_SCOPE","IMPORTS"]	INV-REQ-772
 schemas/canonical-version-created-payload.schema.json	/properties/canonicalDocument/properties/supplyType/properties/value/enum	absent	-	INV-REQ-772
 openapi.yaml	/components/schemas/RecordDocumentRequest/required	equals	["tenantId","entityRef","sourceSystem","sourceKey","sourceRevision","documentFunction","transactionDate","currency","lines","documentNumber"]	INV-REQ-714
+openapi.yaml	/paths/~1internal~1v1~1canonical~1documents/post/x-requirements	contains	"INV-REQ-987"	INV-REQ-1284

@@ -113,7 +113,7 @@
               "attribute": {
                 "type": "string",
                 "maxLength": 100,
-                "description": "Attribute name, e.g. legalName, gstRegistrationNumber, filingFrequency."
+                "description": "Attribute name, e.g. legalName, gstRegistrationNumber, filingFrequency. The attribute apportionmentMode carries the entity's elected apportionment submission mode (VP-23, INV-REQ-1284): its value is CLAIMABLE_PORTION or ENTIRE_INVOICE and it takes effect from effectiveDate."
               },
               "value": {
                 "type": "string",
