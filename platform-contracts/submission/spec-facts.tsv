@@ -9,7 +9,7 @@ schemas/net-derivation-requested-payload.schema.json	/required	equals	["original
 schemas/net-derivation-requested-payload.schema.json	/properties/creditNotes/items/required	equals	["docUuid","version"]	INV-REQ-558
 schemas/obligation-register-entry.schema.json	/properties/notSubmittableReason/enum	equals	["BUYER_REJECTED","ISSUANCE_REFUSED","NETTED_INTO_REVISION","NETTED_BY_SYSTEM"]	INV-REQ-558
 openapi.yaml	/paths/~1internal~1v1~1submission~1boundary-checks/post/x-operation/permission	equals	"submission.view-status"	INV-REQ-1005
-openapi.yaml	/paths/~1internal~1v1~1submission~1boundary-checks/post/x-error-codes	equals	["SRT-004"]	INV-REQ-1005
+openapi.yaml	/paths/~1internal~1v1~1submission~1boundary-checks/post/x-error-codes	equals	["SRT-004","SRT-014"]	INV-REQ-1005
 schemas/submission-acknowledged-payload.schema.json	/required	equals	["docUuid","version","acknowledgementId","timestamp"]	INV-REQ-740
 schemas/submission-acknowledged-payload.schema.json	/properties/direction/enum	equals	["SALE","PURCHASE"]	INV-REQ-740
 # INV-T-26774 (INV-AC-26773): the IdentityTripleReprocessingRequested payload members and the Doc UUID format of INV-REQ-1006.
