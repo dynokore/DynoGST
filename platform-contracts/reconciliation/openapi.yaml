@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: reconciliation API
-  version: 1.12.0
+  version: 1.12.1
   description: >-
     Contract-first source of truth for reconciliation (API-01, STK-44). The
     `reconciliation-contract` module generates its server interfaces and DTOs
@@ -554,7 +554,7 @@ paths:
       x-sync-edge: console-bff->reconciliation-svc
       x-timeout: 2000
       x-error-codes: [PER-015, PER-019]
-      x-requirements: [INV-REQ-957, INV-REQ-1010]
+      x-requirements: [INV-REQ-957, INV-REQ-1010, INV-REQ-633]
       x-operation:
         role: tax.approver
         scope: entity+period

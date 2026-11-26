@@ -1,3 +1,4 @@
 file	pointer	relation	value	requirement
 openapi.yaml	/components/schemas/UploadGstReturnRequest/properties/formType/x-extensible-enum	absent	-	INV-REQ-957
 openapi.yaml	/components/schemas/UploadGstReturnRequest/properties/formType/enum	equals	["F5","F7","F8"]	INV-REQ-957
+openapi.yaml	/paths/~1internal~1v1~1reconciliation~1runs~1{runId}~1boxes~1{box}~1annotation/put/x-requirements	contains	"INV-REQ-633"	INV-REQ-633

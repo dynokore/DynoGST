@@ -23,3 +23,4 @@ schemas/canonical-version-created-payload.schema.json	/properties/canonicalDocum
 schemas/canonical-version-created-payload.schema.json	/properties/canonicalDocument/properties/supplyType/properties/value/enum	absent	-	INV-REQ-772
 openapi.yaml	/components/schemas/RecordDocumentRequest/required	equals	["tenantId","entityRef","sourceSystem","sourceKey","sourceRevision","documentFunction","transactionDate","currency","lines","documentNumber"]	INV-REQ-714
 openapi.yaml	/paths/~1internal~1v1~1canonical~1documents/post/x-requirements	contains	"INV-REQ-987"	INV-REQ-1284
+openapi.yaml	/paths/~1internal~1v1~1canonical~1documents/post/x-requirements	equals	["INV-REQ-957","INV-REQ-1010","INV-REQ-547","INV-REQ-806","INV-REQ-327","INV-REQ-430","INV-REQ-431","INV-REQ-793","INV-REQ-1192","INV-REQ-714","INV-REQ-432","INV-REQ-67","INV-REQ-68","INV-REQ-696","INV-REQ-987","INV-REQ-1315"]	INV-REQ-1315
