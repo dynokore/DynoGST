@@ -3,9 +3,11 @@ package com.dynokore.gst.evidence.application.retention
 import com.dynokore.platform.serviceruntime.jobs.JobCriticality
 import com.dynokore.platform.serviceruntime.jobs.JobEntityScope
 import com.dynokore.platform.serviceruntime.jobs.JobSchedule
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldNotContain
+import io.kotest.matchers.types.shouldBeSameInstanceAs
 import org.junit.jupiter.api.Test
 import java.nio.file.Files
 import java.nio.file.Path
@@ -221,11 +223,13 @@ class SendRetentionNoticesTest {
     }
 
     @Test
-    fun `INV-AC-26995 a throwing recorder fails that partition and the others are recorded`() {
-        val rec = Recorder { if (it == "p2") error("write failed") else true }
-        val run = useCase(ids = listOf("p1", "p2", "p3"), recorder = rec).run(tenant)
-        run shouldBe NoticeRun(listOf("p1", "p3"), listOf("p2"))
-        rec.partitions shouldBe listOf("p1", "p2", "p3")
+    fun `INV-AC-26995 a throwing recorder propagates out of the run and no later partition is recorded`() {
+        val failure = IllegalStateException("write failed")
+        val rec = Recorder { if (it == "p2") throw failure else true }
+        val thrown =
+            shouldThrow<IllegalStateException> { useCase(ids = listOf("p1", "p2", "p3"), recorder = rec).run(tenant) }
+        thrown shouldBeSameInstanceAs failure
+        rec.partitions shouldBe listOf("p1", "p2")
     }
 
     @Test
