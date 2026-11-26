@@ -3,6 +3,7 @@ package com.dynokore.platform.serviceruntime.identity
 import com.dynokore.platform.serviceruntime.replica.AuthorityReplica
 import com.dynokore.platform.serviceruntime.replica.MachineEntityCoverage
 import com.dynokore.platform.serviceruntime.replica.Principal
+import com.dynokore.platform.serviceruntime.replica.StructureEnvironment
 import com.dynokore.platform.tenancykernel.TenantId
 import com.nimbusds.jose.JOSEException
 import com.nimbusds.jwt.JWTClaimsSet
@@ -46,7 +47,9 @@ internal sealed interface MachineVerdict {
  *  - `scope` is exactly one string and `jti` is a non-blank string (RFC 9068 section 2.2; INV-Q-13630 A).
  * Then the scope is checked against the operation line (403 when it differs): it equals the line's scope, or it is
  * `certification` on a line whose additional principal is `certification`. A `certification` token also needs the
- * claim `environment` equal to `SANDBOX` (exact), on every line.
+ * claim `environment` equal to `SANDBOX` (exact), on every line. The principal carries the claim `environment` of the
+ * verified token: absent gives null, a string gives [StructureEnvironment.of], any other JSON value gives
+ * [StructureEnvironment.UNKNOWN].
  */
 internal class MachineTokenVerifier(
     private val authority: AuthorityReplica?,
@@ -81,7 +84,7 @@ internal class MachineTokenVerifier(
             }
         if (tenant == null && scope in TENANT_SCOPES) return MachineVerdict.BadToken
         val allowed = scope == line.scope || (scope == CERTIFICATION && line.also == CERTIFICATION)
-        val sandbox = scope != CERTIFICATION || claims.claims["environment"] == SANDBOX
+        val sandbox = scope != CERTIFICATION || claims.claims[ENVIRONMENT] == SANDBOX
         if (!allowed || !sandbox) return MachineVerdict.WrongScope
         val jti = claims.jwtid?.takeIf { it.isNotBlank() } ?: return MachineVerdict.BadToken
         val coverage = MachineEntityCoverage.of(claims.claims["principal_scope"])
@@ -93,8 +96,18 @@ internal class MachineTokenVerifier(
                 machineType,
                 scope,
                 jti,
+                environmentOf(claims),
             ),
         )
+    }
+
+    private fun environmentOf(claims: JWTClaimsSet): StructureEnvironment? {
+        val value = claims.claims[ENVIRONMENT]
+        return when {
+            ENVIRONMENT !in claims.claims -> null
+            value is String -> StructureEnvironment.of(value)
+            else -> StructureEnvironment.UNKNOWN
+        }
     }
 
     private fun parse(authorization: String?): SignedJWT? {
@@ -140,6 +153,7 @@ internal class MachineTokenVerifier(
         const val TYP = "at+jwt"
         const val CERTIFICATION = "certification"
         const val SANDBOX = "SANDBOX"
+        const val ENVIRONMENT = "environment"
         val TENANT_SCOPES = setOf("ingest", "filing-workflow", "reporting", CERTIFICATION)
     }
 }

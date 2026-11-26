@@ -6,6 +6,10 @@ train is its own (README.md: "own version and changelog").
 
 ## [Unreleased]
 
+## [14.1.0] - 2026-11-27
+### Added
+- `Principal.environment: StructureEnvironment?`: the claim `environment` of the verified machine access token, set by the machine token filter (INV-T-29096, INV-AC-29094). An absent claim gives null; a string gives `StructureEnvironment.of(value)` (exact match); any other JSON value gives `UNKNOWN`. The public constructor gives null. It is not part of `equals`, `hashCode` or `toString`, no authority decision reads it, and which tokens are accepted or refused does not change.
+
 ## [14.0.0] - 2026-11-24
 ### Changed
 - BREAKING: `FlowContextIssuer` becomes `issue(FlowContextClaims): IssuedFlowContext` (tenant, entity, principal kind and flow id in; the compact form and its `exp` out); `sign(payload)` is removed. `FlowContext.begin` keeps its claim parameters, drops `lifetime` (access-svc owns the lifetime, at most `MAX_LIFETIME_SECONDS`, and the caller, `iat` and `exp`) and builds the held context from the response; an issuer failure or an `exp` outside `(now, now + 900 s + 60 s skew]` (the skew is `FlowContext.CLOCK_SKEW_SECONDS`, also the source of `OperatorSessionTokens.CLOCK_SKEW`) throws `FlowContextUnavailableException` and holds nothing. Owner answer 2026-11-18 option A (INV-T-24993, INV-AC-24992; INV-AC-27492 reviewed at revision 5, INV-CS-28113, INV-CS-28158).

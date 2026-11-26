@@ -41,7 +41,8 @@ private const val MACHINE_KEY_PREFIX = "machine."
  * the [entityCoverage] its `principal_scope` claim states, its [scope] and its [tokenId] (`jti`, null when absent;
  * both are audit data and not part of equality) and its [machineType], the `principal_type` claim unchanged and
  * opaque (role vocabulary stays out of this library, ARC-16): non-null exactly for kind [PrincipalKind.MACHINE], part
- * of equality.
+ * of equality. Its [environment] is the claim `environment` of that token (null when absent, and for every principal
+ * of the public constructor); it is not part of equality either, and no decision of [AuthorityReplica] reads it.
  */
 class Principal internal constructor(
     val id: String,
@@ -51,6 +52,7 @@ class Principal internal constructor(
     val scope: String? = null,
     val tokenId: String? = null,
     val machineType: String? = null,
+    val environment: StructureEnvironment? = null,
 ) {
     constructor(id: String, kind: PrincipalKind) : this(id, kind, null, null, null, null, null) {
         require(kind != PrincipalKind.MACHINE) { "a machine principal is made only by a verified machine access token" }
@@ -103,7 +105,8 @@ class Principal internal constructor(
             machineType: String,
             scope: String? = null,
             tokenId: String? = null,
-        ) = Principal(id, PrincipalKind.MACHINE, tenant, coverage, scope, tokenId, machineType)
+            environment: StructureEnvironment? = null,
+        ) = Principal(id, PrincipalKind.MACHINE, tenant, coverage, scope, tokenId, machineType, environment)
     }
 }
 
