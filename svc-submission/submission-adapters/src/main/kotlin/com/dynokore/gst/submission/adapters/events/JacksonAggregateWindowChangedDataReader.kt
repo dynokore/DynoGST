@@ -2,6 +2,7 @@ package com.dynokore.gst.submission.adapters.events
 
 import com.dynokore.gst.submission.application.completeness.AggregateWindowChangedData
 import com.dynokore.gst.submission.application.completeness.AggregateWindowChangedDataReader
+import com.dynokore.gst.submission.application.completeness.SPAN_UNKNOWN_PERIOD
 import com.dynokore.gst.submission.application.completeness.WindowChangeState
 import com.dynokore.platform.outboxandqueue.ContractViolation
 import tools.jackson.core.JacksonException
@@ -12,8 +13,10 @@ import java.time.format.DateTimeParseException
 
 /**
  * [AggregateWindowChangedDataReader] over Jackson. Reads `entityRef`, `prescribedPeriod`, `window.from`, `window.to`,
- * `state` by exact member name and the optional `stateVersion` (an integer of at least 1; 0 when absent). A missing
- * or malformed member is a [ContractViolation] whose message names the member, never its value.
+ * `state` by exact member name, the optional `stateVersion` (an integer of at least 1; 0 when absent) and the optional
+ * `spanKnown` (a boolean; true when absent; false only for state MISSED with `prescribedPeriod`
+ * [SPAN_UNKNOWN_PERIOD]). A missing or malformed member is a [ContractViolation] whose message names the member, never
+ * its value.
  */
 class JacksonAggregateWindowChangedDataReader : AggregateWindowChangedDataReader {
     private val mapper = ObjectMapper()
@@ -29,14 +32,33 @@ class JacksonAggregateWindowChangedDataReader : AggregateWindowChangedDataReader
             throw ContractViolation("AggregateWindowChanged data is not a JSON object")
         }
         val window = windowOf(data)
-        return AggregateWindowChangedData(
-            entityRef = data.text("entityRef", "entityRef"),
-            prescribedPeriod = data.text("prescribedPeriod", "prescribedPeriod"),
-            from = dateOf(window.text("from", "window.from")),
-            to = dateOf(window.text("to", "window.to")),
-            state = stateOf(data.text("state", "state")),
-            stateVersion = versionOf(data),
-        )
+        val read =
+            AggregateWindowChangedData(
+                entityRef = data.text("entityRef", "entityRef"),
+                prescribedPeriod = data.text("prescribedPeriod", "prescribedPeriod"),
+                from = dateOf(window.text("from", "window.from")),
+                to = dateOf(window.text("to", "window.to")),
+                state = stateOf(data.text("state", "state")),
+                stateVersion = versionOf(data),
+                spanKnown = spanKnownOf(data),
+            )
+        requireUnknownSpanShape(read)
+        return read
+    }
+
+    private fun spanKnownOf(data: JsonNode): Boolean {
+        val node = data.get("spanKnown") ?: return true
+        if (!node.isBoolean) {
+            throw ContractViolation("AggregateWindowChanged spanKnown is not a boolean")
+        }
+        return node.asBoolean()
+    }
+
+    private fun requireUnknownSpanShape(data: AggregateWindowChangedData) {
+        if (data.spanKnown) return
+        if (data.state != WindowChangeState.MISSED || data.prescribedPeriod != SPAN_UNKNOWN_PERIOD) {
+            throw ContractViolation("AggregateWindowChanged spanKnown false does not match state or prescribedPeriod")
+        }
     }
 
     private fun windowOf(data: JsonNode): JsonNode {

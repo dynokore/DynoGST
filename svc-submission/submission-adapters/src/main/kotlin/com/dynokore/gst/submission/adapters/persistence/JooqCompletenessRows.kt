@@ -13,7 +13,8 @@ import org.jooq.DSLContext
 /**
  * [CompletenessRows] over `submission.feed_control_state` and `submission.window_part_state`, read for one tenant,
  * entity and period in one transaction (INV-REQ-792, ruled case 5). A window part LATE is FAILING, CLOSED is
- * NOT_FAILING, OPEN is OPEN; an unknown stored state fails closed with an exception rather than being dropped.
+ * NOT_FAILING, OPEN is OPEN, and MISSED is read as OPEN so that it changes no completeness outcome (INV-REQ-413); an
+ * unknown stored state fails closed with an exception rather than being dropped.
  */
 class JooqCompletenessRows(
     private val dsl: DSLContext,
@@ -58,7 +59,7 @@ class JooqCompletenessRows(
         when (stored) {
             "LATE" -> StoredState.FAILING
             "CLOSED" -> StoredState.NOT_FAILING
-            "OPEN" -> StoredState.OPEN
+            "OPEN", "MISSED" -> StoredState.OPEN
             else -> error("unknown stored window part state")
         }
 }

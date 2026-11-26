@@ -8,7 +8,7 @@ import com.dynokore.platform.tenancykernel.TenantContext
 import java.time.LocalDate
 
 /** The `state` of an `AggregateWindowChanged` event. */
-enum class WindowChangeState { OPEN, CLOSED, LATE }
+enum class WindowChangeState { OPEN, CLOSED, LATE, MISSED }
 
 /** The members of an `AggregateWindowChanged` event the consumer reads; [stateVersion] is 0 when absent. */
 data class AggregateWindowChangedData(
@@ -18,6 +18,8 @@ data class AggregateWindowChangedData(
     val to: LocalDate,
     val state: WindowChangeState,
     val stateVersion: Long,
+    /** False only for a MISSED window whose period span is unknown; [prescribedPeriod] is then not a real period. */
+    val spanKnown: Boolean = true,
 )
 
 /** Reads the event data JSON of an `AggregateWindowChanged` (the JSON library stays in the adapters, ARC-03). */
@@ -27,9 +29,10 @@ fun interface AggregateWindowChangedDataReader {
 }
 
 /**
- * Keeps the aggregate window rows from `AggregateWindowChanged` (INV-REQ-792, ruled cases 4 and 5): LATE stores the
- * part as failing, CLOSED as not failing, OPEN as open; a row changes only for a higher stateVersion. A malformed
- * event is a [ContractViolation] and writes nothing. No message carries a field value.
+ * Keeps the aggregate window rows from `AggregateWindowChanged` (INV-REQ-792, ruled cases 4 and 5; INV-REQ-413): LATE
+ * stores the part as failing, CLOSED as not failing, OPEN as open, MISSED as missed; a MISSED window of unknown span is
+ * kept under [SPAN_UNKNOWN_PERIOD]. A row changes only for a higher stateVersion. A malformed event is a
+ * [ContractViolation] and writes nothing. No message carries a field value.
  */
 class AggregateWindowChangedHandler(
     private val tenants: TenantContext,
@@ -43,12 +46,14 @@ class AggregateWindowChangedHandler(
                 WindowChangeState.LATE -> StoredState.FAILING
                 WindowChangeState.CLOSED -> StoredState.NOT_FAILING
                 WindowChangeState.OPEN -> StoredState.OPEN
+                WindowChangeState.MISSED -> StoredState.MISSED
             }
+        val period = if (data.spanKnown) data.prescribedPeriod else SPAN_UNKNOWN_PERIOD
         val changed =
             states.record(
                 tenants.current(),
                 data.entityRef,
-                data.prescribedPeriod,
+                period,
                 data.from,
                 data.to,
                 stored,

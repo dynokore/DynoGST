@@ -4,7 +4,7 @@ import com.dynokore.platform.tenancykernel.TenantId
 import java.time.LocalDate
 
 /** The stored state of one completeness part (a feed control or an aggregate window). */
-enum class StoredState { FAILING, NOT_FAILING, OPEN }
+enum class StoredState { FAILING, NOT_FAILING, OPEN, MISSED }
 
 /** One stored row of an entity and period, reduced to what the derivation reads. */
 data class StoredRow(
