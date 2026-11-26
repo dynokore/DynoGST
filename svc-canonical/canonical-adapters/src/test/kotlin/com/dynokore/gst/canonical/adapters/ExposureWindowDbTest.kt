@@ -103,6 +103,7 @@ class ExposureWindowDbTest {
     }
 
     /** One version linked to [event], written by the superuser so that `created_at` is chosen. */
+    @Suppress("LongParameterList") // a row builder: each test names only the column it varies
     private fun seedVersion(
         document: Pair<UUID, UUID>,
         event: Event,
@@ -122,6 +123,7 @@ class ExposureWindowDbTest {
     }
 
     /** One document with one version and its own linked event; the answer is the item a page lists for it. */
+    @Suppress("LongParameterList") // a row builder: each test names only the column it varies
     private fun seed(
         entityRef: String?,
         at: Instant = inside,

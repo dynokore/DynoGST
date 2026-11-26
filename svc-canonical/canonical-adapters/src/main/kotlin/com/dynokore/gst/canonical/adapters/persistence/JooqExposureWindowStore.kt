@@ -50,7 +50,7 @@ class JooqExposureWindowStore(
     ): List<ExposedVersion> {
         require(limit >= 1) { "limit is less than 1" }
         if (permittedEntityRefs.isEmpty()) return emptyList()
-        val permitted = DOCUMENT.ENTITY_REF.eq(DSL.any(*permittedEntityRefs.toTypedArray<String?>()))
+        val permitted = DOCUMENT.ENTITY_REF.eq(DSL.any(DSL.value(permittedEntityRefs.toTypedArray<String?>())))
         return dsl
             .select(
                 DOCUMENT.ENTITY_REF,
