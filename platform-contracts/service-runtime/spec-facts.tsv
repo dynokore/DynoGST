@@ -29,3 +29,6 @@ schemas/pack-dry-run-sample-recorded-payload.schema.json	/properties/documents/i
 schemas/pack-dry-run-sample-recorded-payload.schema.json	/properties/documents/items/properties/supplyType/enum	absent	-	INV-REQ-772
 schemas/error-envelope.schema.json	/properties/mayPerform/items/enum	equals	["AGENT","CLIENT"]	INV-REQ-913
 schemas/error-envelope.schema.json	/required	equals	["type","title","status","code","correlationId"]	INV-REQ-913
+schemas/job-registered-payload.schema.json	/required	equals	["job","ownerService","entityScope","schedule","criticality","tolerance"]	INV-REQ-1139
+schemas/job-registered-payload.schema.json	/properties/nextRunAt/type	equals	"string"	INV-REQ-1139
+schemas/job-registered-payload.schema.json	/properties/nextRunAt/format	equals	"date-time"	INV-REQ-1139
