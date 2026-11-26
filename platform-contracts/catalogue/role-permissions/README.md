@@ -51,6 +51,8 @@ The keys `election-change.withdraw` (WRITE) and `election-change.list` (READ) (I
 
 The keys `migration-cutover.record` (WRITE; `entity.admin`) and `migration-cutover.view` (READ; `entity.admin`, `tenant.admin`, `tax.approver`) (INV-T-18815, INV-Q-10027) carry the row of `entity-config.manage`; the write holder equals that of `entity-config.manage` and the read holders equal those of `election-change.list`, and the keys guard the operations `recordMigrationCutover` and `getMigrationCutover` of tenancy.
 
+The key `migration-cutover.correct` (WRITE; `entity.admin`) carries the row of `entity-config.manage` and guards the operations `requestMigrationCutoverCorrection` and `decideMigrationCutoverCorrection` of tenancy (INV-T-24887, INV-Q-10027); the approver differing from the requester is a business rule, not a second key.
+
 The key `enquiry-lookup.by-acknowledgement` (row "Look up an enquiry by Acknowledgement ID") is held by `auditor`, `tax.approver` and `tax.operator`, `enquiry-lookup.reverse` (row "Reverse-look up an enquiry") by `auditor` and `tax.approver`, and `rendition-sample.record` (row "Record a rendition sample check") by `tax.operator` alone, all in SAAS and PRIVATE (INV-T-10492, INV-Q-10378 A, INV-Q-10380 A).
 
 The key `audit-entry.purge` (row "Purge audit entries", WRITE) is held by `platform.engineer` in SAAS only, with no PRIVATE cell because control-plane-svc runs only in the SaaS form (INV-REQ-1155). It was added by INV-T-11439 under INV-Q-11433 A, and its label is the last of `addedRows` (15 labels).

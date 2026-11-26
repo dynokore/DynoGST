@@ -788,6 +788,15 @@ class RegulatoryPackArmRolePermissionsTest {
             assertEquals(view, h("migration-cutover.view"))
         }
     }
+
+    @Test
+    fun `INV-AC-24882 migration-cutover correct is a WRITE key held by entity admin alone in both forms`() {
+        assertEquals(PermissionKind.WRITE, RolePermissions.kind("migration-cutover.correct"))
+        both.forEach { f ->
+            val h = RolePermissions.cells(f).filter { (_, p) -> p["migration-cutover.correct"] == y }.keys
+            assertEquals(setOf("entity.admin"), h)
+        }
+    }
 }
 
 /** INV-T-22817: the key pack.dry-run, through the library API only (own class: LargeClass limit). */

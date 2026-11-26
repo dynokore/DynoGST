@@ -2665,6 +2665,40 @@ class RolePermissionsCheckerTest {
         )
     }
 
+    private val mcc = "migration-cutover.correct"
+
+    @Test
+    fun `INV-AC-24882 migration-cutover correct carries the entity-config manage row, WRITE and the entity admin cells`() {
+        assertEquals(permission(real, "entity-config.manage").row, permission(real, mcc).row)
+        assertEquals(PermissionKind.WRITE, permission(real, mcc).kind)
+        fun cs(k: String) = permission(real, k).cells.map { Triple(it.role, it.form, it.allowance) }.toSet()
+        assertEquals(cs("entity-config.manage"), cs(mcc))
+        assertEquals(emptyList<String>(), RolePermissionsChecker.check(real))
+    }
+
+    @Test
+    fun `INV-AC-24882 probe tenant admin cell added, PRIVATE cell removed, kind READ, each reported naming the key`() {
+        assertReported(cellAdd(mcc, "tenant.admin", DeploymentForm.SAAS), "key $mcc")
+        assertReported(cellRemove(mcc, "entity.admin", DeploymentForm.PRIVATE), "role entity.admin key $mcc form PRIVATE")
+        assertReported(withPermission(mcc) { it.copy(kind = PermissionKind.READ) }, "key $mcc")
+    }
+
+    @Test
+    fun `INV-AC-24882 probe renamed or removed migration-cutover correct is reported missing`() {
+        listOf("$mcc ", "migration-cutover.corrects", "Migration-cutover.correct", "migration-cutover.record.correct").forEach { name ->
+            assertReported(withPermission(mcc) { it.copy(key = name) }, "key $mcc: missing")
+        }
+        assertReported(real.copy(permissions = real.permissions.filterNot { it.key == mcc }), "key $mcc: missing")
+    }
+
+    @Test
+    fun `INV-AC-24882 probe migration-cutover record given the cells of correct plus tax approver is reported`() {
+        assertReported(
+            withPermission(mcr) { p -> p.copy(cells = permission(real, mcc).cells + CellRow("tax.approver", DeploymentForm.SAAS, RoleAllowance.PERMITTED)) },
+            "role tax.approver key $mcr",
+        )
+    }
+
     private val tsKeys = listOf("tenant-schedule.set", "tenant-schedule.change", "tenant-schedule.cancel", "tenant-schedule.read")
 
     @Test

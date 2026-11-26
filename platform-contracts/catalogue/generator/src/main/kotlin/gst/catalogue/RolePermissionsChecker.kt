@@ -541,6 +541,7 @@ object RolePermissionsChecker {
             "diagnostic.invite" to Required(PermissionKind.WRITE, cells(permitted, privateForm, "deployment.operator")),
             "tenant-invitation.reissue" to Required(PermissionKind.WRITE, cells(permitted, saasForm, "commercial.admin")),
             "migration-cutover.record" to Required(PermissionKind.WRITE, cells(permitted, both, "entity.admin")),
+            "migration-cutover.correct" to Required(PermissionKind.WRITE, cells(permitted, both, "entity.admin")),
             "migration-cutover.view" to
                 Required(PermissionKind.READ, cells(permitted, both, "entity.admin", "tenant.admin", "tax.approver")),
             "licence.view" to Required(PermissionKind.READ, cells(permitted, saasForm, "commercial.admin")),
@@ -929,7 +930,7 @@ object RolePermissionsChecker {
         table.permissions.filter { it.key !in packRemedyPairs && (it.row in packRemedyPairs.values || it.key.lowercase().replace('-', '.').let { k -> k.startsWith("regulatory.pack.rollback") || k.startsWith("regulatory.pack.reprocess") }) }.forEach { p ->
             v += "key ${p.key}: not one of the keys ${packRemedyPairs.keys.joinToString()}, which alone carry the regulatory pack rollback and reprocess rows (INV-T-24736)."
         }
-        table.permissions.filter { it.key in setOf("election-change.approve", "election-change.withdraw", "election-change.list", "migration-cutover.record", "migration-cutover.view") }.forEach { p ->
+        table.permissions.filter { it.key in setOf("election-change.approve", "election-change.withdraw", "election-change.list", "migration-cutover.record", "migration-cutover.correct", "migration-cutover.view") }.forEach { p ->
             if (p.row != electionChangeRow) v += "key ${p.key}: row '${p.row}' differs from '$electionChangeRow' (INV-T-10123, INV-T-13530)."
         }
         val used = table.permissions.map { it.row }.toSet()

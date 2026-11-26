@@ -1448,6 +1448,12 @@ permissions:
     cells:
       - {role: entity.admin, form: SAAS, allowance: PERMITTED}
       - {role: entity.admin, form: PRIVATE, allowance: PERMITTED}
+  - key: migration-cutover.correct
+    kind: WRITE
+    row: "Manage entity registry, identity triple, elections, issuance mode, trigger waivers, go-live, suspension, deregistration, offboarding"
+    cells:
+      - {role: entity.admin, form: SAAS, allowance: PERMITTED}
+      - {role: entity.admin, form: PRIVATE, allowance: PERMITTED}
   - key: migration-cutover.view
     kind: READ
     row: "Manage entity registry, identity triple, elections, issuance mode, trigger waivers, go-live, suspension, deregistration, offboarding"
