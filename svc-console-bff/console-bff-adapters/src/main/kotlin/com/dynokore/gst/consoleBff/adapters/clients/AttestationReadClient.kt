@@ -15,7 +15,6 @@ import org.springframework.web.client.RestClientException
 import tools.jackson.databind.JsonNode
 import java.time.Clock
 
-private const val CURSOR = "cursor"
 private const val HTTP_OK = 200
 private const val HTTP_BAD_REQUEST = 400
 private const val HTTP_FORBIDDEN = 403
@@ -43,7 +42,7 @@ class AttestationReadClient(
     ): PageReply<AttestationRecord> =
         read.page(
             entityRef,
-            { periods.listRenditionAttestationsRequestConfig(entityRef, limit, cursor).withOpaqueCursor(cursor) },
+            { periods.listRenditionAttestationsRequestConfig(entityRef, limit, cursor) },
             ::record,
         )
 
@@ -59,19 +58,6 @@ class AttestationReadClient(
             else -> AttestationRecord(documentClass, renderer, attestedBy, attestedAt, sequence)
         }
     }
-}
-
-/**
- * The request with [cursor] bound as a URI variable. The generated transport puts a query value into the URI template
- * as it is: there a `+` stays a `+` (the owner reads a space) and `{name}` is expanded. A variable value is encoded
- * strictly, so the opaque cursor reaches the owner unchanged (API-18).
- */
-internal fun <T> RequestConfig<T>.withOpaqueCursor(cursor: String?): RequestConfig<T> {
-    if (cursor != null) {
-        query[CURSOR] = listOf("{$CURSOR}")
-        params[CURSOR] = cursor
-    }
-    return this
 }
 
 /**

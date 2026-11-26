@@ -25,7 +25,7 @@ class CanonicalEdgeClient(
     @Qualifier("internalRestClientBuilder") builder: RestClient.Builder,
     environment: Environment,
 ) {
-    private val restClient = builder.baseUrl(baseUrl(environment)).build()
+    private val restClient = GeneratedQueryValues.restClient(builder, baseUrl(environment))
     private val documents = DocumentsApi(restClient)
     private val reassignments = ReassignmentsApi(restClient)
 

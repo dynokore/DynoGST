@@ -36,7 +36,7 @@ class SampleCheckReadClient(
     ): PageReply<SampleCheckArtefactRecord> =
         read.page(
             entityRef,
-            { verification.listRenditionSampleChecksRequestConfig(entityRef, limit, cursor).withOpaqueCursor(cursor) },
+            { verification.listRenditionSampleChecksRequestConfig(entityRef, limit, cursor) },
             ::record,
         )
 

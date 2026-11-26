@@ -45,7 +45,7 @@ object OwningServiceEdge {
         builder: RestClient.Builder,
         environment: Environment,
         service: OwningService,
-    ): RestClient = builder.baseUrl(baseUrl(environment, service)).build()
+    ): RestClient = GeneratedQueryValues.restClient(builder, baseUrl(environment, service))
 
     fun policy(
         registry: ResilienceRegistry,
