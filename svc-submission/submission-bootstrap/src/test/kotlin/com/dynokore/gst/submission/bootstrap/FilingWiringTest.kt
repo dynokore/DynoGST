@@ -12,7 +12,10 @@ import com.dynokore.gst.submission.application.gate.LatestChecks
 import com.dynokore.gst.submission.syncedge.BreakGlassDoubles
 import com.dynokore.gst.submission.syncedge.BreakGlassTestBeans
 import com.dynokore.gst.submission.syncedge.ContractDocument
+import com.dynokore.platform.serviceruntime.replica.AuthorityFallback
 import com.dynokore.platform.serviceruntime.replica.AuthorityReplica
+import com.dynokore.platform.serviceruntime.replica.AuthorityVerdict
+import com.dynokore.platform.serviceruntime.replica.FallbackResult
 import com.dynokore.platform.serviceruntime.replica.OperatorSessionKey
 import com.dynokore.platform.serviceruntime.replica.OperatorSessionKeysChanged
 import com.nimbusds.jose.JOSEObjectType
@@ -139,6 +142,18 @@ class FilingWiringTest {
             }
     }
 
+    /**
+     * The access-svc double of the real-servlet cases: `confirmFiling` is high-risk and is authorised live
+     * (INV-REQ-1201 behaviour 7); only the exact key of that operation is allowed.
+     */
+    class LiveFilingAuthority {
+        @Bean
+        fun liveFilingAuthority(): AuthorityFallback =
+            AuthorityFallback { key, _ ->
+                FallbackResult.Found(AuthorityVerdict(key.action == "machine.filing.confirm"))
+            }
+    }
+
     private val loader = javaClass.classLoader
     private val keys: KeyPair = KeyPairGenerator.getInstance("RSA").apply { initialize(KEY_BITS) }.generateKeyPair()
 
@@ -208,8 +223,16 @@ class FilingWiringTest {
                 )
         BreakGlassDoubles.reset(BreakGlassTestBeans.BEFORE_E)
         SubmissionContext
-            .startServlet(dir, listOf(BreakGlassTestBeans::class.java, AmbiguousForP3::class.java), properties, loader)
-            .use { context ->
+            .startServlet(
+                dir,
+                listOf(
+                    BreakGlassTestBeans::class.java,
+                    AmbiguousForP3::class.java,
+                    LiveFilingAuthority::class.java,
+                ),
+                properties,
+                loader,
+            ).use { context ->
                 val key =
                     OperatorSessionKey(
                         "mk",

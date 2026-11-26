@@ -81,6 +81,10 @@ class EventPayloadContractTest {
                 """{"originalDocUuid":"0b0e9a43-6d3c-4f6e-9f0a-3f2a6a1c9d11","expectedBaseVersion":3,
                 |"creditNotes":[{"docUuid":"7d0c1c55-2b1a-4c47-9d40-5f5f1b7f3c01","version":1}]}
                 """.trimMargin(),
+            "IdentityTripleReprocessingRequested" to
+                """{"entityRef":"E-001","constitution":"COMPANY","effectiveFrom":"2026-11-01","changeRef":"CHG-1",
+                |"docUuids":["7d0c1c55-2b1a-4c47-9d40-5f5f1b7f3c01"]}
+                """.trimMargin(),
             "ExampleHappened" to """{"entityRef":"E-001"}""",
         )
 

@@ -160,6 +160,7 @@ class CallerChecks(
                 "POST /internal/v1/entities/{entityRef}/replay",
                 "GET /internal/v1/entities/{entityRef}/replay-preview",
                 "POST /internal/v1/transactions/{docUuid}/versions/{version}/replay",
+                "POST /internal/v1/submission/boundary-checks",
                 "GET /internal/v1/entities/{entityRef}/periods/{periodRef}/readiness/latest-check",
                 "GET /internal/v1/entities/{entityRef}/periods/{periodRef}/drain-preview",
                 "POST /internal/v1/entities/{entityRef}/periods/{periodRef}/filing-gate-overrides",
