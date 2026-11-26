@@ -5,5 +5,6 @@ SET lock_timeout = '5s';
 -- Rollback: forward only (a later migration); no existing row is rewritten.
 alter table submission.window_part_state
     drop constraint window_part_state_state_check,
-    add constraint window_part_state_state_check check (state in ('OPEN', 'CLOSED', 'LATE', 'MISSED')),
+    add constraint window_part_state_state_check check (state in ('OPEN', 'CLOSED', 'LATE', 'MISSED')) not valid,
     add column missed_at timestamptz;
+alter table submission.window_part_state validate constraint window_part_state_state_check;
