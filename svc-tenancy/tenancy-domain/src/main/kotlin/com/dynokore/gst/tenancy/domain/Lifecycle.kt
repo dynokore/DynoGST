@@ -64,10 +64,8 @@ object GoLiveGate {
             add(RENDITION_UNKNOWN)
             return
         }
-        facts.missingRenditionClasses
-            .sortedBy(
-                DocumentClasses.ALL::indexOf,
-            ).forEach { add("$RENDITION_INCOMPLETE: $it") }
+        val inOrder = facts.missingRenditionClasses.sortedBy { DocumentClasses.ALL.indexOf(it) }
+        inOrder.forEach { add("$RENDITION_INCOMPLETE: $it") }
     }
 }
 
