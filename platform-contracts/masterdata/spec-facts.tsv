@@ -7,3 +7,5 @@ openapi.yaml	/components/schemas/CorrectCounterpartyDataRequest/properties/field
 openapi.yaml	/components/schemas/CorrectCounterpartyDataRequest/properties/field/x-extensible-enum	absent	-	INV-REQ-886
 openapi.yaml	/components/schemas/GapReport/properties/rows/items/properties/findingClass/enum	equals	["UEN_ABSENT","UEN_INVALID","GST_REGISTER_CONFLICT","ADDRESS_INCOMPLETE","DUPLICATE_UEN","SCHEME_STATUS_MISSING"]	INV-REQ-316
 openapi.yaml	/components/schemas/GapReport/properties/rows/items/properties/findingClass/x-extensible-enum	equals	true	INV-REQ-316
+openapi.yaml	/paths/~1internal~1v1~1masterdata~1counterparties~1{counterpartyRef}~1requests/post/x-requirements	contains	"INV-REQ-901"	INV-REQ-901
+openapi.yaml	/paths/~1internal~1v1~1masterdata~1counterparty-requests~1{requestId}~1submission/post/x-requirements	contains	"INV-REQ-901"	INV-REQ-901

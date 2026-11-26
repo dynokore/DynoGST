@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: masterdata API
-  version: 1.29.0
+  version: 1.29.1
   description: >-
     Contract-first source of truth for masterdata (API-01, STK-44). The
     `masterdata-contract` module generates its server interfaces and DTOs
@@ -808,7 +808,7 @@ paths:
       x-sync-edge: console-bff->masterdata-svc
       x-timeout: 2000
       x-error-codes: [MDM-011]
-      x-requirements: [INV-REQ-957, INV-REQ-1010, FR-AF.23]
+      x-requirements: [INV-REQ-957, INV-REQ-1010, FR-AF.23, INV-REQ-901]
       x-operation:
         kind: PERMISSION
         permission: counterparty-request.send
@@ -891,7 +891,7 @@ paths:
       x-sync-edge: console-bff->masterdata-svc
       x-timeout: 2000
       x-error-codes: [MDM-002, MDM-003, MDM-006]
-      x-requirements: [INV-REQ-957, INV-REQ-1010, FR-AF.24, FR-1.5]
+      x-requirements: [INV-REQ-957, INV-REQ-1010, FR-AF.24, FR-1.5, INV-REQ-901]
       x-operation:
         role: "The counterparty holding the signed link"
         scope: entity
