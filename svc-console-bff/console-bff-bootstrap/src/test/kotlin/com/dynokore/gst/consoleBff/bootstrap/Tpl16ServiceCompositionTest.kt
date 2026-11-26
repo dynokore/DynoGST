@@ -92,7 +92,7 @@ class Tpl16ServiceCompositionTest {
     }
 
     @Test
-    fun `INV-AC-14435 the slice registers only the controllers of INV-T-21108, 21165, 26286 and 27145`(
+    fun `INV-AC-14435 the slice registers only the controllers of INV-T-21108, 21165, 26286, 27145 and 27623`(
         @TempDir dir: Path,
     ) {
         ConsoleContext.online(dir).run { context ->
@@ -101,12 +101,24 @@ class Tpl16ServiceCompositionTest {
                 .getBeansWithAnnotation(org.springframework.web.bind.annotation.RestController::class.java)
                 .keys
                 .sorted() shouldBe
-                listOf("deferralsController", "exceptionsController", "portfolioController", "privacyController")
+                listOf(
+                    "deferralsController",
+                    "exceptionsController",
+                    "portfolioController",
+                    "privacyController",
+                    "renditionEvidenceController",
+                )
             context
                 .getBeansWithAnnotation(org.springframework.stereotype.Controller::class.java)
                 .keys
                 .sorted() shouldBe
-                listOf("deferralsController", "exceptionsController", "portfolioController", "privacyController")
+                listOf(
+                    "deferralsController",
+                    "exceptionsController",
+                    "portfolioController",
+                    "privacyController",
+                    "renditionEvidenceController",
+                )
         }
     }
 

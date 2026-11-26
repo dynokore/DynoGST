@@ -4,10 +4,10 @@ import com.dynokore.gst.consoleBff.bootstrap.DeferralsController
 import com.dynokore.gst.consoleBff.bootstrap.ExceptionsController
 import com.dynokore.gst.consoleBff.bootstrap.PortfolioController
 import com.dynokore.gst.consoleBff.bootstrap.PrivacyController
+import com.dynokore.gst.consoleBff.bootstrap.RenditionEvidenceController
 import com.dynokore.gst.consoleBff.contract.api.ConfigurationApi
 import com.dynokore.gst.consoleBff.contract.api.DeferralsApi
 import com.dynokore.gst.consoleBff.contract.api.DocumentsApi
-import com.dynokore.gst.consoleBff.contract.api.EvidenceApi
 import com.dynokore.gst.consoleBff.contract.api.ProfilesApi
 import com.dynokore.gst.consoleBff.contract.api.SupportApi
 import com.dynokore.gst.consoleBff.contract.api.WorkspacesApi
@@ -31,11 +31,11 @@ class OperationsGateTest {
             ConfigurationApi::class.java,
             DeferralsController::class.java,
             DocumentsApi::class.java,
-            EvidenceApi::class.java,
             ExceptionsController::class.java,
             PortfolioController::class.java,
             PrivacyController::class.java,
             ProfilesApi::class.java,
+            RenditionEvidenceController::class.java,
             SupportApi::class.java,
             WorkspacesApi::class.java,
         )
@@ -50,6 +50,7 @@ class OperationsGateTest {
             "overrideException",
             "getPortfolio",
             "correctPersonalData",
+            "getEntityRenditionEvidence",
         )
 
     private fun doneLines() = doneText.orEmpty().lines().filter { it.isNotBlank() }
@@ -66,7 +67,15 @@ class OperationsGateTest {
         OperationsGate.contractOperations(openapi).size shouldBe 18
         OperationsGate.contractChannels(asyncapi).size shouldBe 1
         run(done = doneText).shouldBeEmpty()
-        doneLines() shouldBe listOf("INV-T-21108", "INV-T-21165", "INV-T-21207", "INV-T-26286", "INV-T-27145")
+        doneLines() shouldBe
+            listOf(
+                "INV-T-21108",
+                "INV-T-21165",
+                "INV-T-21207",
+                "INV-T-26286",
+                "INV-T-27145",
+                "INV-T-27623",
+            )
     }
 
     @Test
@@ -85,7 +94,6 @@ class OperationsGateTest {
                 "compareDocumentVersions",
                 "previewConfigurationPromotion",
                 "applyOperatingProfile",
-                "getEntityRenditionEvidence",
             )
         for (id in added) {
             val own = rows.filter { it[0] == "operation" && it[1] == id }
@@ -94,10 +102,19 @@ class OperationsGateTest {
         }
         rows.single { it[0] == "operation" && it[1] == "getPortfolio" }[2] shouldBe "INV-T-26286"
         rows.single { it[0] == "operation" && it[1] == "correctPersonalData" }[2] shouldBe "INV-T-27145"
-        stubs.size shouldBe 12
+        rows.single { it[0] == "operation" && it[1] == "getEntityRenditionEvidence" }[2] shouldBe "INV-T-27623"
+        stubs.size shouldBe 11
         stubs shouldBe ids - implemented
         run(done = doneText).shouldBeEmpty()
-        doneLines() shouldBe listOf("INV-T-21108", "INV-T-21165", "INV-T-21207", "INV-T-26286", "INV-T-27145")
+        doneLines() shouldBe
+            listOf(
+                "INV-T-21108",
+                "INV-T-21165",
+                "INV-T-21207",
+                "INV-T-26286",
+                "INV-T-27145",
+                "INV-T-27623",
+            )
     }
 
     @Test
@@ -110,7 +127,15 @@ class OperationsGateTest {
         run(done = doneText).shouldBeEmpty()
         val row = tsv.lines().single { it.startsWith("operation\tgetExceptions\t") }
         row shouldBe "operation\tgetExceptions\tINV-T-21108"
-        doneLines() shouldBe listOf("INV-T-21108", "INV-T-21165", "INV-T-21207", "INV-T-26286", "INV-T-27145")
+        doneLines() shouldBe
+            listOf(
+                "INV-T-21108",
+                "INV-T-21165",
+                "INV-T-21207",
+                "INV-T-26286",
+                "INV-T-27145",
+                "INV-T-27623",
+            )
         ("getExceptions" in stubs) shouldBe false
         stubs shouldBe OperationsGate.contractOperations(openapi) - implemented
     }

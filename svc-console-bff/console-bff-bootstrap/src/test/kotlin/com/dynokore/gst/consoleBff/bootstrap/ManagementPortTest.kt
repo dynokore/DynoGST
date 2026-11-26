@@ -43,6 +43,7 @@ class ManagementPortTest {
                     "--console.payload-svc-url=http://localhost:8083",
                     "--console.submission-svc-url=http://localhost:8084",
                     "--console.evidence-svc-url=http://localhost:8086",
+                    "--console.tenancy-svc-url=http://localhost:8087",
                 )
         app.use { context ->
             val management = context.environment.getProperty("local.management.port")!!

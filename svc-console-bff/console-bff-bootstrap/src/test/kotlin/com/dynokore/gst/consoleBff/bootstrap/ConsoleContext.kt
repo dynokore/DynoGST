@@ -31,6 +31,7 @@ object ConsoleContext {
             "console.submission-svc-url=http://localhost:8084", // SubmissionOverrideClient base URL (TPL-16)
             "console.masterdata-svc-url=http://localhost:8085", // MasterdataBulkClient base URL (TPL-16)
             "console.evidence-svc-url=http://localhost:8086", // the two evidence clients (TPL-16)
+            "console.tenancy-svc-url=http://localhost:8087", // AttestationReadClient base URL (TPL-16)
             *extra,
         )
     }

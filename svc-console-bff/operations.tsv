@@ -17,4 +17,4 @@ operation	compareDocumentVersions	UNASSIGNED
 operation	previewConfigurationPromotion	UNASSIGNED
 operation	applyOperatingProfile	UNASSIGNED
 operation	resolveGroup	UNASSIGNED
-operation	getEntityRenditionEvidence	UNASSIGNED
+operation	getEntityRenditionEvidence	INV-T-27623
