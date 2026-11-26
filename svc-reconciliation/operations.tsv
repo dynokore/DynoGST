@@ -1,12 +1,14 @@
 kind	id	task
 operation	uploadGstReturn	INV-T-24367
 operation	getReconciliation	INV-T-24421
+operation	listIntraTenantPairs	INV-T-28557
 operation	listRuns	INV-T-24376
 operation	getRun	INV-T-24376
 operation	getWorkPaper	INV-T-24380
 operation	exportWorkPaper	INV-T-24486
 operation	annotateVariance	INV-T-24380
 operation	attestWorkPaper	INV-T-24459
+operation	projectBackfillEffect	UNASSIGNED
 channel	gst.reconciliation.gst-return-recorded.v1	INV-T-24367
 channel	gst.reconciliation.reconciliation-completed.v1	UNASSIGNED
 channel	gst.reconciliation.example-happened.v1	UNASSIGNED

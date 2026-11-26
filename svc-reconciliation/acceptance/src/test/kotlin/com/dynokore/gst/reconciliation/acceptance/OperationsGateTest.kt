@@ -1,5 +1,6 @@
 package com.dynokore.gst.reconciliation.acceptance
 
+import com.dynokore.gst.reconciliation.adapters.http.BackfillController
 import com.dynokore.gst.reconciliation.adapters.http.ReconciliationController
 import com.dynokore.gst.reconciliation.adapters.http.ReturnsController
 import com.dynokore.gst.reconciliation.adapters.http.RunsController
@@ -7,7 +8,9 @@ import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldNotBeEmpty
 import io.kotest.matchers.shouldBe
+import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
+import org.yaml.snakeyaml.Yaml
 import java.io.File
 
 class OperationsGateTest {
@@ -20,7 +23,12 @@ class OperationsGateTest {
     /** Operations answering 501 (OperationsStubs): what each controller method does for placeholder arguments. */
     private val stubs: Set<String> =
         OperationsStubs.stubs(
-            listOf(ReturnsController::class.java, ReconciliationController::class.java, RunsController::class.java),
+            listOf(
+                ReturnsController::class.java,
+                ReconciliationController::class.java,
+                RunsController::class.java,
+                BackfillController::class.java,
+            ),
         )
 
     /** A synthetic stub set for the probes: every real operation is implemented, the gate logic is still probed. */
@@ -35,7 +43,7 @@ class OperationsGateTest {
 
     @Test
     fun `the real table covers the real contract`() {
-        OperationsGate.contractOperations(openapi).size shouldBe 8
+        OperationsGate.contractOperations(openapi).size shouldBe 10
         OperationsGate.contractChannels(asyncapi).size shouldBe 3
         run(done = doneText).shouldBeEmpty()
         doneText shouldBe "INV-T-24486\n"
@@ -58,6 +66,34 @@ class OperationsGateTest {
                 "attestWorkPaper",
                 "exportWorkPaper",
             )
+    }
+
+    @Test
+    @DisplayName(
+        "INV-AC-27705 the pinned contract holds projectBackfillEffect once with the tag backfill " +
+            "and it is an UNASSIGNED stub or served by INV-T-27708",
+    )
+    fun backfillEffectStubOrServed() {
+        val operations = operationsWithId("projectBackfillEffect")
+        operations.size shouldBe 1
+        operations.single()["tags"] shouldBe listOf("backfill")
+
+        val rows = tsv.lines().filter { it.split('\t').getOrNull(1) == "projectBackfillEffect" }
+        rows.size shouldBe 1
+        listOf(
+            "operation\tprojectBackfillEffect\tUNASSIGNED" to true,
+            "operation\tprojectBackfillEffect\tINV-T-27708" to false,
+        ) shouldContain (rows.single() to ("projectBackfillEffect" in stubs))
+    }
+
+    /** Every operation of the pinned contract whose operationId equals [operationId], one entry per path and method. */
+    private fun operationsWithId(operationId: String): List<Map<*, *>> {
+        val document = Yaml().load<Map<String, Any>>(openapi)
+        return (document.getValue("paths") as Map<*, *>)
+            .values
+            .flatMap { (it as Map<*, *>).values }
+            .filterIsInstance<Map<*, *>>()
+            .filter { it["operationId"] == operationId }
     }
 
     @Test
