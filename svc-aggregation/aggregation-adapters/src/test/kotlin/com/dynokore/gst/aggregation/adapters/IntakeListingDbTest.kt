@@ -133,17 +133,21 @@ class IntakeListingDbTest {
             .single()
             .let(UUID::fromString)
 
-    /** The listed ids of every receipt of [principal], by operation, source key and revision. */
+    /**
+     * The listed ids of every receipt of [principal], by operation, source key and revision. Every receipt of [owner]
+     * is first recorded at [from], so no database clock value decides what the window holds.
+     */
     private fun idsOf(
         principal: String = ALICE,
         owner: UUID = tenant,
-    ): Map<String, List<UUID>> =
-        listing(owner) { list ->
-            val all = filter(principal, Instant.EPOCH, FAR)
-            list.page(all, setOf(ENTITY), null, ALL).items.associate {
+    ): Map<String, List<UUID>> {
+        recordAt(from, owner)
+        return listing(owner) { list ->
+            list.page(filter(principal), setOf(ENTITY), null, ALL).items.associate {
                 "${it.intakeOperation}|${it.sourceKey}|${it.sourceRevision}" to it.aggregateIds
             }
         }
+    }
 
     @Test
     fun `INV-AC-28765 only the principal's receipts match, never those of a look-alike principalRef`() {
@@ -428,6 +432,5 @@ class IntakeListingDbTest {
         const val ALL = 100
         const val MAX_PAGES = 20
         const val MICRO = 1_000L
-        val FAR: Instant = Instant.parse("2100-01-01T00:00:00Z")
     }
 }
