@@ -205,3 +205,10 @@ POST /internal/v1/canonical/documents the request property `documentNumber` beca
 POST /internal/v1/transport/network-documents added the new required request property `payload`
 POST /internal/v1/transport/network-documents added the new required request property `entityRef`
 POST /internal/v1/transport/network-documents removed the request property `adapterRef`
+# INV-T-28551 (answered pairing question INV-Q-28529; owner 2026-11-25 ruling): PairSide drops taxCode, netAmount and taxAmount for lines[] of PairLine, changed in place; INV-Q-3569 reasoning applies (owner 2026-11-15, pre-go-live): no train is published and no repository's main consumes PairSide; after the first train this would be breaking (API-03).
+GET /v1/entities/{entityRef}/periods/{periodRef}/intra-tenant-pairs removed the required property `items/items/purchase/netAmount` from the response with the `200` status
+GET /v1/entities/{entityRef}/periods/{periodRef}/intra-tenant-pairs removed the required property `items/items/purchase/taxAmount` from the response with the `200` status
+GET /v1/entities/{entityRef}/periods/{periodRef}/intra-tenant-pairs removed the required property `items/items/purchase/taxCode` from the response with the `200` status
+GET /v1/entities/{entityRef}/periods/{periodRef}/intra-tenant-pairs removed the required property `items/items/supply/netAmount` from the response with the `200` status
+GET /v1/entities/{entityRef}/periods/{periodRef}/intra-tenant-pairs removed the required property `items/items/supply/taxAmount` from the response with the `200` status
+GET /v1/entities/{entityRef}/periods/{periodRef}/intra-tenant-pairs removed the required property `items/items/supply/taxCode` from the response with the `200` status

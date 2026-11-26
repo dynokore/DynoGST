@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: reconciliation API
-  version: 1.11.0
+  version: 1.12.0
   description: >-
     Contract-first source of truth for reconciliation (API-01, STK-44). The
     `reconciliation-contract` module generates its server interfaces and DTOs
@@ -275,9 +275,12 @@ paths:
       description: >-
         Intra-tenant pairing view (INV-REQ-740). The view is informational:
         a difference between the figures of the two sides is expected and is
-        never an error. The two sides are matched by the one Doc UUID across
-        two entities of the tenant; no heuristic matching. Cursor pagination
-        (API-18); no offset and no total count.
+        never an error. A pair needs the same tenant, Doc UUID, seller UEN and
+        buyer UEN across two entities of the tenant; no heuristic matching. A
+        record whose seller UEN or buyer UEN is absent or differs is listed in
+        `unpaired`. Differences in figures are shown and never flagged. Cursor
+        pagination (API-18); no offset and no total count; `limit` counts the
+        entries of `items` and `unpaired` together and one cursor covers both.
 
 
         The permission is decided per request by the owning service on the
@@ -999,6 +1002,11 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/IntraTenantPair'
+        unpaired:
+          type: array
+          description: Records of the period with no matching record on the other side (INV-REQ-740). They count against `limit` together with `items`.
+          items:
+            $ref: '#/components/schemas/IntraTenantUnpaired'
         nextCursor:
           type: string
       required: [items]
@@ -1013,12 +1021,37 @@ components:
         purchase:
           $ref: '#/components/schemas/PairSide'
       required: [docUuid, supply, purchase]
+    IntraTenantUnpaired:
+      type: object
+      properties:
+        docUuid:
+          type: string
+          format: uuid
+        side:
+          type: string
+          enum: [SUPPLY, PURCHASE]
+        entry:
+          $ref: '#/components/schemas/PairSide'
+      required: [docUuid, side, entry]
     PairSide:
       type: object
       properties:
         entityRef:
           type: string
         documentVersion:
+          type: integer
+          minimum: 1
+          description: The latest effective version of the record.
+        lines:
+          type: array
+          description: One entry per stored line of that version in ascending `lineNumber`, never summed across tax codes or versions.
+          items:
+            $ref: '#/components/schemas/PairLine'
+      required: [entityRef, documentVersion, lines]
+    PairLine:
+      type: object
+      properties:
+        lineNumber:
           type: integer
           minimum: 1
         taxCode:
@@ -1031,7 +1064,7 @@ components:
           type: string
           format: decimal
           pattern: '^-?\d{1,17}(\.\d{1,2})?$'
-      required: [entityRef, documentVersion, taxCode, netAmount, taxAmount]
+      required: [lineNumber, taxCode, netAmount, taxAmount]
     WorkPaperHeader:
       type: object
       properties:

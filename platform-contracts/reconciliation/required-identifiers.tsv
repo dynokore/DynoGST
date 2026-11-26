@@ -62,3 +62,8 @@ projectedChange	property	openapi.yaml	INV-REQ-1090
 excludedDocuments	property	openapi.yaml	INV-REQ-1090
 projectBackfillEffect.200	operation_response	openapi.yaml	INV-REQ-1090
 projectBackfillEffect.default	operation_response	openapi.yaml	INV-REQ-1090
+unpaired	property	openapi.yaml	INV-REQ-740
+side	property	openapi.yaml	INV-REQ-740
+entry	property	openapi.yaml	INV-REQ-740
+lines	property	openapi.yaml	INV-REQ-740
+lineNumber	property	openapi.yaml	INV-REQ-740
