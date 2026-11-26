@@ -343,7 +343,7 @@ class PackContentsDecodeTest {
 
     @Test
     fun `INV-AC-26687 a valid gstBasePercent decodes to exactly the pack text`() {
-        listOf("50", "0", "100", "37.5", "100.0", "0.000001").forEach {
+        listOf("50", "0", "100", "37.5", "100.0", "100.000000", "99.999999", "0.000001").forEach {
             percentOf(""","gstBasePercent":"$it"""") shouldBe it
         }
     }
@@ -355,7 +355,21 @@ class PackContentsDecodeTest {
 
     @Test
     fun `INV-AC-26687 an invalid gstBasePercent fails the import and is never defaulted`() {
-        listOf("101", "-1", "50%", "", " 50", "50 ", "50.1234567", "5e1", "+50", "050", "5,0").forEach {
+        listOf(
+            "101",
+            "100.000001",
+            "100.0000000",
+            "-1",
+            "50%",
+            "",
+            " 50",
+            "50 ",
+            "50.1234567",
+            "5e1",
+            "+50",
+            "050",
+            "5,0",
+        ).forEach {
             val failure =
                 shouldThrow<PackContentsFailure> { percentOf(""","gstBasePercent":"$it"""") }
             failure.field shouldBe "$.treatments[0].gstBasePercent"
@@ -366,12 +380,21 @@ class PackContentsDecodeTest {
     }
 
     @Test
+    fun `INV-AC-26687 a gstBasePercent of 100 point 5 is refused at pack import`() {
+        val failure = shouldThrow<PackContentsFailure> { percentOf(""","gstBasePercent":"100.5"""") }
+        failure.field shouldBe "$.treatments[0].gstBasePercent"
+    }
+
+    @Test
     fun `INV-AC-26687 the decoder and the pinned schema agree on gstBasePercent`() =
         agree(
             mapOf(
                 "valid fifty" to percentScenario(""","gstBasePercent":"50""""),
                 "valid fraction" to percentScenario(""","gstBasePercent":"37.5""""),
                 "invalid above 100" to percentScenario(""","gstBasePercent":"101""""),
+                "valid hundred with zero decimals" to percentScenario(""","gstBasePercent":"100.000000""""),
+                "invalid 100 point 5" to percentScenario(""","gstBasePercent":"100.5""""),
+                "invalid just above 100" to percentScenario(""","gstBasePercent":"100.000001""""),
                 "invalid percent sign" to percentScenario(""","gstBasePercent":"50%""""),
                 "invalid number" to percentScenario(""","gstBasePercent":50"""),
                 "invalid empty" to percentScenario(""","gstBasePercent":"""""),

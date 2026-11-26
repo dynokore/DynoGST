@@ -23,7 +23,7 @@ object ScenarioPackContents {
     private val RATE = Regex("^[0-9]{1,3}(\\.[0-9]{1,6})?$")
 
     /** The contract pattern of `gstBasePercent`: 0 to 100, up to six decimals, no sign, no percent mark. */
-    private val GST_BASE_PERCENT = Regex("^(100|[0-9]{1,2})(\\.[0-9]{1,6})?$")
+    private val GST_BASE_PERCENT = Regex("^(100(\\.0{1,6})?|[0-9]{1,2}(\\.[0-9]{1,6})?)$")
 
     fun decode(contents: ByteArray): ScenarioData {
         val root = ContentsNode.root(PACK_TYPE, contents)
