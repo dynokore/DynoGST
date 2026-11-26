@@ -57,6 +57,30 @@ class ImportPriorEvidenceTest {
         val lockedPeriods = mutableListOf<List<String>>()
         val rows = mutableListOf<Pair<TenantId, PriorEvidenceRow>>()
 
+        override fun lockAcknowledgementRefs(
+            tenant: TenantId,
+            acknowledgementRefs: Collection<String>,
+        ) {
+            calls += "lockAcknowledgementRefs $tenant ${acknowledgementRefs.toList()}"
+        }
+
+        override fun acknowledgementHolders(
+            tenant: TenantId,
+            acknowledgementRefs: Collection<String>,
+        ): List<AcknowledgementHolder> {
+            calls += "acknowledgementHolders $tenant ${acknowledgementRefs.toList()}"
+            return rows
+                .filter { (t, row) -> t == tenant && row.acknowledgementRef in acknowledgementRefs }
+                .map { (_, row) ->
+                    AcknowledgementHolder(
+                        row.acknowledgementRef,
+                        row.entityRef,
+                        row.documentNumber,
+                        row.transactionDate,
+                    )
+                }
+        }
+
         override fun lockUnits(
             tenant: TenantId,
             entityRef: String,
@@ -177,7 +201,9 @@ class ImportPriorEvidenceTest {
 
         store.calls shouldBe
             listOf(
+                "lockAcknowledgementRefs $tenant [ACK-D1, ACK-D2]",
                 "lockUnits $tenant E1 [2026-Q1, 2026-Q1]",
+                "acknowledgementHolders $tenant [ACK-D1, ACK-D2]",
                 "lock $tenant E1 D1 2026-01-15",
                 "find $tenant E1 D1 2026-01-15",
                 "lock $tenant E1 D2 2026-01-15",
@@ -192,7 +218,8 @@ class ImportPriorEvidenceTest {
         run(record("D1", "2026-04-01"), record("D2", "2026-01-15"), record("D3", "2026-05-02"))
 
         store.calls.count { it.startsWith("lockUnits ") } shouldBe 1
-        store.calls.first().startsWith("lockUnits $tenant E1 ") shouldBe true
+        store.calls.first().startsWith("lockAcknowledgementRefs $tenant ") shouldBe true
+        store.calls[1].startsWith("lockUnits $tenant E1 ") shouldBe true
         store.lockedPeriods.single().toSet() shouldBe setOf("2026-Q1", "2026-Q2")
     }
 
@@ -245,6 +272,150 @@ class ImportPriorEvidenceTest {
         val result = run(record("D1", "2026-01-15"), record("D1", "2026-01-16", ack = "OTHER"))
 
         result shouldBe imported(2, 0)
+    }
+
+    /** One imported record (E1, D1, 2026-01-15) with A1; the recorded calls and events start empty. */
+    private fun oneImported() {
+        run(record("D1", ack = "A1"))
+        events.clear()
+        store.calls.clear()
+    }
+
+    /** The call answered Conflict and left the one row of [oneImported], with no insert and no event. */
+    private fun refused(result: ImportResult) {
+        result shouldBe ImportResult.Conflict
+        store.calls.filter { it.startsWith("insert") } shouldBe emptyList()
+        store.rows.map { it.second.id } shouldBe listOf(UUID(0, 1))
+        events shouldBe emptyList()
+    }
+
+    @Test
+    fun `INV-AC-29008 the reference of another entity with the same document number and date is a conflict`() {
+        oneImported()
+
+        refused(run(record("D1", ack = "A1"), entityRef = "E2"))
+    }
+
+    @Test
+    fun `INV-AC-29008 the reference of another document number is a conflict, a new record before it too`() {
+        oneImported()
+
+        refused(run(record("D2"), record("D3", ack = "A1")))
+    }
+
+    @Test
+    fun `INV-AC-29008 the reference of another transaction date is a conflict`() {
+        oneImported()
+
+        refused(run(record("D1", "2026-01-16", ack = "A1")))
+    }
+
+    @Test
+    fun `INV-AC-29008 the reference of another identity is a conflict also for a stored identity`() {
+        run(record("D1", ack = "A1"), record("D2", ack = "A2"))
+        events.clear()
+        store.calls.clear()
+
+        run(record("D2", ack = "A1")) shouldBe ImportResult.Conflict
+
+        store.rows.map { it.second.acknowledgementRef } shouldBe listOf("A1", "A2")
+        events shouldBe emptyList()
+    }
+
+    @Test
+    fun `INV-AC-29008 two records of different identities with one new reference are a conflict`() {
+        listOf(
+            record("D2", ack = "NEW"),
+            record("D1", "2026-01-16", ack = "NEW"),
+        ).forEach { other ->
+            run(record("D0"), record("D1", ack = "NEW"), other) shouldBe ImportResult.Conflict
+        }
+
+        store.rows shouldBe emptyList()
+        events shouldBe emptyList()
+    }
+
+    @Test
+    fun `INV-AC-29008 an already imported record and a new one with its reference in one request are a conflict`() {
+        oneImported()
+
+        refused(run(record("D1", ack = "A1"), record("D2", ack = "A1")))
+    }
+
+    @Test
+    fun `INV-AC-29008 a repeat of the same identity with the same reference counts as already imported`() {
+        oneImported()
+
+        val result = run(record("D1", ack = "A1"), record("D1", ack = "A1"))
+
+        result shouldBe imported(0, 2, start.plusSeconds(1))
+        store.rows.size shouldBe 1
+        events shouldBe emptyList()
+    }
+
+    @Test
+    fun `INV-AC-29008 a new identity named twice with one new reference is one row and one event`() {
+        val result = run(record("D1", ack = "A1"), record("D1", ack = "A1"))
+
+        result shouldBe imported(1, 1)
+        store.rows.map { it.second.acknowledgementRef } shouldBe listOf("A1")
+        events shouldBe
+            listOf(tenant to PriorEvidenceImported("E1", "D1", LocalDate.parse("2026-01-15"), "A1", "OldSoft"))
+    }
+
+    @Test
+    fun `INV-AC-29008 references are compared exactly, without trimming or case folding`() {
+        oneImported()
+
+        val result = run(record("D2", ack = "a1"), record("D3", ack = "A1 "), record("D4", ack = " A1"))
+
+        result shouldBe imported(3, 0, start.plusSeconds(1))
+        store.rows.map { it.second.acknowledgementRef } shouldBe listOf("A1", "a1", "A1 ", " A1")
+    }
+
+    @Test
+    fun `INV-AC-29008 the same reference in another tenant is accepted`() {
+        oneImported()
+        val other = TenantId(UUID.fromString("00000000-0000-0000-0000-000000000002"))
+
+        val result =
+            useCase.execute(
+                other,
+                user,
+                "E2",
+                ImportPriorEvidenceCommand("OldSoft", listOf(record("D2", ack = "A1"))),
+            )
+
+        result.shouldBeInstanceOf<ImportResult.Imported>().importedCount shouldBe 1
+        store.rows.map { it.first } shouldBe listOf(tenant, other)
+    }
+
+    @Test
+    fun `INV-AC-29008 the distinct references are locked first in ascending order and their holders read once`() {
+        run(
+            record("D1", ack = "C"),
+            record("D2", "2026-04-01", ack = "A"),
+            record("D3", ack = "B"),
+            record("D1", ack = "C"),
+        )
+
+        store.calls shouldBe
+            listOf(
+                "lockAcknowledgementRefs $tenant [A, B, C]",
+                "lockUnits $tenant E1 [2026-Q1, 2026-Q2, 2026-Q1, 2026-Q1]",
+                "acknowledgementHolders $tenant [A, B, C]",
+                "lock $tenant E1 D1 2026-01-15",
+                "find $tenant E1 D1 2026-01-15",
+                "lock $tenant E1 D2 2026-04-01",
+                "find $tenant E1 D2 2026-04-01",
+                "lock $tenant E1 D3 2026-01-15",
+                "find $tenant E1 D3 2026-01-15",
+                "lock $tenant E1 D1 2026-01-15",
+                "find $tenant E1 D1 2026-01-15",
+                "insert D1",
+                "insert D2",
+                "insert D3",
+            )
     }
 
     @Test

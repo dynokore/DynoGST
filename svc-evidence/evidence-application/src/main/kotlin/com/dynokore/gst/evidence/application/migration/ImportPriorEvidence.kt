@@ -42,15 +42,21 @@ sealed interface ImportResult {
         val reason: String,
     ) : ImportResult
 
-    /** A record is already imported with a different acknowledgementRef; the whole call is refused. */
+    /**
+     * A record is already imported with a different acknowledgementRef, or its acknowledgementRef is held by a record
+     * of another identity, stored or earlier in the request; the whole call is refused. It names no record.
+     */
     data object Conflict : ImportResult
 }
 
 /**
  * Imports prior submission evidence of one entity (INV-REQ-1109 behaviour 1, INV-REQ-1112). It runs in the caller's
  * transaction. Fail closed (OWASP ASVS V1, V4): the permission is decided first, then the contract bounds; then the
- * retention units of all records are locked, before anything is read (one lock order with the retention-end deletion);
- * then every record is classified in request order. Only a call without a conflict inserts rows and requests events.
+ * acknowledgement references of all records are locked, in ascending order; then the retention units of all records,
+ * before anything is read (one lock order with the retention-end deletion); then the stored holders of the references
+ * are read once and every record is classified in request order. One acknowledgementRef of a tenant is one imported
+ * record: the unique key is enforced under the reference lock, because a unique index must contain the partition key.
+ * Only a call without a conflict inserts rows and requests events.
  * A forbidden or rejected call makes no store call. A call that answers [ImportResult.Conflict] may have created empty
  * units or members, which go only with a rollback: the caller must roll back its transaction (unit of work).
  * Imported evidence is never overwritten.
@@ -83,8 +89,18 @@ class ImportPriorEvidence(
         entityRef: String,
         command: ImportPriorEvidenceCommand,
     ): ImportResult {
+        val acknowledgementRefs =
+            command.records
+                .map { it.acknowledgementRef }
+                .distinct()
+                .sorted()
+        store.lockAcknowledgementRefs(tenant, acknowledgementRefs)
         store.lockUnits(tenant, entityRef, command.records.map { PriorEvidencePeriodRef.of(it.transactionDate) })
-        val newRecords = classify(tenant, entityRef, command.records) ?: return ImportResult.Conflict
+        val holders =
+            store
+                .acknowledgementHolders(tenant, acknowledgementRefs)
+                .groupBy({ it.acknowledgementRef }) { Identity(it.entityRef, it.documentNumber, it.transactionDate) }
+        val newRecords = classify(tenant, entityRef, command.records, holders) ?: return ImportResult.Conflict
         val importedAt = clock.instant()
         newRecords.forEach { file(tenant, principal, entityRef, command.priorSolution, it, importedAt) }
         return ImportResult.Imported(
@@ -158,23 +174,36 @@ class ImportPriorEvidence(
         max: Int,
     ): Boolean = text.codePointCount(0, text.length) in 1..max
 
-    /** The new records in request order, or null when any record conflicts. It inserts no row. */
+    /** The identity of a record in a tenant. */
+    private data class Identity(
+        val entityRef: String,
+        val documentNumber: String,
+        val transactionDate: LocalDate,
+    )
+
+    /**
+     * The new records in request order, or null when any record conflicts. It inserts no row. [holders] are the
+     * identities of the stored records by acknowledgementRef.
+     */
     private fun classify(
         tenant: TenantId,
         entityRef: String,
         records: List<PriorSubmissionRecordCommand>,
+        holders: Map<String, List<Identity>>,
     ): List<PriorSubmissionRecordCommand>? {
-        val accepted = LinkedHashMap<Pair<String, LocalDate>, PriorSubmissionRecordCommand>()
+        val accepted = LinkedHashMap<Identity, PriorSubmissionRecordCommand>()
+        val named = HashMap<String, Identity>()
         for (record in records) {
-            val identity = record.documentNumber to record.transactionDate
+            val identity = Identity(entityRef, record.documentNumber, record.transactionDate)
             store.lock(tenant, entityRef, record.documentNumber, record.transactionDate)
             val stored = store.find(tenant, entityRef, record.documentNumber, record.transactionDate)
             val known = stored?.acknowledgementRef ?: accepted[identity]?.acknowledgementRef
-            if (known == null) {
-                accepted[identity] = record
-            } else if (known != record.acknowledgementRef) {
-                return null
-            }
+            val otherReference = known != null && known != record.acknowledgementRef
+            val heldByAnother =
+                holders[record.acknowledgementRef].orEmpty().any { it != identity } ||
+                    named.getOrPut(record.acknowledgementRef) { identity } != identity
+            if (otherReference || heldByAnother) return null
+            if (known == null) accepted[identity] = record
         }
         return accepted.values.toList()
     }

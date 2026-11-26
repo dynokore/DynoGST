@@ -23,10 +23,30 @@ fun interface PriorEvidenceAuthorizer {
  */
 interface PriorEvidenceStore {
     /**
+     * Locks the acknowledgement references [acknowledgementRefs] of the tenant until the transaction ends, in the
+     * store's one order whatever order and repetition they have, so that concurrent imports naming one reference
+     * serialise. It is called before every other call of this store, [lockUnits] included, so that an import that
+     * waits here holds no unit or table lock.
+     */
+    fun lockAcknowledgementRefs(
+        tenant: TenantId,
+        acknowledgementRefs: Collection<String>,
+    )
+
+    /**
+     * The stored records of the tenant, of any entity, whose acknowledgementRef is exactly one of
+     * [acknowledgementRefs].
+     */
+    fun acknowledgementHolders(
+        tenant: TenantId,
+        acknowledgementRefs: Collection<String>,
+    ): List<AcknowledgementHolder>
+
+    /**
      * Locks the retention units of [entityRef] for [periodRefs] until the transaction ends, creating a missing unit
      * or member, in the store's one order whatever order and repetition [periodRefs] has. It is called before any
-     * other call of this store, so that an import and a retention-end deletion lock in the same order. What it creates
-     * goes only with a rollback.
+     * other call of this store except the one earlier call [lockAcknowledgementRefs], which locks no unit or table, so
+     * that an import and a retention-end deletion lock in the same order. What it creates goes only with a rollback.
      */
     fun lockUnits(
         tenant: TenantId,
@@ -66,6 +86,14 @@ fun interface PriorEvidenceEvents {
 
 data class StoredPriorEvidence(
     val acknowledgementRef: String,
+)
+
+/** One stored record that holds [acknowledgementRef], named by its identity. */
+data class AcknowledgementHolder(
+    val acknowledgementRef: String,
+    val entityRef: String,
+    val documentNumber: String,
+    val transactionDate: LocalDate,
 )
 
 /** One new row of imported prior evidence. [importedBy] is the acting user ID. */
