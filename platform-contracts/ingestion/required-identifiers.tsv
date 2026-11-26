@@ -148,3 +148,13 @@ MID_PERIOD_MIGRATION	enum_value	schemas/transaction-request.schema.json	INV-REQ-
 submitTransaction.ING-025	operation_error_code	openapi.yaml	INV-REQ-1086
 submitBatch.ING-025	operation_error_code	openapi.yaml	INV-REQ-1086
 submitTransaction.422	operation_response	openapi.yaml	INV-REQ-1086
+DraftDocument.submissionType	schema_property	openapi.yaml	INV-REQ-325
+DraftDocument.supplierGstn	schema_property	openapi.yaml	INV-REQ-325
+DraftDocument.invoiceDate	schema_property	openapi.yaml	INV-REQ-325
+DraftDocument.gstAmount	schema_property	openapi.yaml	INV-REQ-325
+checkPreIssuance	operation	openapi.yaml	INV-REQ-325
+# INV-T-27626 (coordinator ruling 2026-11-23, option A): the required list of DraftDocument is pinned, so a draft lacking one of the four is refused (INV-REQ-325).
+DraftDocument.submissionType	schema_required_property	openapi.yaml	INV-REQ-325
+DraftDocument.supplierGstn	schema_required_property	openapi.yaml	INV-REQ-325
+DraftDocument.invoiceDate	schema_required_property	openapi.yaml	INV-REQ-325
+DraftDocument.gstAmount	schema_required_property	openapi.yaml	INV-REQ-325

@@ -17,6 +17,10 @@ substring, never in another case):
     query_parameter  the `name` of a parameter object whose `in` is `query` (INV-T-5959, INV-Q-6006 A)
     schema_property  `<Schema>.<property>` (split at the first dot): `components.schemas` has the key
                 <Schema> and that schema's own `properties` has the key <property> (INV-T-6049, INV-Q-6105)
+    schema_required_property  `<Schema>.<property>` (split at the first dot; INV-T-27626): `components.schemas` has the key
+                <Schema>, that schema's own `required` list has a string member equal to <property> and its own `properties`
+                has the same key; case-sensitive. It does not follow `allOf` or `$ref`, nested properties or inline schemas,
+                and a `required` member with no property of that schema does not count
     schema_enum_value  `<Schema>.<property>.<MEMBER>` (split at the first two dots): that property's own
                 inline schema has an `enum` list with a member equal to <MEMBER>. Neither scoped kind follows
                 `allOf` or `$ref`, nested properties or inline schemas outside `components.schemas`
@@ -105,9 +109,9 @@ from pathlib import Path
 
 import yaml
 
-KINDS = ("property", "operation", "enum_value", "query_parameter", "schema_property", "schema_enum_value", "operation_error_code", "operation_response", "root_property", "asyncapi_message", "asyncapi_operation")
-SCOPED = {"schema_property": 2, "schema_enum_value": 3, "operation_error_code": 2, "operation_response": 2}
-SCOPED_FORM = {"schema_property": "<Schema>.<property>", "schema_enum_value": "<Schema>.<property>.<MEMBER>", "operation_error_code": "<operationId>.<CODE>", "operation_response": "<operationId>.<STATUS>"}
+KINDS = ("property", "operation", "enum_value", "query_parameter", "schema_property", "schema_required_property", "schema_enum_value", "operation_error_code", "operation_response", "root_property", "asyncapi_message", "asyncapi_operation")
+SCOPED = {"schema_property": 2, "schema_required_property": 2, "schema_enum_value": 3, "operation_error_code": 2, "operation_response": 2}
+SCOPED_FORM = {"schema_property": "<Schema>.<property>", "schema_required_property": "<Schema>.<property>", "schema_enum_value": "<Schema>.<property>.<MEMBER>", "operation_error_code": "<operationId>.<CODE>", "operation_response": "<operationId>.<STATUS>"}
 HEADER = ("identifier", "kind", "file", "requirement")
 
 
@@ -154,6 +158,10 @@ def collect(doc) -> dict[str, set]:
     schemas = (doc.get("components") or {}).get("schemas") if isinstance(doc, dict) else None
     for sname, schema in (schemas.items() if isinstance(schemas, dict) else ()):
         props = schema.get("properties") if isinstance(schema, dict) else None
+        req = schema.get("required") if isinstance(schema, dict) else None
+        for r in (req if isinstance(req, list) else ()):
+            if isinstance(r, str) and isinstance(props, dict) and r in props:
+                found["schema_required_property"].add((str(sname), r))
         for pname, prop in (props.items() if isinstance(props, dict) else ()):
             found["schema_property"].add((str(sname), str(pname)))
             members = prop.get("enum") if isinstance(prop, dict) else None

@@ -25,7 +25,7 @@ expect_fail fail-empty-table "the table has no rows"
 
 # --requests (INV-T-6499): the request-side check. pass-credit-note-kind holds a copy of the real table.
 R=fixtures/forbidden-request-properties
-for c in pass-reserved-optional pass-response-only pass-lookalike pass-enum-reserved pass-credit-note-kind; do
+for c in pass-reserved-optional pass-response-only pass-lookalike pass-enum-reserved pass-credit-note-kind pass-exception; do
   out=$(python3 check-forbidden-properties.py --requests "$R/$c" 2>&1) || { echo "gst-ci: FAIL — '$c' rejected:"; echo "$out"; failed=1; }
 done
 expect_req_fail() {
@@ -41,6 +41,9 @@ for c in fail-request-category-code fail-request-mixed-case fail-request-undersc
 done
 expect_req_fail fail-reserved-required "(reserved item must be optional and start with Reserved:)"
 expect_req_fail fail-reserved-no-prefix "(reserved item must be optional and start with Reserved:)"
+expect_req_fail fail-exception-other-schema "is forbidden in a request schema"
+expect_req_fail fail-exception-lookalike "is forbidden in a request schema"
+expect_req_fail fail-exception-no-schema "bad row"
 expect_req_fail fail-no-table "forbidden-request-properties.tsv is missing"
 expect_req_fail fail-empty-table "the table has no rows"
 expect_req_fail fail-bad-kind "bad row"

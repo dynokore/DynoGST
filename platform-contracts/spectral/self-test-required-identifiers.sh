@@ -60,11 +60,14 @@ components:
           type: object
           properties:
             inner: {type: string, enum: [NESTED]}
+      required: [status, ghost]
       allOf:
-        - properties:
+        - required: [viaAllOf]
+          properties:
             viaAllOf: {type: string, enum: [VIA]}
     Other:
       type: object
+      required: [extra]
       properties:
         status:
           type: string
@@ -121,6 +124,20 @@ mk extensible-member-passes enum_value IMPORTS
 out=$(python3 check-required-identifiers.py "$T/extensible-member-passes" 2>&1) \
   && echo "gst-ci: self-test 'extensible-member-passes' accepted as expected" \
   || { echo "gst-ci: FAIL — a member only in an x-extensible-enum list was rejected:"; echo "$out"; failed=1; }
+# INV-T-27626: schema_required_property (the schema's own required list and properties, by equality).
+mk required-passes schema_required_property Thing.status
+out=$(python3 check-required-identifiers.py "$T/required-passes" 2>&1) \
+  && echo "gst-ci: self-test 'required-passes' accepted as expected" \
+  || { echo "gst-ci: FAIL — 'required-passes' rejected:"; echo "$out"; failed=1; }
+NR="not found as a schema_required_property"
+scoped_fail required-optional-property schema_required_property Thing.color "$NR"
+scoped_fail required-only-second-schema schema_required_property Thing.extra "$NR"
+scoped_fail required-lookalike-case schema_required_property Thing.Status "$NR"
+scoped_fail required-lookalike-schema schema_required_property things.status "$NR"
+scoped_fail required-lookalike-schema-plural schema_required_property Things.status "$NR"
+scoped_fail required-ghost-member schema_required_property Thing.ghost "$NR"
+scoped_fail required-allof-only schema_required_property Thing.viaAllOf "$NR"
+scoped_fail required-one-part schema_required_property Thing "needs 2 non-empty"
 scoped_fail enum-only-second-schema schema_enum_value Thing.status.OPEN "$NF schema_enum_value"
 scoped_fail enum-other-property schema_enum_value Thing.status.RED "$NF schema_enum_value"
 scoped_fail enum-suppliers schema_enum_value Thing.status.ACTIVES "$NF schema_enum_value"

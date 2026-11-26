@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: ingestion API
-  version: 1.21.0
+  version: 1.22.0
   description: >-
     Contract-first source of truth for ingestion (API-01, STK-44). The
     `ingestion-contract` module generates its server interfaces and DTOs
@@ -748,6 +748,10 @@ paths:
                   entityRef: "E-001"
                   currency: "SGD"
                   totalIncludingTax: "1090.00"
+                  submissionType: "TYPE_1A"
+                  supplierGstn: "M2-1234567-8"
+                  invoiceDate: "2026-11-22"
+                  gstAmount: "90.00"
       responses:
         '200':
           description: The verdict, with reasons where not a clean PASS.
@@ -1433,6 +1437,13 @@ components:
       required: [aggregateId, entityRef, aggregateType, periodStart, periodEnd, recordedAt]
     DraftDocument:
       type: object
+      description: >-
+        The draft of the Observe-mode check `checkPreIssuance` (INV-REQ-325). A draft
+        lacking the Supplier GSTN, the invoice date, the GST amount or the submission
+        type is refused with `400` and `SRT-001` (INV-REQ-325); no PASS is given for a
+        draft that was not checked. This is the one request schema where the submission
+        type is asked of the caller, because the issuer states the submission type it
+        intends to issue under (INV-REQ-804 behavior 2, owner answer of 2026-11-22).
       properties:
         entityRef: { type: string, maxLength: 40 }
         documentFunction:
@@ -1443,7 +1454,17 @@ components:
           type: string
           format: decimal
           pattern: '^-?\d{1,17}(\.\d{1,2})?$'
-      required: [entityRef, currency, totalIncludingTax]
+        submissionType:
+          type: string
+          enum: [TYPE_1A, TYPE_1B, TYPE_2, TYPE_3]
+          description: The submission type the issuer intends to issue under (INV-REQ-325).
+        supplierGstn: { type: string, maxLength: 20 }
+        invoiceDate: { type: string, format: date }
+        gstAmount:
+          type: string
+          format: decimal
+          pattern: '^-?\d{1,17}(\.\d{1,2})?$'
+      required: [entityRef, currency, totalIncludingTax, submissionType, supplierGstn, invoiceDate, gstAmount]
     PreIssuanceVerdict:
       type: object
       properties:

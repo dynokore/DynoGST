@@ -1,0 +1,3 @@
+kind	name	reserved_in
+property	submissionType	IssuanceRequest
+property_exception	submissionType	

@@ -13,3 +13,6 @@ property	submissionType	IssuanceRequest
 property	scopeVerdict	
 property	resubmission	
 enum_value	RESUBMISSION	
+# INV-T-27626: INV-REQ-804 behavior 2 names one exact exception, the draft of checkPreIssuance (owner answer of 2026-11-22, option A).
+# property_exception: name is a property key compared by exact equality; reserved_in is the exact components.schemas entry.
+property_exception	submissionType	DraftDocument

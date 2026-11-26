@@ -26,7 +26,7 @@ given as an argument; none found exits 1. `--discover` needs `--table`; `--table
 Option --requests (INV-T-6499, INV-REQ-804, INV-AC-1859, INV-AC-2030): checks the request side instead.
 A directory holds `forbidden-request-properties.tsv` (header `kind`, `name`, `reserved_in`; tab
 separated; blank lines and lines starting with `#` ignored; `reserved_in` may be empty; kind is
-`property` or `enum_value`). A name equal, ignoring case, underscores and hyphens, to a listed name of
+`property`, `enum_value` or `property_exception`). A name equal, ignoring case, underscores and hyphens, to a listed name of
 the row's kind, found as a property key or a parameter `name` (kind property) or as an `enum` member
 (kind enum_value) in a request schema of `<dir>/openapi.yaml`, is a finding. A request schema is every
 schema reachable from a requestBody or a parameters entry of any operation (inline, `#/components/...`
@@ -34,7 +34,12 @@ references, allOf, oneOf, anyOf, items, properties, relative-file `$ref`s read w
 reached by a response is still a request schema (deny by default). A finding is excused only when the
 row's `reserved_in` equals the enclosing `components.schemas` entry, the property is in no `required`
 list of that schema and its `description` starts with `Reserved:` (for an enum member: the description
-of the property that holds the enum). Exit 1 on: a missing table, a table with no rows, a row of any
+of the property that holds the enum). Row kind `property_exception` (INV-T-27626, INV-REQ-804 behavior 2) records one
+exact exception: `name` is a property key compared by exact string equality (no case or separator folding) and
+`reserved_in` is the exact `components.schemas` entry name; both cells are required (an empty one is a `bad row`).
+A hit of kind `property` is also excused when a `property_exception` row has name equal to the property key as
+written and schema equal to the enclosing `components.schemas` entry. An `enum_value` hit and a property reached
+through no `components.schemas` entry (inline) are never excused by it. Exit 1 on: a missing table, a table with no rows, a row of any
 other kind, an unreadable contract file, or a finding. Without the option the behaviour above is
 unchanged.
 Standard library plus PyYAML.
@@ -157,7 +162,7 @@ def check_dir(d: Path, names: set[str] | None = None) -> list[str]:
 
 
 REQ_TABLE = "forbidden-request-properties.tsv"
-REQ_KINDS = ("property", "enum_value")
+REQ_KINDS = ("property", "enum_value", "property_exception")
 RESERVED_HINT = " (reserved item must be optional and start with Reserved:)"
 
 
@@ -172,8 +177,12 @@ def read_request_table(d: Path) -> tuple[list[tuple[str, str, str]], list[str]]:
     for ln in lines[1:]:
         cells = [c.strip() for c in ln.split("\t")]
         cells += [""] * (3 - len(cells))
-        if len(cells) > 3 or cells[0] not in REQ_KINDS or not cells[1]:
-            errors.append(f"{table}: bad row '{ln}' (kind must be one of {', '.join(REQ_KINDS)}; name is required)")
+        if len(cells) > 3 or cells[0] not in REQ_KINDS or not cells[1] \
+                or (cells[0] == "property_exception" and not cells[2]):
+            errors.append(f"{table}: bad row '{ln}' (kind must be one of {', '.join(REQ_KINDS)}; name is required; "
+                          "property_exception also needs the schema in reserved_in)")
+        elif cells[0] == "property_exception":
+            rows.append((cells[0], cells[1], cells[2]))  # exact key, no norm
         else:
             rows.append((cells[0], norm(cells[1]), cells[2]))
     if not rows and not errors:
@@ -200,6 +209,9 @@ class RequestWalk:
         """entry: the enclosing components.schemas name or None; holder: the node whose description counts."""
         hits = [r for r in self.rows if r[0] == kind and r[1] == norm(str(name))]
         if not hits:
+            return
+        if kind == "property" and entry is not None and any(
+                r[0] == "property_exception" and r[1] == str(name) and r[2] == entry for r in self.rows):
             return
         by_name = any(r[2] and r[2] == entry for r in hits)
         desc = holder.get("description") if isinstance(holder, dict) else None

@@ -212,3 +212,11 @@ GET /v1/entities/{entityRef}/periods/{periodRef}/intra-tenant-pairs removed the 
 GET /v1/entities/{entityRef}/periods/{periodRef}/intra-tenant-pairs removed the required property `items/items/supply/netAmount` from the response with the `200` status
 GET /v1/entities/{entityRef}/periods/{periodRef}/intra-tenant-pairs removed the required property `items/items/supply/taxAmount` from the response with the `200` status
 GET /v1/entities/{entityRef}/periods/{periodRef}/intra-tenant-pairs removed the required property `items/items/supply/taxCode` from the response with the `200` status
+#
+# INV-T-27626 (INV-REQ-804 behavior 2, INV-REQ-325; owner answer of 2026-11-22, option A): DraftDocument of checkPreIssuance
+# requires submissionType, supplierGstn, invoiceDate and gstAmount, permitted within v1 on INV-Q-3569's reasoning: no train is
+# published and no consumer is deployed. One line per property, each naming this one operation.
+POST /v1/pre-issuance-checks added the new required request property `submissionType`
+POST /v1/pre-issuance-checks added the new required request property `supplierGstn`
+POST /v1/pre-issuance-checks added the new required request property `invoiceDate`
+POST /v1/pre-issuance-checks added the new required request property `gstAmount`
