@@ -27,10 +27,13 @@ import com.dynokore.gst.submission.application.ordering.HoldStore
 import com.dynokore.gst.submission.application.ordering.ReleaseAloneAt
 import com.dynokore.gst.submission.application.startdate.MigrationCutoverDates
 import com.dynokore.gst.submission.domain.listing.SubmissionKind
+import com.dynokore.gst.submission.domain.metrics.RowKind
 import com.dynokore.gst.submission.domain.migration.ImportedPriorRecord
 import com.dynokore.gst.submission.domain.ordering.CreditNoteOption
 import com.dynokore.gst.submission.domain.ordering.LifecycleState
 import com.dynokore.gst.submission.domain.routing.UnresolvedInput
+import com.dynokore.gst.submission.domain.scope.ScopeVerdict
+import com.dynokore.gst.submission.domain.scope.Verdict
 import com.dynokore.platform.outboxandqueue.CausationId
 import com.dynokore.platform.outboxandqueue.ClaimedItem
 import com.dynokore.platform.outboxandqueue.CorrelationId
@@ -56,9 +59,9 @@ import java.util.HexFormat
 import java.util.UUID
 
 /**
- * The `PayloadReady` handler with the prior-solution check (INV-AC-28449), over a recording store, queue and hold
- * port. [deliver] is the consumer's transaction: every write made inside it carries its number, and a delivery that
- * throws removes all of them.
+ * The `PayloadReady` handler with the prior-solution check (INV-AC-28449, INV-AC-28853), over a recording store,
+ * queue and hold port. [deliver] is the consumer's transaction: every write made inside it carries its number, and a
+ * delivery that throws removes all of them.
  */
 class PayloadReadyHandlerPriorSolutionTest {
     private val t1 = TenantId(UUID.randomUUID())
@@ -78,7 +81,17 @@ class PayloadReadyHandlerPriorSolutionTest {
         val tx: Int,
     )
 
+    private data class StateWrite(
+        val key: Triple<TenantId, String, Int>,
+        val state: LifecycleState,
+        val tx: Int,
+    )
+
     private val rows = mutableMapOf<Triple<TenantId, String, Int>, Row>()
+    private val stateWrites = mutableListOf<StateWrite>()
+    private var imported = emptyList<ImportedPriorRecord>()
+    private val scopeEntries = mutableMapOf<String, ScopeEntry>()
+    private val scopeCodes = mutableListOf<RaisedCode>()
     private val holds = mutableMapOf<Triple<TenantId, String, Int>, HoldRow>()
     private val raiseCalls = mutableListOf<Triple<TenantId, String, Int>>()
     private val queued = mutableListOf<QueueEntry>()
@@ -140,6 +153,7 @@ class PayloadReadyHandlerPriorSolutionTest {
             ) {
                 val key = Triple(tenant, docUuid, version)
                 rows[key] = rows.getValue(key).copy(state = state)
+                stateWrites += StateWrite(key, state, transaction)
             }
 
             override fun lockForUpdate(
@@ -269,7 +283,7 @@ class PayloadReadyHandlerPriorSolutionTest {
             override fun listFor(
                 tenant: TenantId,
                 entityRef: String,
-            ): List<ImportedPriorRecord> = emptyList()
+            ): List<ImportedPriorRecord> = imported
         }
     private val holdStore =
         object : PriorSolutionHoldStore {
@@ -286,12 +300,12 @@ class PayloadReadyHandlerPriorSolutionTest {
             ): PriorSolutionHold? = holds[Triple(tenant, docUuid, version)]?.hold
         }
 
-    private val noScopeFacts =
+    private val scopeFacts =
         object : ScopeFacts {
             override fun of(
                 tenant: TenantId,
                 docUuid: String,
-            ): ScopeEntry? = null
+            ): ScopeEntry? = scopeEntries[docUuid]
         }
     private val raising =
         CodeRaising(
@@ -301,10 +315,15 @@ class PayloadReadyHandlerPriorSolutionTest {
                     tenant: TenantId,
                     raised: RaisedCode,
                     raisedAt: Instant,
-                ): Boolean = error("no arrival code is expected")
+                ): Boolean {
+                    check(raised.docUuid in scopeEntries) { "no arrival code is expected" }
+                    return scopeCodes.add(raised)
+                }
             },
             object : CodeSignals {
-                override fun stage(raised: RaisedCode) = error("no arrival code is expected")
+                override fun stage(raised: RaisedCode) {
+                    check(raised.docUuid in scopeEntries) { "no arrival code is expected" }
+                }
             },
             clock,
         )
@@ -333,7 +352,7 @@ class PayloadReadyHandlerPriorSolutionTest {
         )
     private val creditNoteHold =
         CreditNoteHold(
-            noScopeFacts,
+            scopeFacts,
             { _, _, _ -> CreditNoteOption.RELEASE_ALONE },
             { _, _ -> null },
             ReleaseAloneAt({ _, _ -> error("no credit note entry") }, ZoneOffset.UTC),
@@ -375,13 +394,16 @@ class PayloadReadyHandlerPriorSolutionTest {
             planning,
             raising,
             ScopeCheck(
-                noScopeFacts,
+                scopeFacts,
                 object : ScopeBlocks {
                     override fun blockReady(
                         tenant: TenantId,
                         docUuid: String,
                         version: Int,
-                    ): Int = error("no scope disagreement")
+                    ): Int {
+                        store.setState(tenant, docUuid, version, LifecycleState.BLOCKED)
+                        return 1
+                    }
                 },
                 raising,
             ),
@@ -399,6 +421,7 @@ class PayloadReadyHandlerPriorSolutionTest {
         val rowsBefore = rows.toMap()
         val holdsBefore = holds.toMap()
         val queuedBefore = queued.toList()
+        val stateWritesBefore = stateWrites.toList()
         return runCatching { handler(doc to version).handle(envelope()).also { afterHandler() } }
             .onFailure {
                 rows.clear()
@@ -407,6 +430,8 @@ class PayloadReadyHandlerPriorSolutionTest {
                 holds.putAll(holdsBefore)
                 queued.clear()
                 queued.addAll(queuedBefore)
+                stateWrites.clear()
+                stateWrites.addAll(stateWritesBefore)
             }.getOrThrow()
     }
 
@@ -543,5 +568,169 @@ class PayloadReadyHandlerPriorSolutionTest {
         // The retry applies once.
         deliver(held) shouldBe HandleOutcome.APPLIED
         holds.size shouldBe 1
+    }
+
+    private val preCutover = LocalDate.parse("2026-03-15")
+
+    private fun invoice(
+        number: String,
+        date: LocalDate,
+    ) = ArrivingDocument("E1", number, date, false, null, null, listOf(LifecycleState.READY))
+
+    /** Version [version] of [held] matches the imported evidence: same number, entity and pre-cutover date. */
+    private fun putMatch(version: Int = 1) {
+        imported = listOf(ImportedPriorRecord("E1", "INV-9", preCutover, "ACK-1"))
+        documents[held to version] = invoice("INV-9", preCutover)
+    }
+
+    private fun key(
+        doc: String,
+        version: Int,
+    ) = Triple(t1, doc, version)
+
+    @Test
+    fun `INV-AC-28853 a match is set to EXTERNALLY_SUBMITTED in the transaction of its ready row`() {
+        putMatch()
+
+        deliver(held)
+
+        rows shouldBe mapOf(key(held, 1) to Row(LifecycleState.EXTERNALLY_SUBMITTED, 1))
+        stateWrites shouldBe listOf(StateWrite(key(held, 1), LifecycleState.EXTERNALLY_SUBMITTED, 1))
+    }
+
+    @Test
+    fun `INV-AC-28853 a match is applied and is not planned and not enqueued`() {
+        putMatch()
+
+        deliver(held) shouldBe HandleOutcome.APPLIED
+
+        planned shouldBe emptyList()
+        queued shouldBe emptyList()
+        scopeCodes shouldBe emptyList()
+    }
+
+    @Test
+    fun `INV-AC-28853 a match cancels every older unsent version and no other`() {
+        val older =
+            listOf(
+                LifecycleState.QUEUED,
+                LifecycleState.READY,
+                LifecycleState.AWAITING_PRECEDING,
+                LifecycleState.SENT,
+                LifecycleState.REJECTED,
+            )
+        older.forEachIndexed { index, state -> rows[key(held, index + 1)] = Row(state, 0) }
+        rows[key(held, 7)] = Row(LifecycleState.READY, 0)
+        rows[key(unaffected, 1)] = Row(LifecycleState.QUEUED, 0)
+        putMatch(6)
+
+        deliver(held, 6)
+
+        rows.mapValues { it.value.state } shouldBe
+            mapOf(
+                key(held, 1) to LifecycleState.CANCELLED,
+                key(held, 2) to LifecycleState.CANCELLED,
+                key(held, 3) to LifecycleState.CANCELLED,
+                key(held, 4) to LifecycleState.SENT,
+                key(held, 5) to LifecycleState.REJECTED,
+                key(held, 6) to LifecycleState.EXTERNALLY_SUBMITTED,
+                key(held, 7) to LifecycleState.READY,
+                key(unaffected, 1) to LifecycleState.QUEUED,
+            )
+        stateWrites.map { it.tx }.distinct() shouldBe listOf(1)
+        planned shouldBe emptyList()
+        queued shouldBe emptyList()
+    }
+
+    @Test
+    fun `INV-AC-28853 a match has no hold row and raises no hold`() {
+        putMatch()
+
+        deliver(held)
+
+        raiseCalls shouldBe emptyList()
+        holds.keys shouldBe emptySet()
+    }
+
+    @Test
+    fun `INV-AC-28853 a repeated match is ignored and writes nothing and the post-cutover namesake is planned`() {
+        rows[key(held, 1)] = Row(LifecycleState.QUEUED, 0)
+        putMatch(2)
+        documents[unaffected to 1] = invoice("INV-9", LocalDate.parse("2026-04-10"))
+        deliver(held, 2) shouldBe HandleOutcome.APPLIED
+        val rowsAfter = rows.toMap()
+        val writesAfter = stateWrites.toList()
+        factReads.clear()
+
+        deliver(held, 2) shouldBe HandleOutcome.IGNORED
+
+        rows shouldBe rowsAfter
+        stateWrites shouldBe writesAfter
+        factReads shouldBe emptyList()
+        raiseCalls shouldBe emptyList()
+        planned shouldBe emptyList()
+        queued shouldBe emptyList()
+
+        deliver(unaffected) shouldBe HandleOutcome.APPLIED
+
+        rows shouldBe
+            mapOf(
+                key(held, 1) to Row(LifecycleState.CANCELLED, 0),
+                key(held, 2) to Row(LifecycleState.EXTERNALLY_SUBMITTED, 1),
+                key(unaffected, 1) to Row(LifecycleState.QUEUED, 3),
+            )
+        planned shouldBe listOf(unaffected)
+        queued.map { it.partitionKey to it.lane } shouldBe listOf(unaffected to Lane.LIVE)
+        holds.keys shouldBe emptySet()
+    }
+
+    @Test
+    fun `INV-AC-28853 the same number on the cutover date or with a trailing space is planned`() {
+        val onCutover = LocalDate.parse("2026-04-01")
+        val spaced = UUID.randomUUID().toString()
+        imported =
+            listOf(
+                ImportedPriorRecord("E1", "INV-9", onCutover, "ACK-1"),
+                ImportedPriorRecord("E1", "INV-8 ", preCutover, "ACK-2"),
+            )
+        documents[unaffected to 1] = invoice("INV-9", onCutover)
+        documents[spaced to 1] = invoice("INV-8", preCutover)
+
+        deliver(unaffected) shouldBe HandleOutcome.APPLIED
+        deliver(spaced) shouldBe HandleOutcome.APPLIED
+
+        planned shouldBe listOf(unaffected, spaced)
+        queued.map { it.partitionKey to it.lane } shouldBe listOf(unaffected to Lane.LIVE, spaced to Lane.LIVE)
+        rows.mapValues { it.value.state } shouldBe
+            mapOf(key(unaffected, 1) to LifecycleState.QUEUED, key(spaced, 1) to LifecycleState.QUEUED)
+        holds.keys shouldBe emptySet()
+    }
+
+    @Test
+    fun `INV-AC-28853 a failed transaction leaves no external state and keeps the older version queued`() {
+        rows[key(held, 1)] = Row(LifecycleState.QUEUED, 0)
+        putMatch(2)
+
+        shouldThrow<IllegalStateException> { deliver(held, 2) { error("the commit failed") } }
+
+        rows shouldBe mapOf(key(held, 1) to Row(LifecycleState.QUEUED, 0))
+        stateWrites shouldBe emptyList()
+    }
+
+    @Test
+    fun `INV-AC-28853 a match that the scope check blocks stays BLOCKED and the facts are not read`() {
+        val preceding = UUID.randomUUID().toString()
+        scopeEntries[held] =
+            ScopeEntry("E1", "2026-Q1", RowKind.CREDIT_NOTE, Verdict(ScopeVerdict.SUBMITTABLE), preceding)
+        scopeEntries[preceding] =
+            ScopeEntry("E1", "2026-Q1", RowKind.INVOICE, Verdict(ScopeVerdict.NOT_SUBMITTABLE), null)
+        putMatch()
+
+        deliver(held) shouldBe HandleOutcome.APPLIED
+
+        rows.getValue(key(held, 1)).state shouldBe LifecycleState.BLOCKED
+        scopeCodes.map { it.docUuid } shouldBe listOf(held)
+        factReads shouldBe emptyList()
+        queued shouldBe emptyList()
     }
 }

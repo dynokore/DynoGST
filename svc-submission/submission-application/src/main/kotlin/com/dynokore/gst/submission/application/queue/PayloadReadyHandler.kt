@@ -35,6 +35,9 @@ import java.util.HexFormat
  *
  * The prior-solution check (INV-REQ-1110, INV-AC-28449) follows it: a version held with SUB-017 gets its hold row in
  * the same transaction and is not cancelled against, planned or enqueued here. An unavailable fact fails the delivery.
+ *
+ * A version the check matches to imported prior evidence (INV-REQ-1109, INV-AC-28853) is set to EXTERNALLY_SUBMITTED
+ * in the same transaction and cancels the older versions as a planned arrival does. It is never planned or enqueued.
  */
 @Suppress("LongParameterList") // the constructor shape is ruled (INV-T-21096 design (2))
 class PayloadReadyHandler(
@@ -49,7 +52,6 @@ class PayloadReadyHandler(
     private val priorSolution: PriorSolutionCheck,
     private val hold: CreditNoteHold,
 ) : EventHandler {
-    @Suppress("ReturnCount") // duplicate, stopped by an arrival check, applied: the three outcomes of the arrival step
     override fun handle(event: Envelope): HandleOutcome {
         val data = reader.read(event.dataJson)
         val docUuid = data.docUuid
@@ -85,21 +87,35 @@ class PayloadReadyHandler(
             }
             return HandleOutcome.IGNORED
         }
-        if (stopsArrival(tenant, docUuid, version, event.entity.value)) return HandleOutcome.APPLIED
-        cancelSuperseded(tenant, docUuid, version)
-        plan(tenant, docUuid, version)
+        if (scopeCheck.check(tenant, docUuid, version) != ScopeOutcome.Blocked) {
+            arriveInScope(tenant, docUuid, version, event.entity.value)
+        }
         return HandleOutcome.APPLIED
     }
 
-    /** True when the scope check blocks the version or, asked after it, the prior-solution check holds it. */
-    private fun stopsArrival(
+    /** The steps after the scope check, for a version it did not block: the prior-solution check decides them. */
+    private fun arriveInScope(
         tenant: TenantId,
         docUuid: String,
         version: Int,
         entityRef: String,
-    ): Boolean =
-        scopeCheck.check(tenant, docUuid, version) == ScopeOutcome.Blocked ||
-            priorSolution.check(tenant, docUuid, version, entityRef) == PriorSolutionOutcome.Held
+    ) {
+        when (priorSolution.check(tenant, docUuid, version, entityRef)) {
+            PriorSolutionOutcome.Held -> {
+                // the check wrote the hold row; nothing is cancelled, planned or enqueued
+            }
+
+            PriorSolutionOutcome.ExternallySubmitted -> {
+                store.setState(tenant, docUuid, version, LifecycleState.EXTERNALLY_SUBMITTED)
+                cancelSuperseded(tenant, docUuid, version)
+            }
+
+            PriorSolutionOutcome.NotHeld -> {
+                cancelSuperseded(tenant, docUuid, version)
+                plan(tenant, docUuid, version)
+            }
+        }
+    }
 
     /**
      * INV-REQ-573 (INV-AC-609): a newer version that reached `READY` cancels every older version of the Doc UUID that

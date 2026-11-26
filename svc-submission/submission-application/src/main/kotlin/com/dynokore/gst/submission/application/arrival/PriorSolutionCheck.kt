@@ -16,18 +16,23 @@ import java.time.LocalDate
 sealed interface PriorSolutionOutcome {
     data object Held : PriorSolutionOutcome
 
+    /** The version matches imported prior evidence: it is never transmitted (INV-REQ-1109). No hold is raised. */
+    data object ExternallySubmitted : PriorSolutionOutcome
+
     data object NotHeld : PriorSolutionOutcome
 }
 
 /**
- * Holds a version that [PriorSolutionGuard] holds with SUB-017 (INV-REQ-1110, INV-AC-28449). It opens no transaction
+ * Holds a version that [PriorSolutionGuard] holds with SUB-017 (INV-REQ-1110, INV-AC-28449) and answers
+ * [PriorSolutionOutcome.ExternallySubmitted] for one the guard matches to imported prior evidence (INV-REQ-1109,
+ * INV-AC-28853), writing nothing for it. It opens no transaction
  * (the caller's handler does, so the hold row and the ready row commit together) and holds no transport or queue.
  *
  * It reads the entity's cutover date first and then the states of the version rows of the Doc UUID. With no cutover
  * date and no `EXTERNALLY_SUBMITTED` version the guard can only answer `NotAffected`, so the answer is
  * [PriorSolutionOutcome.NotHeld] and neither the document facts nor the imported records are read. In every other case
  * both are read. A fact that is needed and cannot be read throws [CollaboratorUnavailableException] before any write
- * (fail closed). Every other decision is [PriorSolutionOutcome.NotHeld].
+ * (fail closed). Every remaining decision is [PriorSolutionOutcome.NotHeld].
  */
 @Suppress("LongParameterList") // one port per guard fact, the hold use case and the decision
 class PriorSolutionCheck(
@@ -78,11 +83,19 @@ class PriorSolutionCheck(
                 versions = facts.versions,
             )
         val decision = decide(document, cutoverDate, imported)
-        return if (decision is PriorSolutionDecision.HoldForCorrection && decision.code == PriorSolutionGuard.SUB_017) {
-            raise.execute(tenant, docUuid, version, entityRef, decision)
-            PriorSolutionOutcome.Held
-        } else {
-            PriorSolutionOutcome.NotHeld
+        return when {
+            decision is PriorSolutionDecision.ExternallySubmitted -> {
+                PriorSolutionOutcome.ExternallySubmitted
+            }
+
+            decision is PriorSolutionDecision.HoldForCorrection && decision.code == PriorSolutionGuard.SUB_017 -> {
+                raise.execute(tenant, docUuid, version, entityRef, decision)
+                PriorSolutionOutcome.Held
+            }
+
+            else -> {
+                PriorSolutionOutcome.NotHeld
+            }
         }
     }
 

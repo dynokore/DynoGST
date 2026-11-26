@@ -181,9 +181,37 @@ class PriorSolutionCheckTest {
                 PriorSolutionDecision.ExternallySubmitted("ACK-1")
             }
 
-        recording.check(t1, "D1", 1, "E1") shouldBe PriorSolutionOutcome.NotHeld
+        recording.check(t1, "D1", 1, "E1") shouldBe PriorSolutionOutcome.ExternallySubmitted
         seen shouldBe evidenceRead()
-        sut.check(t1, "D1", 1, "E1") shouldBe PriorSolutionOutcome.NotHeld
+        sut.check(t1, "D1", 1, "E1") shouldBe PriorSolutionOutcome.ExternallySubmitted
+        raised shouldBe emptyList()
+    }
+
+    @Test
+    fun `INV-AC-28853 only an exact pre-cutover match answers ExternallySubmitted and raises no hold`() {
+        val before = LocalDate.parse("2026-03-31")
+        evidenceRead = {
+            listOf(
+                ImportedPriorRecord("E1", "INV-9", before, "ACK-1"),
+                ImportedPriorRecord("E1", "INV-9", cutover, "ACK-2"),
+                ImportedPriorRecord("E1", "INV-8 ", before, "ACK-3"),
+            )
+        }
+
+        fun invoice(
+            number: String,
+            date: LocalDate,
+        ) = ArrivingDocument("E1", number, date, false, null, null, listOf(LifecycleState.READY))
+        put("MATCH", 1, invoice("INV-9", before))
+        put("ON-CUTOVER", 1, invoice("INV-9", cutover))
+        put("SPACE", 1, invoice("INV-8", before))
+
+        listOf("MATCH", "ON-CUTOVER", "SPACE").map { sut.check(t1, it, 1, "E1") } shouldBe
+            listOf(
+                PriorSolutionOutcome.ExternallySubmitted,
+                PriorSolutionOutcome.NotHeld,
+                PriorSolutionOutcome.NotHeld,
+            )
         raised shouldBe emptyList()
     }
 
