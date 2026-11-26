@@ -174,7 +174,7 @@ private object PinnedPolicy {
 }
 
 /** The tenant, rows and ports the database cases share. */
-abstract class RetentionNoticeDbSupport {
+open class RetentionNoticeDbSupport {
     protected val tenant = UUID.randomUUID()
     protected val at = Instant.parse("2033-03-31T10:00:00Z")
     protected val clock = Clock.fixed(at, ZoneOffset.UTC)
