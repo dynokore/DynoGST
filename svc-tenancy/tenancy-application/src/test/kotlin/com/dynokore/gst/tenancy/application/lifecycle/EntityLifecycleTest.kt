@@ -348,6 +348,7 @@ class EntityLifecycleTest {
     fun `INV-AC-27010 an entity that is not live has no go-live date`() {
         onDate = LocalDate.of(2026, 11, 12)
         assertEquals(null, goLiveDate)
+        current = current.copy(lifecycleState = "LIVE")
         assertInstanceOf(LifecycleOutcome.Done::class.java, suspend().handle("E1"))
         assertEquals("SUSPENDED", current.lifecycleState)
         assertEquals(null, goLiveDate)
@@ -407,6 +408,63 @@ class EntityLifecycleTest {
         assertNotEquals("LIVE", current.lifecycleState)
         assertEquals(listOf("SUB-1", "SUB-2"), submissions)
         onlyEvent("lifecycleState", "SUSPENDED")
+    }
+
+    // ---- suspend by the stored state (INV-AC-25956) ----
+
+    @Test
+    fun `INV-AC-25956 suspendEntity of a LIVE entity writes SUSPENDED and one event`() {
+        current = current.copy(lifecycleState = "LIVE")
+        val done = assertInstanceOf(LifecycleOutcome.Done::class.java, suspend().handle("E1"))
+        assertEquals(LifecycleState.SUSPENDED, done.state)
+        assertEquals(false, done.repeated)
+        assertEquals("SUSPENDED", current.lifecycleState)
+        assertEquals(entity.structureVersion + 1, current.structureVersion)
+        onlyEvent("lifecycleState", "SUSPENDED")
+    }
+
+    @Test
+    fun `INV-AC-25956 suspendEntity of a SUSPENDED entity is a repeat that writes nothing`() {
+        current = current.copy(lifecycleState = "SUSPENDED")
+        val done = assertInstanceOf(LifecycleOutcome.Done::class.java, suspend().handle("E1"))
+        assertEquals(LifecycleState.SUSPENDED, done.state)
+        assertEquals(true, done.repeated)
+        assertEquals("SUSPENDED", current.lifecycleState)
+        assertEquals(entity.structureVersion, current.structureVersion)
+        assertTrue(outbox.isEmpty())
+    }
+
+    @Test
+    fun `INV-AC-25956 suspendEntity from DRAFT is refused TNC-015 and stores nothing`() = assertSuspendRefused("DRAFT")
+
+    @Test
+    fun `INV-AC-25956 suspendEntity from DEREGISTERED is refused TNC-015 and stores nothing`() =
+        assertSuspendRefused("DEREGISTERED")
+
+    @Test
+    fun `INV-AC-25956 suspendEntity from RETIRED is refused TNC-015 and stores nothing`() =
+        assertSuspendRefused("RETIRED")
+
+    @Test
+    fun `INV-AC-25956 suspendEntity from a lower-case live is refused TNC-015 and stores nothing`() =
+        assertSuspendRefused("live")
+
+    @Test
+    fun `INV-AC-25956 suspendEntity of an unknown reference is not found and stores nothing`() {
+        assertEquals(LifecycleOutcome.NotFound, suspend().handle("E9"))
+        assertEquals(entity, current)
+        assertTrue(outbox.isEmpty())
+    }
+
+    private fun assertSuspendRefused(stored: String) {
+        val seed = entity.copy(lifecycleState = stored)
+        current = seed
+        val conflict = assertInstanceOf(LifecycleOutcome.Conflict::class.java, suspend().handle("E1"))
+        assertEquals("TNC-015", conflict.code)
+        assertEquals("the entity is $stored", conflict.reason)
+        assertEquals(stored, current.lifecycleState)
+        assertEquals(seed.structureVersion, current.structureVersion)
+        assertTrue(outbox.isEmpty())
     }
 
     // ---- deregister ----

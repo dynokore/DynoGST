@@ -83,6 +83,7 @@ class EntityDeregisterHttpTest {
         lifecycleRun { l ->
             l.env.withEntity { _, entity ->
                 lifecycleReady(l, entity)
+                assertThat(callGoLive(l.env, entity).status).isEqualTo(200)
                 assertThat(callSuspendWith(l.env, entity, "maintenance").status).isEqualTo(200)
                 val text = auditRows(entity, "entity.suspended").single().toString()
                 assertThat(text).contains("\"maintenance\"")
@@ -157,6 +158,7 @@ class EntityDeregisterHttpTest {
         lifecycleRun { l ->
             l.env.withEntity { _, entity ->
                 lifecycleReady(l, entity)
+                assertThat(callGoLive(l.env, entity).status).isEqualTo(200)
                 assertThat(callSuspendWith(l.env, entity, "maintenance").status).isEqualTo(200)
                 assertThat(storedState(entity)).isEqualTo("SUSPENDED")
             }

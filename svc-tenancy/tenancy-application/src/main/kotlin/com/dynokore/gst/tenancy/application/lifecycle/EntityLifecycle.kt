@@ -78,6 +78,11 @@ fun interface FinalPeriod {
     }
 }
 
+/** The conflict codes of the lifecycle operations that this module owns. */
+object LifecycleCodes {
+    const val ILLEGAL_TRANSITION = "TNC-015"
+}
+
 /** The result of goLive, suspendEntity and deregisterEntity. */
 sealed interface LifecycleOutcome {
     /** 200: the entity is in [state]; [repeated] when nothing was written (a repeated goLive). */
@@ -99,7 +104,7 @@ sealed interface LifecycleOutcome {
 
     data object NotFound : LifecycleOutcome
 
-    /** 409 [code] (TNC-008); nothing is written. */
+    /** 409 [code] (TNC-008, TNC-015); nothing is written. */
     data class Conflict(
         val code: String,
         val reason: String,
@@ -278,8 +283,23 @@ class SuspendEntity internal constructor(
     fun handle(entityRef: String): LifecycleOutcome =
         tx.inTransaction {
             val entity = structure.entity(entityRef) ?: return@inTransaction LifecycleOutcome.NotFound
-            writer.write(entity, LifecycleState.SUSPENDED, today())
-            LifecycleOutcome.Done(entity.ref, LifecycleState.SUSPENDED)
+            when (entity.lifecycleState) {
+                LifecycleState.LIVE.name -> {
+                    writer.write(entity, LifecycleState.SUSPENDED, today())
+                    LifecycleOutcome.Done(entity.ref, LifecycleState.SUSPENDED)
+                }
+
+                LifecycleState.SUSPENDED.name -> {
+                    LifecycleOutcome.Done(entity.ref, LifecycleState.SUSPENDED, repeated = true)
+                }
+
+                else -> {
+                    LifecycleOutcome.Conflict(
+                        LifecycleCodes.ILLEGAL_TRANSITION,
+                        "the entity is ${entity.lifecycleState}",
+                    )
+                }
+            }
         }
 }
 
