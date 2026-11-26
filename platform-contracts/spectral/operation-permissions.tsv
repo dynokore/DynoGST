@@ -22,3 +22,4 @@ rules	reprocessPopulation	regulatory-pack.reprocess
 rules	diffMappingPackBundle	mapping-pack.author
 masterdata	correctCounterpartyData	privacy-request.handle
 masterdata	diffIdentityTripleBundle	entity-config.manage
+masterdata	exportIdentityTriples	entity-config.manage

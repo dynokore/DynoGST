@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: console-bff API
-  version: 1.24.0
+  version: 1.25.0
   description: >-
     Contract-first source of truth for console-bff (API-01, STK-44). The
     `console-bff-contract` module generates its server interfaces and DTOs
@@ -1391,6 +1391,13 @@ paths:
         applies nothing. console-bff orchestrates and each owning service
         reads its own domain (INV-NOTE-3 §28.15). The diff is against
         production's current configuration.
+
+
+        `bundleId` names the export that each owning service made of its own
+        domain in the sandbox workspace. console-bff stores no bundle: it
+        reads each domain part through the owning service's read-only export
+        operation (`exportMappingPack` of `rules`, `exportIdentityTriples` of
+        `masterdata`) and passes it to the diff operation of the same service.
 
 
         Promotion never bypasses a control that direct editing requires, so

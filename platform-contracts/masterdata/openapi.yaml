@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: masterdata API
-  version: 1.27.0
+  version: 1.28.0
   description: >-
     Contract-first source of truth for masterdata (API-01, STK-44). The
     `masterdata-contract` module generates its server interfaces and DTOs
@@ -286,6 +286,55 @@ paths:
               examples:
                 default:
                   value: { changeRef: "ITC-0007", entityRef: "E-001", senderId: "0195:201912345A", supplierId: "0195:201912345A", supplierGstn: "201912345A", effectiveFrom: "2026-04-01", state: "PENDING_CONFIRMATION", proposedBy: "IDN-0031" }
+        default:
+          $ref: '#/components/responses/Error'
+  /internal/v1/masterdata/identity-triple-bundles/{bundleId}:
+    get:
+      operationId: exportIdentityTriples
+      summary: Export the identity triples of the sandbox workspace as a bundle part
+      description: >-
+        Read-only export to console-bff for the configuration promotion
+        (INV-REQ-1128 behavior 4). The call is read-only: it changes nothing
+        and writes no audit entry. It returns the identity triples that the
+        tenant of the call (the sandbox workspace) holds, labelled with the
+        given `bundleId`; `bundleId` only labels the part and selects nothing.
+        The result is the part that `diffIdentityTripleBundle` takes, so
+        console-bff passes it on as it is. The permission is decided per
+        request by the scoped key `entity-config.manage` through
+        `AuthorityReplica.decide`, never by a role name (INV-Q-10027); a denial
+        answers 403 SRT-004 by the default response.
+      tags: [identity-triples]
+      x-principal: filing-workflow
+      x-caller-auth: end-user
+      x-sync-edge: console-bff->masterdata-svc
+      x-timeout: 2000
+      x-error-codes: []
+      x-requirements: [INV-REQ-1128]
+      x-operation:
+        kind: PERMISSION
+        permission: entity-config.manage
+        scope: tenant
+        precondition: "None to satisfy; the call changes nothing and writes no audit entry."
+        reversibility: UNDOABLE
+        repeatKey: "None needed; the call is a read, so a repeat has nothing to make safe."
+      parameters:
+        - name: bundleId
+          in: path
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 64 }
+      responses:
+        '200':
+          description: The identity-triple part of the bundle, labelled with the given `bundleId`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentityTripleBundlePart'
+              examples:
+                default:
+                  value:
+                    bundleId: "BUNDLE-2026-11-01"
+                    triples:
+                      - { entityRef: "E-001", constitution: "PTE_LTD", senderId: "0195:201912345A", supplierId: "0195:201912345A", supplierGstn: "201912345A", effectiveFrom: "2026-04-01" }
         default:
           $ref: '#/components/responses/Error'
   /internal/v1/masterdata/identity-triple-diffs:

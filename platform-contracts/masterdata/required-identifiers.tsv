@@ -260,3 +260,6 @@ IdentityTripleChange.proposed	schema_property	openapi.yaml	INV-REQ-1128
 IdentityTripleChange.change.ADDED	schema_enum_value	openapi.yaml	INV-REQ-1128
 IdentityTripleChange.change.CHANGED	schema_enum_value	openapi.yaml	INV-REQ-1128
 IdentityTripleChange.change.REMOVED	schema_enum_value	openapi.yaml	INV-REQ-1128
+exportIdentityTriples	operation	openapi.yaml	INV-REQ-1128
+exportIdentityTriples.200	operation_response	openapi.yaml	INV-REQ-1128
+exportIdentityTriples.default	operation_response	openapi.yaml	INV-REQ-1128
