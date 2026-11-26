@@ -82,10 +82,8 @@ class JooqIntakeListingReader(
      */
     private fun bound(instant: Instant): OffsetDateTime {
         val whole = instant.truncatedTo(ChronoUnit.MICROS)
-        return stored(if (whole == instant) whole else whole.plus(1, ChronoUnit.MICROS))
+        return (if (whole == instant) whole else whole.plus(1, ChronoUnit.MICROS)).atOffset(ZoneOffset.UTC)
     }
-
-    private fun stored(instant: Instant): OffsetDateTime = instant.atOffset(ZoneOffset.UTC)
 
     private fun position(item: ListedIntake) =
         IntakeListingPosition(
@@ -96,6 +94,23 @@ class JooqIntakeListingReader(
             item.intakeOperation,
         )
 
+    /** The receipts after [position] in the order of the listing, compared as one row of all five parts. */
+    private fun later(position: IntakeListingPosition): Condition =
+        DSL
+            .row(
+                INTAKE_RECEIPT.SOURCE_KEY,
+                INTAKE_RECEIPT.RECORDED_AT,
+                INTAKE_RECEIPT.SOURCE_REVISION,
+                INTAKE_RECEIPT.ENTITY_REF,
+                INTAKE_RECEIPT.INTAKE_OPERATION,
+            ).gt(
+                position.sourceKey,
+                position.recordedAt.atOffset(ZoneOffset.UTC),
+                position.sourceRevision,
+                position.entityRef,
+                position.intakeOperation.name,
+            )
+
     /**
      * One row more than [limit] is read: its presence is what tells that a next page exists. The text order of
      * `intake_operation` is the order of [ListedIntakeOperation]. The rows carry no aggregate yet.
@@ -104,28 +119,11 @@ class JooqIntakeListingReader(
         permitted: Condition,
         after: IntakeListingPosition?,
         limit: Int,
-    ): List<ListedIntake> {
-        val later =
-            after?.let {
-                DSL
-                    .row(
-                        INTAKE_RECEIPT.SOURCE_KEY,
-                        INTAKE_RECEIPT.RECORDED_AT,
-                        INTAKE_RECEIPT.SOURCE_REVISION,
-                        INTAKE_RECEIPT.ENTITY_REF,
-                        INTAKE_RECEIPT.INTAKE_OPERATION,
-                    ).gt(
-                        it.sourceKey,
-                        stored(it.recordedAt),
-                        it.sourceRevision,
-                        it.entityRef,
-                        it.intakeOperation.name,
-                    )
-            } ?: DSL.noCondition()
-        return dsl
+    ): List<ListedIntake> =
+        dsl
             .selectFrom(INTAKE_RECEIPT)
             .where(permitted)
-            .and(later)
+            .and(after?.let(::later) ?: DSL.noCondition())
             .orderBy(
                 INTAKE_RECEIPT.SOURCE_KEY,
                 INTAKE_RECEIPT.RECORDED_AT,
@@ -145,7 +143,6 @@ class JooqIntakeListingReader(
                     aggregateIds = emptyList(),
                 )
             }
-    }
 
     private fun withAggregateIds(
         tenant: UUID,
@@ -222,13 +219,13 @@ class JooqIntakeListingReader(
                         ).`in`(triples.map { DSL.row(it.first, it.second, it.third) }),
                 ).fetch(),
         )
-
-    private fun byTriple(
-        rows: List<Record4<String?, String?, Long?, UUID?>>,
-    ): Map<Triple<String, String, Long>, List<UUID>> =
-        rows
-            .groupBy(
-                { Triple(checkNotNull(it.value1()), checkNotNull(it.value2()), checkNotNull(it.value3())) },
-                { checkNotNull(it.value4()) },
-            ).mapValues { (_, ids) -> ids.sorted() }
 }
+
+private fun byTriple(
+    rows: List<Record4<String?, String?, Long?, UUID?>>,
+): Map<Triple<String, String, Long>, List<UUID>> =
+    rows
+        .groupBy(
+            { Triple(checkNotNull(it.value1()), checkNotNull(it.value2()), checkNotNull(it.value3())) },
+            { checkNotNull(it.value4()) },
+        ).mapValues { (_, ids) -> ids.sorted() }
