@@ -84,7 +84,7 @@ class ScopeBackfillTest {
     }
 
     @Test
-    @Suppress("ktlint:standard:max-line-length", "MaxLineLength")
+    @Suppress("ktlint:standard:max-line-length", "MaxLineLength") // CS-50: INV-T-27014 fixes this test name verbatim
     fun `INV-AC-27046 a silent failure correction refuses the day before the affected period with ING-025 and nothing is recorded`() {
         val source = FakeSource(answered)
         val result = intake(source, affected.start.minusDays(1), correction())
@@ -94,7 +94,7 @@ class ScopeBackfillTest {
     }
 
     @Test
-    @Suppress("ktlint:standard:max-line-length", "MaxLineLength")
+    @Suppress("ktlint:standard:max-line-length", "MaxLineLength") // CS-50: INV-T-27014 fixes this test name verbatim
     fun `INV-AC-27046 a silent failure correction refuses the day after the affected period with ING-025 and nothing is recorded`() {
         val source = FakeSource(answered)
         val result = intake(source, affected.end.plusDays(1), correction())
