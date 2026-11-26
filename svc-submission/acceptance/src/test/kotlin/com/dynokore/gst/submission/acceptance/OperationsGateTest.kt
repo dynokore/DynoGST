@@ -1,5 +1,6 @@
 package com.dynokore.gst.submission.acceptance
 
+import com.dynokore.gst.submission.adapters.http.ComplianceMetricsController
 import com.dynokore.gst.submission.adapters.http.ReadinessController
 import com.dynokore.gst.submission.adapters.http.TransactionsController
 import io.kotest.matchers.collections.shouldBeEmpty
@@ -18,7 +19,13 @@ class OperationsGateTest {
 
     /** Operations answering 501 (OperationsStubs): what each controller method does for placeholder arguments. */
     private val stubs: Set<String> =
-        OperationsStubs.stubs(listOf(ReadinessController::class.java, TransactionsController::class.java))
+        OperationsStubs.stubs(
+            listOf(
+                ComplianceMetricsController::class.java,
+                ReadinessController::class.java,
+                TransactionsController::class.java,
+            ),
+        )
 
     private fun run(
         table: String = tsv,
@@ -29,10 +36,10 @@ class OperationsGateTest {
 
     @Test
     fun `INV-AC-21902 the real table covers the real contract`() {
-        OperationsGate.contractOperations(openapi).size shouldBe 21
+        OperationsGate.contractOperations(openapi).size shouldBe 23
         OperationsGate.contractOperations(openapi) shouldContain "approveFilingGateOverride"
         OperationsGate.contractOperations(openapi) shouldContain "getFilingGateOverrides"
-        OperationsGate.contractChannels(asyncapi).size shouldBe 12
+        OperationsGate.contractChannels(asyncapi).size shouldBe 13
         run(done = doneText).shouldBeEmpty()
         val doneLines = checkNotNull(doneText).lines()
         listOf(
@@ -46,6 +53,7 @@ class OperationsGateTest {
             "INV-T-10714",
             "INV-T-22772",
             "INV-T-22287",
+            "INV-T-26433",
         ).forEach { doneLines shouldContain it }
     }
 
@@ -57,13 +65,28 @@ class OperationsGateTest {
         // confirmFiling by INV-T-20948 and overrideFilingGate, approveFilingGateOverride and getFilingGateOverrides by
         // INV-T-10714 and getSubmissionReconciliation by INV-T-22772 and exportSubmissions by INV-T-22287 and
         // previewReplayScope by INV-T-25824,
+        // checkSubmissionBoundary by INV-T-26433,
         // so they no longer answer 501.
         stubs shouldBe
             OperationsGate.contractOperations(openapi) - "getComplianceMetrics" - "replaySubmissionsByScope" -
             "replaySubmissions" - "getLatestReadinessCheck" - "listSubmissions" - "getSubmissionSummary" -
             "previewDrainPeriod" - "drainPeriod" - "confirmFiling" - "overrideFilingGate" -
             "approveFilingGateOverride" - "getFilingGateOverrides" - "getSubmissionReconciliation" -
-            "exportSubmissions" - "previewReplayScope"
+            "exportSubmissions" - "previewReplayScope" - "checkSubmissionBoundary"
+    }
+
+    @Test
+    fun `INV-AC-26430 the row of checkSubmissionBoundary names a done task and the operation is no stub`() {
+        OperationsGate.parse(tsv).single { it.id == "checkSubmissionBoundary" } shouldBe
+            OperationsGate.Row("operation", "checkSubmissionBoundary", "INV-T-26433")
+        checkNotNull(doneText).lines() shouldContain "INV-T-26433"
+        ("checkSubmissionBoundary" in stubs) shouldBe false
+        // look-alikes: the override removed, and the row left UNASSIGNED while the task is done
+        run(done = doneText, stubSet = stubs + "checkSubmissionBoundary").shouldNotBeEmpty()
+        val unassigned =
+            tsv.replace("checkSubmissionBoundary\tINV-T-26433", "checkSubmissionBoundary\tUNASSIGNED")
+        run(table = unassigned, done = doneText) shouldContain
+            "done-tasks.txt: INV-T-26433 names no row of operations.tsv"
     }
 
     @Test

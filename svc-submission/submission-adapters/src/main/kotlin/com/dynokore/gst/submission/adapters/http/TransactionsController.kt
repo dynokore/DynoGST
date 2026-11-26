@@ -1,5 +1,8 @@
 package com.dynokore.gst.submission.adapters.http
 
+import com.dynokore.gst.submission.application.boundary.CheckSubmissionBoundary
+import com.dynokore.gst.submission.application.boundary.CheckSubmissionBoundaryRequest
+import com.dynokore.gst.submission.application.boundary.CheckSubmissionBoundaryResult
 import com.dynokore.gst.submission.application.replay.PreviewReplayScope
 import com.dynokore.gst.submission.application.replay.PreviewReplayScopeRequest
 import com.dynokore.gst.submission.application.replay.PreviewReplayScopeResult
@@ -11,6 +14,9 @@ import com.dynokore.gst.submission.application.replay.ReplaySingleVersion
 import com.dynokore.gst.submission.application.replay.ReplaySingleVersionRequest
 import com.dynokore.gst.submission.application.replay.ReplaySingleVersionResult
 import com.dynokore.gst.submission.contract.api.TransactionsApi
+import com.dynokore.gst.submission.contract.model.BoundaryCheckRequest
+import com.dynokore.gst.submission.contract.model.BoundaryCheckResult
+import com.dynokore.gst.submission.contract.model.BoundaryMember
 import com.dynokore.gst.submission.contract.model.IrreversibleImpact
 import com.dynokore.gst.submission.contract.model.ReplayResult
 import com.dynokore.gst.submission.contract.model.ReplayScopeRequest
@@ -94,7 +100,8 @@ class TransactionsRefusalAdvice {
  * [SubmissionListingHandler] delegate, and `getSubmissionSummary` (INV-REQ-977) through the
  * [SubmissionSummaryController] delegate, and `getSubmissionReconciliation` (INV-REQ-976) through the
  * [SubmissionReconciliationController] delegate, and `exportSubmissions` (INV-REQ-978) through the
- * [SubmissionExportController] delegate; the permission is decided by [ReplayBySelection]
+ * [SubmissionExportController] delegate, and `checkSubmissionBoundary` (INV-REQ-1005) through
+ * [CheckSubmissionBoundary]; the replay permission is decided by [ReplayBySelection]
  * through `AuthorityReplica.decide`, and this class reads no role name and holds no permission string. Every other
  * operation answers 501 until the task named for it in `operations.tsv` overrides its method.
  */
@@ -112,7 +119,33 @@ open class TransactionsController(
     private val reconciliation: SubmissionReconciliationController,
     private val exporting: SubmissionExportController,
     private val previewReplay: PreviewReplayScope,
+    private val boundary: CheckSubmissionBoundary,
 ) : TransactionsApi {
+    /**
+     * `checkSubmissionBoundary` (INV-REQ-1005). The request names no entity: the entities are those of the found
+     * documents and the use case decides them, so no entity-set check is made here.
+     */
+    override fun checkSubmissionBoundary(
+        boundaryCheckRequest: BoundaryCheckRequest,
+    ): ResponseEntity<BoundaryCheckResult> {
+        val caller = caller()
+        val tenant = verifiedTenant(caller)
+        val result =
+            boundary.handle(
+                CheckSubmissionBoundaryRequest(
+                    tenant,
+                    Principal(caller.actor, PrincipalKind.HUMAN),
+                    boundaryCheckRequest.docUuids,
+                ),
+                CurrentDeadline.current() ?: error("no call deadline is bound"),
+            )
+        return when (result) {
+            is CheckSubmissionBoundaryResult.Done -> ResponseEntity.ok(render(result))
+            CheckSubmissionBoundaryResult.Forbidden -> refuse(ClosedErrorCode.ACCESS_DENIED)
+            CheckSubmissionBoundaryResult.TooManyDocuments -> refuse(ClosedErrorCode.REQUEST_TOO_LARGE)
+        }
+    }
+
     override fun replaySubmissionsByScope(
         entityRef: String,
         replayScopeRequest: ReplayScopeRequest,
@@ -356,6 +389,19 @@ open class TransactionsController(
             throw ComplianceRefusal(ClosedErrorCode.CONTRACT_VIOLATION)
         }
     }
+
+    private fun render(done: CheckSubmissionBoundaryResult.Done) =
+        BoundaryCheckResult(
+            checkedCount = done.checkedCount,
+            submittedCount = done.members.size,
+            submittedMembers =
+                done.members.map {
+                    BoundaryMember(
+                        it.docUuid,
+                        BoundaryMember.State.valueOf(it.state.name),
+                    )
+                },
+        )
 
     private fun render(
         entityRef: String,

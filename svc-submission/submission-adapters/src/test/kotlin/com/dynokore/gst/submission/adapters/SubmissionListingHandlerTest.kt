@@ -11,6 +11,7 @@ import com.dynokore.gst.submission.adapters.http.SubmissionReconciliationControl
 import com.dynokore.gst.submission.adapters.http.SubmissionSummaryController
 import com.dynokore.gst.submission.adapters.http.TransactionsController
 import com.dynokore.gst.submission.adapters.http.TransactionsRefusalAdvice
+import com.dynokore.gst.submission.application.boundary.CheckSubmissionBoundary
 import com.dynokore.gst.submission.application.gstn.EntityGstns
 import com.dynokore.gst.submission.application.listing.ExportSubmissions
 import com.dynokore.gst.submission.application.listing.GetSubmissionReconciliation
@@ -233,6 +234,7 @@ class SubmissionListingHandlerTest {
                     ExportSubmissions(replica, source, EntityGstns { _, _ -> "M90000002B" }, clock),
                 ),
                 PreviewReplayScope(replica, { _, _ -> emptyList() }, { _, _, _ -> false }, NO_FACTS),
+                CheckSubmissionBoundary(replica, { _, _ -> emptyList() }, 5000),
             )
         return Fixture(controller, source)
     }

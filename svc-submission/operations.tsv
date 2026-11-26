@@ -10,7 +10,7 @@ operation	exportSubmissions	INV-T-22287
 operation	getTransaction	UNASSIGNED
 operation	withdrawSubmission	UNASSIGNED
 operation	overrideFilingGate	INV-T-10714
-operation	checkSubmissionBoundary	UNASSIGNED
+operation	checkSubmissionBoundary	INV-T-26433
 operation	replaySubmissions	INV-T-20607
 operation	replaySubmissionsByScope	INV-T-20589
 channel	gst.submission.submission-despatched.v1	UNASSIGNED
@@ -32,3 +32,6 @@ channel	gst.submission.period-filing-status-changed.v1	UNASSIGNED
 channel	gst.submission.unsubmitted-document-count-measured.v1	UNASSIGNED
 operation	getLatestReadinessCheck	INV-T-21141
 channel	gst.submission.net-derivation-requested.v1	UNASSIGNED
+operation	getExceptionAgeing	INV-T-26746
+operation	getPackActivationHistory	INV-T-26746
+channel	gst.submission.identity-triple-reprocessing-requested.v1	UNASSIGNED
