@@ -12,3 +12,4 @@
 ../openapi.yaml#/components/schemas/FailoverAdapterRequest failover-adapter-request-*.json
 ../openapi.yaml#/components/schemas/ConnectionTestResult connection-test-result-*.json
 ../openapi.yaml#/components/schemas/SetThroughputCeilingRequest set-throughput-ceiling-request*.json
+../openapi.yaml#/components/schemas/SendNetworkDocumentRequest send-network-document-request*.json

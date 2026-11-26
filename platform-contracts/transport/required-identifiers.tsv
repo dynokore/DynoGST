@@ -82,3 +82,5 @@ setThroughputCeiling.SRT-001	operation_error_code	openapi.yaml	INV-REQ-1317
 setThroughputCeiling.SRT-005	operation_error_code	openapi.yaml	INV-REQ-1317
 setThroughputCeiling.POL-008	operation_error_code	openapi.yaml	INV-REQ-1317
 setThroughputCeiling.POL-010	operation_error_code	openapi.yaml	INV-REQ-1317
+SendNetworkDocumentRequest.payload	schema_property	openapi.yaml	INV-REQ-957
+SendNetworkDocumentRequest.entityRef	schema_property	openapi.yaml	INV-REQ-957

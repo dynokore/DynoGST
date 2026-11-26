@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: transport API
-  version: 1.14.1
+  version: 1.15.0
   description: >-
     Contract-first source of truth for transport (API-01, STK-44). The
     `transport-contract` module generates its server interfaces and DTOs
@@ -227,7 +227,9 @@ paths:
         §33.1). Relay-mode Type 1A network issuance, distinct from
         `submitPayload`'s AP-mediated filing despatch. Irreversible: once
         sent, the network document is at the counterparty and cannot be
-        recalled (§31.3, FR-AC.9).
+        recalled (§31.3, FR-AC.9). The request carries the document bytes by
+        value and the entity; transport-svc picks the adapter from the entity's
+        AP connection record.
       tags: [despatch]
       x-principal: filing-workflow
       x-caller-auth: end-user
@@ -254,7 +256,8 @@ paths:
                 value:
                   docUuid: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
                   version: 1
-                  adapterRef: "AP-PRIMARY"
+                  payload: "PGludm9pY2U+PC9pbnZvaWNlPg=="
+                  entityRef: "ENT-CL0043"
                   peppolRecipientId: "0195:201954321B"
       responses:
         '202':
@@ -896,12 +899,36 @@ components:
       required: [docUuid, version, payload, entityRef]
     SendNetworkDocumentRequest:
       type: object
+      additionalProperties: false
       properties:
         docUuid: { type: string, format: uuid }
         version: { type: integer, minimum: 1 }
-        adapterRef: { type: string, maxLength: 40 }
+        payload:
+          type: string
+          format: byte
+          minLength: 1
+          maxLength: 13333336
+          description: >-
+            The bytes of the document exactly as submission-svc holds them,
+            base64-encoded (at most 10000000 bytes).
+        entityRef:
+          type: string
+          minLength: 1
+          maxLength: 40
+          description: >-
+            The entity the document belongs to. transport-svc picks the adapter
+            from that entity's AP connection record and records it on the first
+            attempt of the Doc UUID; a Doc UUID already recorded under another
+            entity is refused with 404 SRT-005. The caller is the service
+            submission-svc, the only caller the sync edge of the operation names,
+            and the business authorisation of the filing happens upstream in
+            submission-svc, so transport-svc asks no authorisation decision; it
+            checks only that the verified calling service is submission-svc, that
+            the tenant it acts for equals the request's tenant and, where its
+            credential names entities, that this entity is one of them (403
+            SRT-004 otherwise, no retry hint).
         peppolRecipientId: { type: string, maxLength: 64 }
-      required: [docUuid, version, adapterRef, peppolRecipientId]
+      required: [docUuid, version, payload, entityRef, peppolRecipientId]
     TransportOutcome:
       type: object
       properties:
