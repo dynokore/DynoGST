@@ -970,3 +970,31 @@ class WorkPaperViewKeyTest {
         assertNull(RolePermissions.kind("work-paper.views"))
     }
 }
+
+class ReconciliationViewKeyTest {
+    @Test
+    fun `INV-AC-28614 reconciliation view is READ with its four holders and their allowances`() {
+        val key = "reconciliation.view"
+        assertEquals(PermissionKind.READ, RolePermissions.kind(key))
+        listOf(DeploymentForm.SAAS, DeploymentForm.PRIVATE).forEach { form ->
+            val held =
+                RolePermissions
+                    .cells(form)
+                    .filter { (_, perms) -> perms[key] != null }
+                    .mapValues { (_, perms) -> perms.getValue(key) }
+            assertEquals(setOf("tax.approver", "finance.viewer", "auditor", "agent.operator"), held.keys, "$key $form")
+            assertEquals(
+                mapOf(
+                    "tax.approver" to RoleAllowance.PERMITTED,
+                    "finance.viewer" to RoleAllowance.PERMITTED,
+                    "auditor" to RoleAllowance.PERMITTED,
+                    "agent.operator" to RoleAllowance.WITHIN_SCOPE,
+                ),
+                held,
+                "$key $form",
+            )
+            assertEquals(held, OperationRoles.rolesFor(form, key), "$key $form")
+        }
+        assertNull(RolePermissions.kind("reconciliation.views"))
+    }
+}

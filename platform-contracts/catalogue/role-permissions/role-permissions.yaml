@@ -1559,3 +1559,15 @@ permissions:
       - {role: finance.viewer, form: PRIVATE, allowance: PERMITTED}
       - {role: auditor, form: SAAS, allowance: PERMITTED}
       - {role: auditor, form: PRIVATE, allowance: PERMITTED}
+  - key: reconciliation.view
+    kind: READ
+    row: "View a reconciliation run, the runs of a period and the Box-by-Box reconciliation"
+    cells:
+      - {role: tax.approver, form: SAAS, allowance: PERMITTED}
+      - {role: tax.approver, form: PRIVATE, allowance: PERMITTED}
+      - {role: finance.viewer, form: SAAS, allowance: PERMITTED}
+      - {role: finance.viewer, form: PRIVATE, allowance: PERMITTED}
+      - {role: auditor, form: SAAS, allowance: PERMITTED}
+      - {role: auditor, form: PRIVATE, allowance: PERMITTED}
+      - {role: agent.operator, form: SAAS, allowance: WITHIN_SCOPE}
+      - {role: agent.operator, form: PRIVATE, allowance: WITHIN_SCOPE}

@@ -86,7 +86,7 @@ object RolePermissionsChecker {
 
     /**
      * Labels added to the matrix by INV-NOTE-10136 (INV-Q-10127 A), compared by equality; INV-T-10134 appends six, INV-T-10149 the last two,
-     * INV-T-9864 appends two (INV-Q-9779 A), INV-T-11439 appends one (INV-Q-11433 A), INV-T-11910 appends two (INV-Q-11901 A), INV-T-12840 appends one (INV-Q-12767 A), INV-T-13356 appends one (INV-Q-13348), INV-T-13835 appends one (INV-Q-13818), INV-T-16106 appends one (INV-Q-10127 A), INV-T-16683 appends one (INV-Q-16671 A), INV-T-17222 appends three (INV-Q-17215 A), INV-T-17503 appends one (INV-Q-16389), INV-T-15460 appends three (INV-Q-15430 A), INV-T-16220 appends one (INV-Q-16217 A), INV-T-16273 appends two (INV-Q-16272 A), INV-T-22584 appends one (counterparty-request.send), INV-T-17459 appends one (INV-Q-17446 A, client-signatory.record), INV-T-24484 appends one (reconciliation.export), INV-T-24736 appends two (regulatory-pack.rollback and regulatory-pack.reprocess), INV-T-24823 appends one (privacy-case.read), INV-T-26859 appends two (exception-ageing.view and pack-activation-history.view), INV-T-24910 appends two (alert-policy.set and alert.snooze), INV-T-27608 appends one (rendition-evidence.view), INV-T-27579 appends one (operating-profile.apply), INV-T-24912 appends two (workspace.create, workspace.archive), INV-T-28539 appends one (work-paper.view).
+     * INV-T-9864 appends two (INV-Q-9779 A), INV-T-11439 appends one (INV-Q-11433 A), INV-T-11910 appends two (INV-Q-11901 A), INV-T-12840 appends one (INV-Q-12767 A), INV-T-13356 appends one (INV-Q-13348), INV-T-13835 appends one (INV-Q-13818), INV-T-16106 appends one (INV-Q-10127 A), INV-T-16683 appends one (INV-Q-16671 A), INV-T-17222 appends three (INV-Q-17215 A), INV-T-17503 appends one (INV-Q-16389), INV-T-15460 appends three (INV-Q-15430 A), INV-T-16220 appends one (INV-Q-16217 A), INV-T-16273 appends two (INV-Q-16272 A), INV-T-22584 appends one (counterparty-request.send), INV-T-17459 appends one (INV-Q-17446 A, client-signatory.record), INV-T-24484 appends one (reconciliation.export), INV-T-24736 appends two (regulatory-pack.rollback and regulatory-pack.reprocess), INV-T-24823 appends one (privacy-case.read), INV-T-26859 appends two (exception-ageing.view and pack-activation-history.view), INV-T-24910 appends two (alert-policy.set and alert.snooze), INV-T-27608 appends one (rendition-evidence.view), INV-T-27579 appends one (operating-profile.apply), INV-T-24912 appends two (workspace.create, workspace.archive), INV-T-28539 appends one (work-paper.view), INV-T-28615 appends one (reconciliation.view).
      */
     val addedRows: List<String> =
         listOf(
@@ -153,6 +153,7 @@ object RolePermissionsChecker {
             "Create a workspace",
             "Archive a workspace",
             "View a reconciliation run's work-paper",
+            "View a reconciliation run, the runs of a period and the Box-by-Box reconciliation",
         )
 
     /** The (key, row) pairs of the two enquiry lookups and the rendition sample check (INV-T-10492), compared by equality. */
@@ -304,6 +305,10 @@ object RolePermissionsChecker {
     /** The (key, row) pair of the work-paper view key (INV-T-28539, coordinator ruling (delegated) HIGH of 2026-11-25), compared by equality. */
     val workPaperViewPairs: Map<String, String> =
         mapOf("work-paper.view" to "View a reconciliation run's work-paper")
+
+    /** The (key, row) pair of the reconciliation view key (INV-T-28615, coordinator ruling (delegated) HIGH of 2026-11-25), compared by equality. */
+    val reconciliationViewPairs: Map<String, String> =
+        mapOf("reconciliation.view" to "View a reconciliation run, the runs of a period and the Box-by-Box reconciliation")
 
     /** The (key, row) pair of the rendition evidence read key (INV-T-27608, owner ruling of 2026-11-22 option A), compared by equality. */
     val renditionEvidencePairs: Map<String, String> =
@@ -571,6 +576,8 @@ object RolePermissionsChecker {
                 ),
             "rendition-evidence.view" to Required(PermissionKind.READ, cells(permitted, both, "auditor", "tax.approver", "tax.operator")),
             "work-paper.view" to Required(PermissionKind.READ, cells(permitted, both, "tax.approver", "finance.viewer", "auditor")),
+            "reconciliation.view" to
+                Required(PermissionKind.READ, cells(permitted, both, "tax.approver", "finance.viewer", "auditor") + cells(withinScope, both, "agent.operator")),
             "operating-profile.apply" to
                 Required(PermissionKind.WRITE, cells(permitted, both, "tenant.admin") + cells(withinScope, both, "entity.admin")),
             "workspace.create" to Required(PermissionKind.WRITE, cells(permitted, both, "tenant.admin")),
@@ -907,6 +914,13 @@ object RolePermissionsChecker {
         }
         table.permissions.filter { it.key !in workPaperViewPairs && (it.row in workPaperViewPairs.values || it.key.lowercase().replace('-', '.').startsWith("work.paper")) }.forEach { p ->
             v += "key ${p.key}: not one of the keys ${workPaperViewPairs.keys.joinToString()}, which alone carry the work-paper view row (INV-T-28539)."
+        }
+        reconciliationViewPairs.forEach { (key, row) ->
+            val p = table.permissions.firstOrNull { it.key == key }
+            if (p != null && p.row != row) v += "key $key: row '${p.row}' differs from '$row' (keys ${reconciliationViewPairs.keys.joinToString()}, INV-T-28615)."
+        }
+        table.permissions.filter { it.key !in reconciliationViewPairs && (it.row in reconciliationViewPairs.values || it.key.lowercase().replace('-', '.').startsWith("reconciliation.view")) }.forEach { p ->
+            v += "key ${p.key}: not one of the keys ${reconciliationViewPairs.keys.joinToString()}, which alone carry the reconciliation view row (INV-T-28615)."
         }
         renditionEvidencePairs.forEach { (key, row) ->
             val p = table.permissions.firstOrNull { it.key == key }
