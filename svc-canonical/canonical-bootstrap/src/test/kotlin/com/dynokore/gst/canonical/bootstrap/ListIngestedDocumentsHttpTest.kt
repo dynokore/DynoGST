@@ -34,8 +34,8 @@ import java.util.function.Supplier
 
 /**
  * INV-AC-28718: `listIngestedDocuments` over HTTP, through the service's filters, controller, reads, database and
- * authority replica. The caller is user-a of tenant-a unless a test names another; every test records under a principal of its own. The role
- * names of [roles] are fixture data: the service only ever asks for the permission key.
+ * authority replica. The caller is user-a of tenant-a unless a test names another; every test records under a
+ * principal of its own. The role names of [roles] are fixture data: the service only ever asks for the permission key.
  */
 @Suppress("LargeClass") // one fixture shared by the clauses of the one criterion (CS-50)
 class ListIngestedDocumentsHttpTest {
