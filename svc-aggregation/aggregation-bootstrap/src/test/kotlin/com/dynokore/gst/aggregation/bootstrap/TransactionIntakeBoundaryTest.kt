@@ -2,6 +2,7 @@ package com.dynokore.gst.aggregation.bootstrap
 
 import com.dynokore.gst.aggregation.adapters.AggregationDb
 import com.dynokore.gst.aggregation.adapters.http.IntakeBodyCachingFilter
+import com.dynokore.gst.aggregation.adapters.http.IntakeListingEndpoint
 import com.dynokore.gst.aggregation.adapters.http.NotAggregatableAdvice
 import com.dynokore.gst.aggregation.adapters.http.TransactionIntakeController
 import com.dynokore.gst.aggregation.adapters.periods.StoredPeriodBoundaries
@@ -76,6 +77,7 @@ class TransactionIntakeBoundaryTest {
                         context.getBean(com.dynokore.gst.aggregation.application.PeriodBoundarySource::class.java),
                         context.getBean(com.dynokore.gst.aggregation.application.WindowChangePublisher::class.java),
                         context.getBean(com.dynokore.platform.tenancykernel.TransactionRunner::class.java),
+                        context.getBean(IntakeListingEndpoint::class.java),
                     ),
                 ).setControllerAdvice(NotAggregatableAdvice())
                 .addFilters<StandaloneMockMvcBuilder>(IntakeBodyCachingFilter())

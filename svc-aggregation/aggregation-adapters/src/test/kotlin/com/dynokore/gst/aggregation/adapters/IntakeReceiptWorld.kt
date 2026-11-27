@@ -157,6 +157,7 @@ internal class IntakeReceiptWorld(
             { _, _, _ -> spans },
             {},
             runner,
+            unusedListing(),
         )
 
     /** `intakeAggregationBatch` of one line of [amount]; the HTTP status of the answer. */

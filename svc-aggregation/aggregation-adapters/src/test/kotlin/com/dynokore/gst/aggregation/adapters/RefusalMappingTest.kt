@@ -157,6 +157,7 @@ class RefusalMappingTest {
                     object : com.dynokore.platform.tenancykernel.TransactionRunner {
                         override fun <T> inTransaction(block: () -> T): T = block()
                     },
+                    unusedListing(),
                 )
             send(controller, 5) shouldBe 202
 

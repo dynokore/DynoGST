@@ -182,6 +182,7 @@ class CallerChecks(
                 "POST /internal/v1/aggregation/transactions",
                 "POST /internal/v1/aggregation/replaced-receipts",
                 "GET /internal/v1/aggregation/underlying-transactions",
+                "GET /internal/v1/aggregation/intake-receipts",
             )
         private const val NOT_IMPLEMENTED = 501
         const val TOKEN = "X-Workload-Token"

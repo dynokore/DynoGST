@@ -5,6 +5,7 @@ import com.dynokore.gst.aggregation.adapters.events.AggregateReadyOutbox
 import com.dynokore.gst.aggregation.adapters.http.DrillDownController
 import com.dynokore.gst.aggregation.adapters.http.DrillDownCursors
 import com.dynokore.gst.aggregation.adapters.http.IntakeBodyCachingFilter
+import com.dynokore.gst.aggregation.adapters.http.IntakeListingEndpoint
 import com.dynokore.gst.aggregation.adapters.http.NotAggregatableAdvice
 import com.dynokore.gst.aggregation.adapters.http.TransactionIntakeController
 import com.dynokore.gst.aggregation.adapters.persistence.JooqTransactionStore
@@ -88,6 +89,7 @@ class ContentKit(
                     context.getBean(com.dynokore.gst.aggregation.application.PeriodBoundarySource::class.java),
                     context.getBean(com.dynokore.gst.aggregation.application.WindowChangePublisher::class.java),
                     context.getBean(com.dynokore.platform.tenancykernel.TransactionRunner::class.java),
+                    context.getBean(IntakeListingEndpoint::class.java),
                 ),
                 DrillDownController(
                     context.getBean(GetAggregateDrillDown::class.java),

@@ -1,6 +1,7 @@
 package com.dynokore.gst.aggregation.bootstrap
 
 import com.dynokore.gst.aggregation.adapters.http.IntakeBodyCachingFilter
+import com.dynokore.gst.aggregation.adapters.http.IntakeListingEndpoint
 import com.dynokore.gst.aggregation.adapters.http.NotAggregatableAdvice
 import com.dynokore.gst.aggregation.adapters.http.TransactionIntakeController
 import com.dynokore.gst.aggregation.adapters.persistence.JooqTransactionStore
@@ -56,6 +57,7 @@ class PcpTaxableAmountBoundaryTest {
                         kit.context.getBean(com.dynokore.gst.aggregation.application.PeriodBoundarySource::class.java),
                         kit.context.getBean(com.dynokore.gst.aggregation.application.WindowChangePublisher::class.java),
                         kit.context.getBean(com.dynokore.platform.tenancykernel.TransactionRunner::class.java),
+                        kit.context.getBean(IntakeListingEndpoint::class.java),
                     ),
                 ).setControllerAdvice(NotAggregatableAdvice())
                 .addFilters<StandaloneMockMvcBuilder>(IntakeBodyCachingFilter())

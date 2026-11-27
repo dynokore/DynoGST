@@ -3,6 +3,7 @@ operation	intakeAggregationBatch	INV-T-8473	open
 operation	intakeAggregationTransactions	INV-T-14463	open
 operation	excludeReplacedReceipt	INV-T-4980	open
 operation	getAggregateDrillDown	INV-T-4980	open
+operation	listAggregationIntake	INV-T-28772	open
 channel	aggregationAggregateReady	INV-T-4979	open
 channel	aggregationAggregateWindowChanged	INV-T-14464	open
 channel	aggregationShortCodeUsed	INV-T-11280	open

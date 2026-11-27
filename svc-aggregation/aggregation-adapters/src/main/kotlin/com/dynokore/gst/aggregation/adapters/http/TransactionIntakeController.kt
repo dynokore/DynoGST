@@ -16,6 +16,7 @@ import com.dynokore.gst.aggregation.application.WindowRepository
 import com.dynokore.gst.aggregation.contract.model.AggregationTransactionsReceipt
 import com.dynokore.gst.aggregation.contract.model.AggregationTransactionsRequest
 import com.dynokore.gst.aggregation.contract.model.AggregationTransactionsRequestTransactionsInner
+import com.dynokore.gst.aggregation.contract.model.IntakeReceiptPage
 import com.dynokore.gst.aggregation.contract.model.ReplacedReceiptRequest
 import com.dynokore.gst.aggregation.contract.model.ReplacedReceiptResult
 import com.dynokore.gst.aggregation.domain.AggregateIntakeCheck
@@ -24,15 +25,19 @@ import com.dynokore.gst.aggregation.domain.IntakeVerdict
 import com.dynokore.gst.aggregation.domain.WindowState
 import com.dynokore.platform.serviceruntime.http.IngestionErrorCode
 import com.dynokore.platform.tenancykernel.TransactionRunner
+import jakarta.validation.ConstraintViolationException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestController
+import java.time.OffsetDateTime
 import java.util.UUID
 
 /**
  * The dated-transaction intake of the aggregation contract (INV-REQ-435 item 2, INV-REQ-434 items 2 and 3). It extends
  * [IntakeController] because the contract has one `IntakeApi` for both operations, and it is the registered bean of
- * `IntakeApi`. Each transaction is stored in the window of its own date; a repeat of
+ * `IntakeApi`, so it also serves `listAggregationIntake` through [IntakeListingEndpoint].
+ * Each transaction is stored in the window of its own date; a repeat of
  * (entityRef, sourceKey, sourceRevision) answers the receipt of the first call and stores nothing.
  */
 @RestController
@@ -46,7 +51,20 @@ open class TransactionIntakeController(
     private val periods: PeriodBoundarySource,
     private val publisher: WindowChangePublisher,
     private val runner: TransactionRunner,
+    private val listing: IntakeListingEndpoint,
 ) : IntakeController(intake) {
+    override fun listAggregationIntake(
+        submittedBy: String,
+        recordedFrom: OffsetDateTime,
+        recordedTo: OffsetDateTime,
+        limit: Int,
+        cursor: String?,
+    ): ResponseEntity<IntakeReceiptPage> = listing.list(submittedBy, recordedFrom, recordedTo, limit, cursor)
+
+    @ExceptionHandler(ConstraintViolationException::class)
+    open fun listingConstraintBroken(violation: ConstraintViolationException): ResponseEntity<IntakeReceiptPage> =
+        listing.constraintBroken(violation)
+
     override fun intakeAggregationTransactions(
         idempotencyKey: UUID,
         aggregationTransactionsRequest: AggregationTransactionsRequest,
