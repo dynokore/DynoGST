@@ -1,5 +1,6 @@
 package com.dynokore.gst.masterdata.adapters.persistence
 
+import com.dynokore.gst.masterdata.adapters.persistence.jooq.tables.records.IdentityTripleRecord
 import com.dynokore.gst.masterdata.adapters.persistence.jooq.tables.references.IDENTITY_TRIPLE
 import com.dynokore.gst.masterdata.application.identity.TripleRepository
 import com.dynokore.gst.masterdata.domain.identity.Constitution
@@ -32,18 +33,36 @@ class JooqTripleRepository(
                 IDENTITY_TRIPLE.CONSTITUTION.eq(constitution.code),
             ).orderBy(IDENTITY_TRIPLE.EFFECTIVE_FROM)
             .fetch()
+            .map { toVersion(entity, constitution, it) }
+
+    override fun allVersions(): List<TripleVersion> =
+        dsl
+            .selectFrom(IDENTITY_TRIPLE)
+            .orderBy(IDENTITY_TRIPLE.ENTITY_REF, IDENTITY_TRIPLE.CONSTITUTION, IDENTITY_TRIPLE.EFFECTIVE_FROM)
+            .fetch()
             .map {
-                TripleVersion(
-                    entity,
-                    constitution,
-                    IdentityTriple(
-                        it.senderId.column("sender_id"),
-                        it.supplierId.column("supplier_id"),
-                        it.supplierGstn.column("supplier_gstn"),
-                    ),
-                    it.effectiveFrom.column("effective_from"),
+                toVersion(
+                    EntityRef(it.entityRef.column("entity_ref")),
+                    Constitution(it.constitution.column("constitution")),
+                    it,
                 )
             }
+
+    private fun toVersion(
+        entity: EntityRef,
+        constitution: Constitution,
+        row: IdentityTripleRecord,
+    ): TripleVersion =
+        TripleVersion(
+            entity,
+            constitution,
+            IdentityTriple(
+                row.senderId.column("sender_id"),
+                row.supplierId.column("supplier_id"),
+                row.supplierGstn.column("supplier_gstn"),
+            ),
+            row.effectiveFrom.column("effective_from"),
+        )
 
     override fun save(
         version: TripleVersion,

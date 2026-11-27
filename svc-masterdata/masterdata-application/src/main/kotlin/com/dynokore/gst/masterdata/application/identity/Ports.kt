@@ -16,6 +16,9 @@ interface TripleRepository {
         constitution: Constitution,
     ): List<TripleVersion>
 
+    /** Every version of every entity and constitution of the bound tenant, in no promised order. */
+    fun allVersions(): List<TripleVersion>
+
     /** Stores [version]; a repeat of (entity, constitution, effectiveFrom) replaces the stored one (repeatKey). */
     fun save(
         version: TripleVersion,
