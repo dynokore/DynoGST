@@ -2,15 +2,26 @@ package com.dynokore.gst.evidence.adapters
 
 import com.dynokore.gst.evidence.adapters.events.RulePackEventsHandler
 import com.dynokore.gst.evidence.adapters.persistence.JooqBreachTermsReplica
+import com.dynokore.gst.evidence.adapters.persistence.jooq.Evidence
 import com.dynokore.gst.evidence.domain.cases.BreachTerms
+import com.dynokore.platform.configresolver.ConfigSchema
 import com.dynokore.platform.outboxandqueue.CausationId
 import com.dynokore.platform.outboxandqueue.ContractViolation
 import com.dynokore.platform.outboxandqueue.CorrelationId
 import com.dynokore.platform.outboxandqueue.EntityRef
 import com.dynokore.platform.outboxandqueue.Envelope
 import com.dynokore.platform.outboxandqueue.EventId
+import com.dynokore.platform.outboxandqueue.EventLogSchema
 import com.dynokore.platform.outboxandqueue.HandleOutcome
+import com.dynokore.platform.outboxandqueue.OutboxSchema
+import com.dynokore.platform.serviceruntime.jobs.JobSchema
+import com.dynokore.platform.tenancyjooq.TableClasses
+import com.dynokore.platform.tenancyjooq.TenancyJooq
+import com.dynokore.platform.tenancyjooq.TenancyTables
+import com.dynokore.platform.tenancykernel.BindingKeySource
+import com.dynokore.platform.tenancykernel.TenantContextImpl
 import com.dynokore.platform.tenancykernel.TenantId
+import com.dynokore.platform.tenancykernel.TransactionRunnerImpl
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.assertions.throwables.shouldThrowAny
 import io.kotest.assertions.withClue
@@ -21,9 +32,10 @@ import io.kotest.matchers.string.shouldStartWith
 import io.kotest.matchers.types.shouldNotBeInstanceOf
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
-import org.jooq.impl.DSL
+import org.jooq.impl.DefaultConfiguration
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.postgresql.ds.PGSimpleDataSource
 import java.sql.Connection
 import java.time.Duration
 import java.time.Instant
@@ -31,6 +43,25 @@ import java.time.LocalDate
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
+
+/** The platform-scoped declarations of evidence-bootstrap's application.yaml (`inv.tenancy`). */
+private val PLATFORM_SCOPED = listOf("evidence.config_purge_tenant", "evidence.write_installation_setting")
+
+/** The table classes as service-runtime builds them: the libraries' declarations and the service's, verified. */
+private fun serviceTables(): TenancyTables {
+    val present =
+        Evidence.EVIDENCE.tables
+            .map { it.qualifiedName.name.joinToString(".") }
+            .toSet()
+    val libraries =
+        ConfigSchema.platformScopedTables(EvidenceDb.SCHEMA) +
+            OutboxSchema.platformScopedTables(EvidenceDb.SCHEMA) +
+            JobSchema.platformScopedTables(EvidenceDb.SCHEMA) +
+            EventLogSchema.platformScopedTables()
+    return TableClasses
+        .of(platformScoped = (PLATFORM_SCOPED + libraries.filter { it in present }).distinct())
+        .verify(Evidence.EVIDENCE)
+}
 
 /**
  * The harness of INV-AC-29315 over the real PostgreSQL. Each event is applied as the inbox consumer applies it: one
@@ -53,26 +84,66 @@ open class BreachTermsReplicaHarness {
         }
     }
 
+    private val tenantContext = TenantContextImpl()
+    private val runner =
+        TransactionRunnerImpl(
+            PGSimpleDataSource().apply {
+                setUrl(EvidenceDb.jdbcUrl)
+                user = EvidenceDb.RUNTIME
+                password = EvidenceDb.RUNTIME_PASSWORD
+            },
+            tenantContext,
+            null,
+            object : BindingKeySource {
+                override fun currentKey() = EvidenceDb.bindingKey.copyOf() // the runner clears the array it gets
+
+                override fun previousKey(): ByteArray? = null
+            },
+        )
+
+    /** The service's DSLContext: the tenancy-jooq listeners over the generated schema (CS-18, CS-19). */
+    private val serviceDsl =
+        TenancyJooq
+            .configure(
+                DefaultConfiguration().set(SQLDialect.POSTGRES),
+                serviceTables(),
+                tenantContext,
+                runner,
+            ).dsl()
+
     protected fun <T> bound(
         who: TenantId,
-        block: (Connection, DSLContext) -> T,
+        block: (DSLContext) -> T,
+    ): T {
+        val inTransaction = { runner.inTransaction { block(serviceDsl) } }
+        return if (who.isPlatform) {
+            tenantContext.bindPlatform(SignedBindings.ACTOR, inTransaction)
+        } else {
+            tenantContext.bind(who, SignedBindings.ACTOR, inTransaction)
+        }
+    }
+
+    /** A signed runtime session without the framework predicate: the database layer alone. */
+    protected fun <T> session(
+        who: TenantId,
+        block: (Connection) -> T,
     ): T =
         EvidenceDb.connect(EvidenceDb.RUNTIME, EvidenceDb.RUNTIME_PASSWORD).use { c ->
             c.autoCommit = false
             SignedBindings.bind(c, who.value)
-            runCatching { block(c, DSL.using(c, SQLDialect.POSTGRES)) }
+            runCatching { block(c) }
                 .onSuccess { c.commit() }
                 .onFailure { c.rollback() }
                 .getOrThrow()
         }
 
     protected fun deliver(event: Envelope): HandleOutcome =
-        bound(event.tenant) { _, dsl -> RulePackEventsHandler(JooqBreachTermsReplica(dsl)).handle(event) }
+        bound(event.tenant) { dsl -> RulePackEventsHandler(JooqBreachTermsReplica(dsl)).handle(event) }
 
     protected fun terms(
         on: LocalDate,
         who: TenantId = platform,
-    ): BreachTerms? = bound(who) { _, dsl -> JooqBreachTermsReplica(dsl).activeTerms(on) }
+    ): BreachTerms? = bound(who) { dsl -> JooqBreachTermsReplica(dsl).activeTerms(on) }
 
     protected fun envelope(
         type: String,
@@ -498,7 +569,7 @@ class BreachTermsTypeAndActivationDbTest : BreachTermsReplicaHarness() {
         terms(day, tenant) shouldBe seventyTwo
         val before = everything()
         shouldThrowAny {
-            bound(tenant) { _, dsl -> JooqBreachTermsReplica(dsl).recordType("pack-z", "calendar") }
+            bound(tenant) { dsl -> JooqBreachTermsReplica(dsl).recordType("pack-z", "calendar") }
         }
         everything() shouldBe before
     }
@@ -509,7 +580,7 @@ class BreachTermsTypeAndActivationDbTest : BreachTermsReplicaHarness() {
         deliver(activated())
         val before = everything()
         shouldThrowAny {
-            bound(tenant) { c, _ ->
+            session(tenant) { c ->
                 c.createStatement().use {
                     it.execute(
                         "insert into evidence.breach_terms_pack_type values ('${platform.value}', 'p', 'calendar')",
@@ -523,7 +594,7 @@ class BreachTermsTypeAndActivationDbTest : BreachTermsReplicaHarness() {
                 "delete from evidence.breach_terms_pack_$table",
             )) {
                 withClue(sql) {
-                    shouldThrowAny { bound(platform) { c, _ -> c.createStatement().use { it.execute(sql) } } }
+                    shouldThrowAny { session(platform) { c -> c.createStatement().use { it.execute(sql) } } }
                 }
             }
         }
@@ -532,19 +603,15 @@ class BreachTermsTypeAndActivationDbTest : BreachTermsReplicaHarness() {
 
     @Test
     fun `INV-AC-29315 two concurrent first stagings cannot both set the type`() {
-        EvidenceDb.connect(EvidenceDb.RUNTIME, EvidenceDb.RUNTIME_PASSWORD).use { first ->
-            first.autoCommit = false
-            SignedBindings.bind(first, platform.value)
-            JooqBreachTermsReplica(DSL.using(first, SQLDialect.POSTGRES))
-                .recordType("pack-a", "breach-terms") shouldBe "breach-terms"
-            val second =
-                CompletableFuture.supplyAsync {
-                    bound(platform) { _, dsl -> JooqBreachTermsReplica(dsl).recordType("pack-a", "calendar") }
-                }
-            awaitLockWait()
-            first.commit()
-            second.get(WAIT_SECONDS, TimeUnit.SECONDS) shouldBe "breach-terms"
-        }
+        val second =
+            bound(platform) { dsl ->
+                JooqBreachTermsReplica(dsl).recordType("pack-a", "breach-terms") shouldBe "breach-terms"
+                CompletableFuture
+                    .supplyAsync {
+                        bound(platform) { JooqBreachTermsReplica(it).recordType("pack-a", "calendar") }
+                    }.also { awaitLockWait() }
+            }
+        second.get(WAIT_SECONDS, TimeUnit.SECONDS) shouldBe "breach-terms"
         typeRows() shouldBe listOf("pack-a|breach-terms")
     }
 
