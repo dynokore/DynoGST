@@ -615,10 +615,13 @@ class BreachTermsTypeAndActivationDbTest : BreachTermsReplicaHarness() {
         typeRows() shouldBe listOf("pack-a|breach-terms")
     }
 
-    /** Returns once a session waits on a lock: the second insert is behind the uncommitted first one. */
+    /** Returns once the second type insert waits on a lock: it is behind the uncommitted first one. */
     private fun awaitLockWait() {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(WAIT_SECONDS)
-        while (query("select count(*) from pg_stat_activity where wait_event_type = 'Lock'").single() == "0") {
+        val waiting =
+            "select count(*) from pg_stat_activity where datname = current_database() " +
+                "and wait_event_type = 'Lock' and query ilike 'insert%breach_terms_pack_type%'"
+        while (query(waiting).single() == "0") {
             check(System.nanoTime() < deadline) { "the second staging never waited on the first" }
             Thread.onSpinWait()
         }
