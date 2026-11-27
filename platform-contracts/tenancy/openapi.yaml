@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: tenancy API
-  version: 2.6.0
+  version: 2.7.0
   description: 'Contract-first source of truth for tenancy (API-01, STK-44), replacing the INV-T-2849
     scaffold (INV-T-2857, T13). Internal API only (SDS/04-api-standards §1): organisation structure and
     each entity''s regulatory profile, called by console-bff (commands), control-plane-svc (tenant provisioning
@@ -1544,6 +1544,174 @@ paths:
                     approvedBy: identity:USR-009
                     evidenceRef: EVD-20261001
                     recordedAt: "2026-10-18T09:30:00Z"
+        "401":
+          $ref: '#/components/responses/Error'
+        "403":
+          $ref: '#/components/responses/Error'
+        "404":
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+  /internal/v1/tenancy/entities/{entityRef}/migration-cutover/correction-requests:
+    post:
+      operationId: requestMigrationCutoverCorrection
+      summary: Request a correction of the entity's recorded migration cutover date
+      description: 'Records a request to replace the recorded migration cutover date with newCutoverDate, for a reason. The request is answered 201 with the status PENDING, and the recorded date changes only when a second user approves it through decideMigrationCutoverCorrection. A new request makes an earlier PENDING request of the same entity SUPERSEDED; a request answered 200 supersedes nothing. When newCutoverDate equals the recorded date, the answer is 200 with the unchanged cutover record and nothing is stored. The service derives requestedBy from the authenticated user ID and never takes it from the request body. A caller without the permission migration-cutover.correct is refused with 403 (SRT-004). An entity that has no recorded cutover, or is of another tenant, is answered 404 (SRT-005).'
+      tags:
+      - entities
+      x-principal: filing-workflow
+      x-caller-auth: end-user
+      x-sync-edge: console-bff->tenancy-svc
+      x-timeout: 2000
+      x-requirements:
+      - INV-REQ-1109
+      x-error-codes: []
+      x-operation:
+        kind: PERMISSION
+        permission: migration-cutover.correct
+        scope: entity
+        precondition: The entity is registered and has a recorded migration cutover
+        reversibility: COMPENSABLE
+        repeatKey: Idempotency-Key
+        compensationCost: "Compensated by a second user denying the pending request through decideMigrationCutoverCorrection, or replaced by a later request; the audit entry of that denial or supersede remains."
+      parameters:
+      - name: entityRef
+        in: path
+        required: true
+        description: The registered entity's opaque reference.
+        schema:
+          type: string
+          maxLength: 64
+        example: ENT-3F2A9C
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequestMigrationCutoverCorrectionRequest'
+            examples:
+              default:
+                value:
+                  newCutoverDate: "2026-11-01"
+                  reason: The prior solution kept submitting until the end of October.
+      responses:
+        "201":
+          description: Correction requested
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MigrationCutoverCorrectionRecord'
+              examples:
+                default:
+                  value:
+                    requestRef: MCC-0001
+                    entityRef: ENT-3F2A9C
+                    currentCutoverDate: "2026-10-01"
+                    newCutoverDate: "2026-11-01"
+                    reason: The prior solution kept submitting until the end of October.
+                    requestedBy: identity:USR-009
+                    status: PENDING
+                    requestedAt: "2026-11-02T09:30:00Z"
+        "200":
+          description: newCutoverDate equals the recorded date; the unchanged cutover record, nothing stored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MigrationCutoverRecord'
+              examples:
+                default:
+                  value:
+                    entityRef: ENT-3F2A9C
+                    cutoverDate: "2026-10-01"
+                    priorSolution: LegacyPeppolProvider
+                    approvedBy: identity:USR-009
+                    evidenceRef: EVD-20261001
+                    recordedAt: "2026-10-18T09:30:00Z"
+        "400":
+          $ref: '#/components/responses/Error'
+        "401":
+          $ref: '#/components/responses/Error'
+        "403":
+          $ref: '#/components/responses/Error'
+        "404":
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+  /internal/v1/tenancy/entities/{entityRef}/migration-cutover/correction-requests/{requestRef}/decide:
+    post:
+      operationId: decideMigrationCutoverCorrection
+      summary: Approve or deny a pending migration cutover correction request
+      description: 'Decides a PENDING correction request of the entity. The deciding user must differ from the requester: the requester cannot decide their own request and is refused with 403 (SRT-004), as is a caller without the permission migration-cutover.correct. A requestRef with no PENDING request for this entity and tenant (a request that is not PENDING included) is answered 404 (SRT-005). Approval replaces the recorded cutover date with newCutoverDate and publishes the new migrationCutoverDate on EntityProfileChanged; documents already matched or transmitted are not changed automatically but listed for manual review. The audit entry names the acting user IDs and the old and new dates. The service derives decidedBy from the authenticated user ID and never takes it from the request body. recordMigrationCutover still refuses a different date with 409 (TNC-011).'
+      tags:
+      - entities
+      x-principal: filing-workflow
+      x-caller-auth: end-user
+      x-sync-edge: console-bff->tenancy-svc
+      x-timeout: 2000
+      x-requirements:
+      - INV-REQ-1109
+      x-error-codes: []
+      x-operation:
+        kind: PERMISSION
+        permission: migration-cutover.correct
+        scope: entity
+        precondition: A PENDING correction request with this requestRef exists for the entity and the deciding user is not its requester
+        reversibility: COMPENSABLE
+        repeatKey: Idempotency-Key
+        compensationCost: "A decision is not edited; it is compensated by a further correction request that a second user decides, and an approved one sets the intended date, which can restore the earlier one; the audit entry of every decision remains, and documents already matched or transmitted are not changed automatically."
+      parameters:
+      - name: entityRef
+        in: path
+        required: true
+        description: The registered entity's opaque reference.
+        schema:
+          type: string
+          maxLength: 64
+        example: ENT-3F2A9C
+      - name: requestRef
+        in: path
+        required: true
+        description: The correction request's opaque reference.
+        schema:
+          type: string
+          maxLength: 64
+        example: MCC-0001
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DecideMigrationCutoverCorrectionRequest'
+            examples:
+              default:
+                value:
+                  decision: APPROVE
+                  comment: Checked against the final submission report of the prior solution.
+      responses:
+        "200":
+          description: The decided correction request, APPROVED or DENIED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MigrationCutoverCorrectionRecord'
+              examples:
+                default:
+                  value:
+                    requestRef: MCC-0001
+                    entityRef: ENT-3F2A9C
+                    currentCutoverDate: "2026-10-01"
+                    newCutoverDate: "2026-11-01"
+                    reason: The prior solution kept submitting until the end of October.
+                    requestedBy: identity:USR-009
+                    status: APPROVED
+                    requestedAt: "2026-11-02T09:30:00Z"
+                    decidedBy: identity:USR-014
+                    decidedAt: "2026-11-02T11:00:00Z"
+                    comment: Checked against the final submission report of the prior solution.
+        "400":
+          $ref: '#/components/responses/Error'
         "401":
           $ref: '#/components/responses/Error'
         "403":
@@ -4634,6 +4802,83 @@ components:
         recordedAt:
           type: string
           format: date-time
+    RequestMigrationCutoverCorrectionRequest:
+      type: object
+      required:
+      - newCutoverDate
+      - reason
+      properties:
+        newCutoverDate:
+          type: string
+          format: date
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+    DecideMigrationCutoverCorrectionRequest:
+      type: object
+      required:
+      - decision
+      properties:
+        decision:
+          type: string
+          enum:
+          - APPROVE
+          - DENY
+        comment:
+          type: string
+          maxLength: 500
+    MigrationCutoverCorrectionRecord:
+      type: object
+      required:
+      - requestRef
+      - entityRef
+      - currentCutoverDate
+      - newCutoverDate
+      - reason
+      - requestedBy
+      - status
+      - requestedAt
+      properties:
+        requestRef:
+          type: string
+          maxLength: 64
+        entityRef:
+          type: string
+          maxLength: 64
+        currentCutoverDate:
+          type: string
+          format: date
+        newCutoverDate:
+          type: string
+          format: date
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+        requestedBy:
+          type: string
+          maxLength: 128
+        status:
+          type: string
+          enum:
+          - PENDING
+          - APPROVED
+          - DENIED
+          - SUPERSEDED
+          x-extensible-enum: true
+        requestedAt:
+          type: string
+          format: date-time
+        decidedBy:
+          type: string
+          maxLength: 128
+        decidedAt:
+          type: string
+          format: date-time
+        comment:
+          type: string
+          maxLength: 500
     InstallLicenceRequest:
       type: object
       required:

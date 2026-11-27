@@ -12,6 +12,8 @@ masterdata	rotateCredential	connection-credential.rotate
 masterdata	getConnectionHealth	connection-health.view
 tenancy	recordMigrationCutover	migration-cutover.record
 tenancy	getMigrationCutover	migration-cutover.view
+tenancy	requestMigrationCutoverCorrection	migration-cutover.correct
+tenancy	decideMigrationCutoverCorrection	migration-cutover.correct
 tenancy	recordRenditionResponsibility	entity-config.manage
 rules	acknowledgePackDelta	regulatory-pack.acknowledge
 rules	armRegulatoryPack	regulatory-pack.arm
