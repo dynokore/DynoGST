@@ -1,5 +1,7 @@
 package com.dynokore.gst.reconciliation.bootstrap
 
+import com.dynokore.gst.reconciliation.adapters.http.AuthorityReplicaWorkPaperViewAuthority
+import com.dynokore.gst.reconciliation.adapters.http.WorkPaperViewAuthority
 import com.dynokore.gst.reconciliation.adapters.persistence.JooqRunAnnotations
 import com.dynokore.gst.reconciliation.adapters.persistence.JooqRunAttestations
 import com.dynokore.gst.reconciliation.application.run.RunReader
@@ -7,6 +9,8 @@ import com.dynokore.gst.reconciliation.application.workpaper.AnnotateVariance
 import com.dynokore.gst.reconciliation.application.workpaper.GetWorkPaper
 import com.dynokore.gst.reconciliation.application.workpaper.RunAnnotations
 import com.dynokore.gst.reconciliation.application.workpaper.RunAttestations
+import com.dynokore.platform.serviceruntime.replica.AuthorityReplica
+import com.dynokore.platform.tenancykernel.TenantContext
 import org.jooq.DSLContext
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.context.annotation.Bean
@@ -16,7 +20,8 @@ import java.time.Clock
 /**
  * The beans of the work-paper read and the variance annotation (INV-T-24380, INV-REQ-633): the append-only annotation
  * store and the attestation read as adapters of their ports, and the `getWorkPaper` and `annotateVariance` use cases.
- * The use cases open no transaction; the controller does.
+ * The use cases open no transaction; the controller does. It also binds the `work-paper.view` authority of
+ * `getWorkPaper` over `AuthorityReplica.decide` (INV-T-28549).
  */
 @Configuration(proxyBeanMethods = false)
 class WorkPaperReadConfiguration {
@@ -32,6 +37,12 @@ class WorkPaperReadConfiguration {
         annotations: RunAnnotations,
         attestations: RunAttestations,
     ): GetWorkPaper = GetWorkPaper(reader, annotations, attestations)
+
+    @Bean
+    fun workPaperViewAuthority(
+        replica: AuthorityReplica,
+        tenants: TenantContext,
+    ): WorkPaperViewAuthority = AuthorityReplicaWorkPaperViewAuthority(replica, tenants)
 
     @Bean
     fun annotateVariance(

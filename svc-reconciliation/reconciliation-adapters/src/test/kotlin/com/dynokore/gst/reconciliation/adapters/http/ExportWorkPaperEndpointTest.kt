@@ -290,6 +290,7 @@ class ExportWorkPaperEndpointTest {
             exportUseCase,
             authority,
             auditedOperations,
+            WorkPaperViewAuthority { _, _ -> error("this fixture never views") },
         )
     }
 

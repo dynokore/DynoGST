@@ -9,6 +9,7 @@ import com.dynokore.platform.serviceruntime.composition.L1CompositionAutoConfigu
 import com.dynokore.platform.serviceruntime.composition.ModuleProperties
 import com.dynokore.platform.serviceruntime.events.EvidenceArtefact
 import com.dynokore.platform.serviceruntime.events.EvidenceArtefactRecorder
+import com.dynokore.platform.serviceruntime.replica.AuthorityReplica
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldHaveSize
@@ -28,6 +29,7 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner
 import org.springframework.context.annotation.Configuration
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.Clock
 import java.time.Instant
 
 @Configuration(proxyBeanMethods = false)
@@ -65,6 +67,8 @@ class ObjectStoreFallbackAutoConfigurationTest {
                     ) = Unit
                 }
             })
+            // the work-paper.view authority of WorkPaperReadConfiguration is over the replica (INV-T-28549)
+            .withBean(AuthorityReplica::class.java, { AuthorityReplica(Clock.systemUTC(), { emptyMap() }) })
             .withPropertyValues("reconciliation.work-paper.retention-days=30")
             .withConfiguration(AutoConfigurations.of(L1CompositionAutoConfiguration::class.java, fallback()))
     }

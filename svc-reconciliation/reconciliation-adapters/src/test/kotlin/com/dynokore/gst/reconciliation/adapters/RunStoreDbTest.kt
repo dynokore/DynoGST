@@ -3,6 +3,7 @@ package com.dynokore.gst.reconciliation.adapters
 import com.dynokore.gst.reconciliation.adapters.http.AttestAuthority
 import com.dynokore.gst.reconciliation.adapters.http.ExportAuthority
 import com.dynokore.gst.reconciliation.adapters.http.RunsController
+import com.dynokore.gst.reconciliation.adapters.http.WorkPaperViewAuthority
 import com.dynokore.gst.reconciliation.adapters.persistence.JooqCompletedRuns
 import com.dynokore.gst.reconciliation.adapters.persistence.JooqRunReader
 import com.dynokore.gst.reconciliation.application.run.GetRun
@@ -34,6 +35,7 @@ import com.dynokore.gst.reconciliation.domain.run.RunOutcome
 import com.dynokore.gst.reconciliation.domain.sgd.NotReconcilableReason
 import com.dynokore.platform.auditlog.AuditEntry
 import com.dynokore.platform.auditlog.AuditedOperations
+import com.dynokore.platform.outboxandqueue.EntityRef
 import com.dynokore.platform.outboxandqueue.EventContext
 import com.dynokore.platform.reconciliationengine.Category
 import com.dynokore.platform.reconciliationengine.ClassifiedVariance
@@ -41,6 +43,8 @@ import com.dynokore.platform.reconciliationengine.Comparison
 import com.dynokore.platform.reconciliationengine.LineResult
 import com.dynokore.platform.reconciliationengine.MissingSide
 import com.dynokore.platform.reconciliationengine.ReconciliationResult
+import com.dynokore.platform.serviceruntime.identity.EndUserPrincipal
+import com.dynokore.platform.serviceruntime.identity.EndUserPrincipalBindingFilter
 import com.dynokore.platform.tenancykernel.BindingKeySource
 import com.dynokore.platform.tenancykernel.TenantContextImpl
 import com.dynokore.platform.tenancykernel.TenantId
@@ -57,6 +61,7 @@ import org.junit.jupiter.api.Timeout
 import org.postgresql.ds.PGSimpleDataSource
 import org.springframework.beans.factory.support.DefaultListableBeanFactory
 import org.springframework.http.ResponseEntity
+import java.lang.reflect.Proxy
 import java.math.BigDecimal
 import java.sql.SQLException
 import java.time.Clock
@@ -192,7 +197,7 @@ open class RunStoreDbFixture {
                 ArtefactRecordedPublisher { _, _, _, _, _ -> error("this fixture never seals") },
             ),
             AttestAuthority { _, _, _ -> false },
-            DefaultListableBeanFactory().getBeanProvider(HttpServletRequest::class.java),
+            requestOfUser().getBeanProvider(HttpServletRequest::class.java),
             ExportWorkPaper(
                 GetWorkPaper(reader, LazyRunAnnotations { session.dsl() }, LazyRunAttestations { session.dsl() }),
                 LazyRunAnnotations { session.dsl() },
@@ -215,7 +220,19 @@ open class RunStoreDbFixture {
                     block: () -> T,
                 ): T = error("this fixture never audits")
             },
+            WorkPaperViewAuthority { _, _ -> true },
         )
+
+    /** The request `getWorkPaper` reads its end-user principal from: [USER], with no current entity set. */
+    private fun requestOfUser(): DefaultListableBeanFactory {
+        val principal = EndUserPrincipal(USER, TenantId(UUID.randomUUID()), setOf(EntityRef(ENTITY)), false)
+        val request =
+            Proxy.newProxyInstance(javaClass.classLoader, arrayOf(HttpServletRequest::class.java)) { _, method, args ->
+                val asked = method.name == "getAttribute"
+                principal.takeIf { asked && args?.get(0) == EndUserPrincipalBindingFilter.PRINCIPAL_ATTRIBUTE }
+            } as HttpServletRequest
+        return DefaultListableBeanFactory().apply { registerSingleton("request", request) }
+    }
 
     protected fun <T> asTenant(
         tenant: UUID,

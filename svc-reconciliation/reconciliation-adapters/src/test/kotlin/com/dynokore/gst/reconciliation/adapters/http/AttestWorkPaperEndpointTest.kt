@@ -272,6 +272,7 @@ class AttestWorkPaperEndpointTest {
                     block: () -> T,
                 ): T = error("this fixture never audits")
             },
+            WorkPaperViewAuthority { _, _ -> true },
         )
     }
 

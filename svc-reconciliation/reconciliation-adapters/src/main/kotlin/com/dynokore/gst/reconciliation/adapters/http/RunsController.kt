@@ -68,6 +68,7 @@ open class RunsController(
     exportWorkPaper: ExportWorkPaper,
     exportAuthority: ExportAuthority,
     auditedOperations: AuditedOperations,
+    private val workPaperViewAuthority: WorkPaperViewAuthority,
 ) : RunsApi {
     private val delivery =
         ExportDelivery(getRun, transactions, tenants, exportWorkPaper, exportAuthority, auditedOperations)
@@ -99,10 +100,21 @@ open class RunsController(
         return ResponseEntity.ok(run(snapshot.run))
     }
 
+    /**
+     * `getWorkPaper` (INV-T-28549, INV-AC-28548): no token is 401; then the run's entity is read (unknown run or an
+     * entity outside the caller's current entity set is 404, no decision); then one decision of `work-paper.view` on
+     * that entity; only an allow reaches the use case. A 401 or 403 throws [AttestationRefusal], rendered by
+     * [AttestationRefusalAdvice].
+     */
     override fun getWorkPaper(runId: UUID): ResponseEntity<WorkPaper> {
+        val caller = caller()
         val tenant = tenants.current().toString()
+        val entityRef = visibleEntity(caller, tenant, runId)
+        if (entityRef != null && !workPaperViewAuthority.allows(caller.actor, entityRef)) {
+            throw AttestationRefusal(AttestationRefusalCode.ACCESS_DENIED)
+        }
         val view =
-            transactions.inTransaction { getWorkPaper.execute(tenant, runId.toString()) }
+            entityRef?.let { transactions.inTransaction { getWorkPaper.execute(tenant, runId.toString()) } }
                 ?: return refusal(ClosedErrorCode.NOT_FOUND, "No such run.")
         return ResponseEntity.ok(workPaper(view))
     }
@@ -158,15 +170,22 @@ open class RunsController(
         requests.getObject().getAttribute(EndUserPrincipalBindingFilter.PRINCIPAL_ATTRIBUTE) as? EndUserPrincipal
             ?: throw AttestationRefusal(AttestationRefusalCode.UNAUTHENTICATED)
 
-    /** The run's entity, read before any decision; unknown run or entity outside a current set: 404 (API-24). */
+    /** As [visibleEntity], throwing the 404 of [AttestationRefusal]. */
     private fun entityOf(
         caller: EndUserPrincipal,
         tenant: String,
         runId: UUID,
-    ): String {
+    ): String = visibleEntity(caller, tenant, runId) ?: throw AttestationRefusal(AttestationRefusalCode.NOT_FOUND)
+
+    /** The run's entity, read before any decision; unknown run or entity outside a current set: null, 404 (API-24). */
+    private fun visibleEntity(
+        caller: EndUserPrincipal,
+        tenant: String,
+        runId: UUID,
+    ): String? {
         val entityRef = transactions.inTransaction { getRun.execute(tenant, runId.toString()) }?.run?.entityRef
         val visible = entityRef != null && (!caller.entitySetCurrent || caller.covers(EntityRef(entityRef)))
-        return entityRef.takeIf { visible } ?: throw AttestationRefusal(AttestationRefusalCode.NOT_FOUND)
+        return entityRef.takeIf { visible }
     }
 
     private fun storedOrRefusal(result: AttestationResult): StoredAttestation =
