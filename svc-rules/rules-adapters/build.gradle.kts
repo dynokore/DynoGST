@@ -42,6 +42,7 @@ dependencies {
     implementation(libs.platform.tenancyKernel.api)
     implementation(libs.platform.tenancyKernel.impl)
     implementation(libs.platform.tenancyJooq.api)
+    implementation(libs.platform.auditLog.api)
     implementation(libs.platform.outboxAndQueue.api)
     implementation(libs.platform.outboxAndQueue.impl)
     implementation(libs.platform.serviceRuntime.api)

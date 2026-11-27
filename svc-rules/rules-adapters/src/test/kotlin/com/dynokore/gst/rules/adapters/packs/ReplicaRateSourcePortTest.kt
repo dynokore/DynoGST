@@ -287,6 +287,8 @@ class ReplicaRateSourcePortTest {
         acceptances.failing = true
         port(contents = twoInferred).blocking(tenant, day) shouldBe null
         port(contents = twoInferred).blocking(other, day) shouldBe null
+        // the store is not an input of the inferred set: it is still the exact set of the pack
+        port(contents = twoInferred).inferred(tenant, day) shouldBe setOf("S1", "S2")
     }
 
     // ---- the inferred ids (InferredRateSourcePort) ----

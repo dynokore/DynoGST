@@ -5,6 +5,7 @@ import com.dynokore.gst.rules.adapters.packs.RefusingPackActionAuthority
 import com.dynokore.gst.rules.adapters.packs.ReplicaRateSourcePort
 import com.dynokore.gst.rules.adapters.packs.ServiceKeyHolderCopyWriter
 import com.dynokore.gst.rules.adapters.persistence.ArmedPackLookup
+import com.dynokore.gst.rules.adapters.persistence.JooqRateSourceAcceptanceStore
 import com.dynokore.gst.rules.application.HolderCopyPort
 import com.dynokore.gst.rules.application.HolderCopyRequest
 import com.dynokore.gst.rules.application.HolderCopyResult
@@ -13,14 +14,20 @@ import com.dynokore.gst.rules.application.PackApprovalDecision
 import com.dynokore.gst.rules.application.PackApprovalDecisionPort
 import com.dynokore.gst.rules.application.PackEvent
 import com.dynokore.gst.rules.application.PackEventEmitter
+import com.dynokore.gst.rules.application.RateSourceAcceptance
 import com.dynokore.gst.rules.application.RateSourcePort
 import com.dynokore.gst.rules.served.TENANT_A
 import com.dynokore.gst.rules.served.USER_A_TOKEN
 import com.dynokore.gst.rules.served.workloadToken
+import com.dynokore.platform.auditlog.AuditEntry
+import com.dynokore.platform.auditlog.AuditWriteFailed
+import com.dynokore.platform.auditlog.AuditWriter
 import com.dynokore.platform.outboxandqueue.CausationId
 import com.dynokore.platform.outboxandqueue.CorrelationId
 import com.dynokore.platform.outboxandqueue.EntityRef
+import com.dynokore.platform.outboxandqueue.Envelope
 import com.dynokore.platform.outboxandqueue.EventContext
+import com.dynokore.platform.productruntime.PlatformEventCatalogue
 import com.dynokore.platform.rulepackkernel.PackType
 import com.dynokore.platform.serviceruntime.identity.EndUserPrincipal
 import com.dynokore.platform.serviceruntime.identity.EndUserPrincipalResolver
@@ -59,8 +66,12 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.time.LocalDate
 import java.util.UUID
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 
 private const val PLATFORM = "ffffffff-ffff-ffff-ffff-ffffffffffff"
 private const val CONSOLE = "console-bff"
@@ -771,6 +782,38 @@ class MappingPackBoundaryTest(
             "$PACKS/$packId/entries/S1/source-class-acceptance",
             """{"rationale":"seen","expiresOn":"2099-01-01","entityRef":"$ENTITY"}""",
         )
+    }
+
+    @Test
+    fun `submitForApproval refuses a clientNote and stores nothing, and a body without a note submits`() {
+        fun freshDraft(): String {
+            val version = "cn-${UUID.randomUUID().toString().take(8)}"
+            val packId = seedPack(version)
+            deltaRow(TENANT_A, version, "COMPLETE")
+            return packId
+        }
+
+        fun submitWith(
+            packId: String,
+            body: String?,
+        ) = call("POST", "$PACKS/$packId/submissions?entityRef=$ENTITY", body)
+
+        val refused = freshDraft()
+        val before = snapshot()
+        val answer = submitWith(refused, """{"clientNote":"please review"}""")
+        answer.statusCode() shouldBe 400
+        json(answer).get("code").asString() shouldBe "SRT-001"
+        json(answer).get("detail").asString() shouldBe
+            "clientNote is not accepted: this service does not store it yet"
+        snapshot() shouldBe before
+
+        listOf(null, "{}", """{"clientNote":null}""").forEach { body ->
+            val accepted = submitWith(freshDraft(), body)
+            io.kotest.assertions.withClue("body $body: ${accepted.body()}") {
+                accepted.statusCode() shouldBe 200
+                json(accepted).get("status").asString() shouldBe "SUBMITTED"
+            }
+        }
     }
 
     @Test
@@ -1732,28 +1775,15 @@ class RateSourceAcceptanceDoubles {
     fun holderCopyPort(): HolderCopyPort = HolderCopyPort { HolderCopyResult.Written }
 }
 
-/**
- * `acceptRateSource` through the wired service on real PostgreSQL, and its effect on the rate-source block of
- * `approvePack` (INV-T-24951; INV-REQ-504, INV-AC-24949).
- */
-@SpringBootTest(
-    classes = [RateSourceAcceptanceDoubles::class, VersionedBuild::class, RulesApplication::class],
-    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    properties = [
-        "service-runtime.idempotency.schema=rules",
-        "service-runtime.workload-identity.callers[0].service=$CONSOLE",
-        "service-runtime.workload-identity.callers[0].subject=subject-of-$CONSOLE",
-        "service-runtime.workload-identity.callers[1].service=$CONSOLE$ALT",
-        "service-runtime.workload-identity.callers[1].subject=subject-of-$CONSOLE$ALT",
-    ],
-)
-class RateSourceAcceptanceBoundaryTest(
-    @Autowired private val replica: StructureReplica,
-    @Autowired private val clock: java.time.Clock,
-    @org.springframework.boot.test.web.server.LocalServerPort port: Int,
+/** The requests, fixtures and audit reads of [RateSourceAcceptanceBoundaryTest]. */
+open class RateSourceAcceptanceSupport(
+    private val replica: StructureReplica,
+    protected val clock: java.time.Clock,
+    protected val context: ApplicationContext,
+    port: Int,
 ) : MappingPackSupport(port) {
-    private val tenant = newTenant()
-    private val today get() = LocalDate.ofInstant(clock.instant(), java.time.ZoneOffset.UTC)
+    protected val tenant = newTenant()
+    protected val today get() = LocalDate.ofInstant(clock.instant(), java.time.ZoneOffset.UTC)
 
     @org.junit.jupiter.api.BeforeEach
     fun arrange() {
@@ -1761,14 +1791,14 @@ class RateSourceAcceptanceBoundaryTest(
         replica.onSnapshotComplete(1)
     }
 
-    private fun newTenant() = TenantId(UUID.randomUUID())
+    protected fun newTenant() = TenantId(UUID.randomUUID())
 
-    private fun user(
+    protected fun user(
         who: String,
         of: TenantId = tenant,
     ) = "$RA_USER_PREFIX$who:$of"
 
-    private fun scopePack(
+    protected fun scopePack(
         vararg sources: Pair<String, String>,
         of: TenantId = tenant,
     ) {
@@ -1792,7 +1822,7 @@ class RateSourceAcceptanceBoundaryTest(
         )
     }
 
-    private fun elect(source: String) =
+    protected fun elect(source: String) =
         replica.accept(
             EntityProfileChanged(
                 tenant,
@@ -1809,21 +1839,21 @@ class RateSourceAcceptanceBoundaryTest(
             ),
         )
 
-    private fun submitted(): Pair<String, String> {
+    protected fun submitted(): Pair<String, String> {
         val version = "ra-v-${UUID.randomUUID().toString().take(8)}"
         val packId = seedPack(version, "SUBMITTED", tenant)
         deltaRow(tenant, version, "COMPLETE")
         return packId to version
     }
 
-    private fun approveOwn(packId: String) = approve(packId, user("user-b"))
+    protected fun approveOwn(packId: String) = approve(packId, user("user-b"))
 
-    private fun body(
+    protected fun body(
         rationale: String = "seen",
         expiresOn: LocalDate = today.plusDays(1),
     ) = """{"rationale":"$rationale","expiresOn":"$expiresOn"}"""
 
-    private fun acceptSource(
+    protected fun acceptSource(
         sourceId: String,
         body: String = body(),
         by: String = "user-c",
@@ -1831,10 +1861,10 @@ class RateSourceAcceptanceBoundaryTest(
         workload: String = CONSOLE,
     ) = call("POST", "$RATE_SOURCES/$sourceId/acceptance", body, user(by, of), workloadToken(workload))
 
-    private fun stored(of: TenantId = tenant) =
+    protected fun stored(of: TenantId = tenant) =
         rows(of, "select * from rules.rate_source_acceptance order by source_id")
 
-    private fun assertBlocked(
+    protected fun assertBlocked(
         packId: String,
         sourceId: String,
     ) {
@@ -1844,6 +1874,216 @@ class RateSourceAcceptanceBoundaryTest(
             json(answer).get("code").asString() shouldBe "RUL-007"
             json(answer).get("detail").asString() shouldBe "entries: $sourceId"
         }
+    }
+
+    /** The audit entries of the tenant in the outbox, oldest first. */
+    protected fun auditRows() =
+        rows(
+            tenant,
+            "select data::text as payload, tenant_id::text as tenant_ref, entity_ref, doc_uuid, subject, " +
+                "correlation_id, causation_id from rules.outbox where tenant_id = '$tenant' and type = " +
+                "'${PlatformEventCatalogue.AUDIT_ENTRY_RECORDED.eventType}' order by seq",
+        )
+
+    /** The entry of [row], compared field by field; returns its prior state. */
+    protected fun assertEntry(
+        row: Map<String, Any?>,
+        actor: String,
+        reason: String,
+    ): JsonNode {
+        val entry = mapper.readTree(row["payload"] as String)
+        entry.get("actor").asString() shouldBe actor
+        entry.get("action").asString() shouldBe "acceptRateSource"
+        entry.get("scope").asString() shouldBe "S1"
+        entry.get("reason").asString() shouldBe reason
+        row["tenant_ref"] shouldBe tenant.toString()
+        row["entity_ref"] shouldBe EntityRef.TENANT_WIDE.value
+        row["doc_uuid"] shouldBe null
+        row["subject"].toString() shouldContain "S1"
+        (row["correlation_id"] as String).isNotBlank() shouldBe true
+        (row["causation_id"] as String).isNotBlank() shouldBe true
+        return entry.get("priorState")
+    }
+
+    /** The prior state holds exactly the four members, each equal to the value given. */
+    protected fun assertPriorState(
+        priorState: JsonNode,
+        rationale: String,
+        expiresOn: LocalDate,
+        acceptedBy: String,
+        acceptedAt: String,
+    ) {
+        priorState shouldBe
+            mapper
+                .createObjectNode()
+                .put("rationale", rationale)
+                .put("expiresOn", expiresOn.toString())
+                .put("acceptedBy", acceptedBy)
+                .put("acceptedAt", acceptedAt)
+    }
+
+    protected fun instantOf(text: String) =
+        java.time.OffsetDateTime
+            .parse(text)
+            .toInstant()
+            .toString()
+
+    protected fun acceptanceOf(
+        rationale: String,
+        by: String,
+    ) = RateSourceAcceptance(tenant, "S1", rationale, today.plusDays(1), by)
+
+    protected fun <T> inOwnTransaction(block: () -> T): T =
+        context.getBean(TenantContext::class.java).bind(tenant, "rate-source-test") {
+            context.getBean(TransactionRunner::class.java).inTransaction { block() }
+        }
+
+    protected fun awaitLockWait(call: CompletableFuture<*>) {
+        val deadline = System.nanoTime() + WAIT_NANOS
+
+        fun waiting() =
+            (
+                value(
+                    tenant,
+                    "select count(*) from pg_stat_activity where wait_event_type = 'Lock' " +
+                        "and query ilike '%rate_source_acceptance%'",
+                ) as Number
+            ).toInt() > 0
+        while (System.nanoTime() < deadline && !call.isDone && !waiting()) Thread.sleep(POLL_MILLIS)
+        check(waiting()) { "the second call never waited on the uncommitted row" }
+    }
+}
+
+/**
+ * `acceptRateSource` through the wired service on real PostgreSQL, and its effect on the rate-source block of
+ * `approvePack` (INV-T-24951; INV-REQ-504, INV-AC-24949).
+ */
+@SpringBootTest(
+    classes = [RateSourceAcceptanceDoubles::class, VersionedBuild::class, RulesApplication::class],
+    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+    properties = [
+        "service-runtime.idempotency.schema=rules",
+        "service-runtime.workload-identity.callers[0].service=$CONSOLE",
+        "service-runtime.workload-identity.callers[0].subject=subject-of-$CONSOLE",
+        "service-runtime.workload-identity.callers[1].service=$CONSOLE$ALT",
+        "service-runtime.workload-identity.callers[1].subject=subject-of-$CONSOLE$ALT",
+    ],
+)
+class RateSourceAcceptanceBoundaryTest(
+    @Autowired replica: StructureReplica,
+    @Autowired clock: java.time.Clock,
+    @Autowired context: ApplicationContext,
+    @org.springframework.boot.test.web.server.LocalServerPort port: Int,
+) : RateSourceAcceptanceSupport(replica, clock, context, port) {
+    private val db get() = context.getBean(org.jooq.DSLContext::class.java)
+    private val acceptanceStore get() = context.getBean(JooqRateSourceAcceptanceStore::class.java)
+
+    @Test
+    fun `a first acceptance writes one audit entry and a repeat one more with the replaced values`() {
+        scopePack("S1" to "INFERRED")
+        auditRows() shouldBe emptyList()
+        val first = ok(acceptSource("S1", body(rationale = "first")))
+        val firstEntries = auditRows()
+        firstEntries.size shouldBe 1
+        assertEntry(firstEntries.single(), "user-c", "first") shouldBe mapper.createObjectNode()
+
+        ok(acceptSource("S1", body(rationale = "second", expiresOn = today.plusDays(30)), by = "user-d"))
+        val entries = auditRows()
+        entries.size shouldBe 2
+        entries.first() shouldBe firstEntries.single()
+        assertPriorState(
+            assertEntry(entries.last(), "user-d", "second"),
+            "first",
+            today.plusDays(1),
+            "user-c",
+            instantOf(first.get("acceptedAt").asString()),
+        )
+    }
+
+    @Test
+    fun `a refused acceptance writes no audit entry`() {
+        fun refused(
+            status: Int,
+            answer: () -> HttpResponse<String>,
+        ) {
+            val response = answer()
+            io.kotest.assertions.withClue(response.body()) { response.statusCode() shouldBe status }
+            auditRows() shouldBe emptyList()
+        }
+
+        refused(503) { acceptSource("S1") }
+        scopePack("S1" to "INFERRED")
+        refused(400) { acceptSource("S1", body(expiresOn = today)) }
+        refused(404) { acceptSource("S10") }
+        RateAuthorityProbe.denyTenant = true
+        refused(403) { acceptSource("S1") }
+        stored() shouldBe emptyList()
+    }
+
+    @Test
+    fun `a failing audit writer leaves no new row and leaves the earlier row unchanged`() {
+        val writer =
+            object : AuditWriter {
+                override fun record(
+                    entry: AuditEntry,
+                    context: EventContext,
+                ): Envelope = throw AuditWriteFailed(IllegalStateException("down"))
+            }
+        val failing = JooqRateSourceAcceptanceStore(db, clock, writer)
+        shouldThrow<AuditWriteFailed> { inOwnTransaction { failing.replace(acceptanceOf("first", "user-c")) } }
+        stored() shouldBe emptyList()
+        auditRows() shouldBe emptyList()
+
+        inOwnTransaction { acceptanceStore.replace(acceptanceOf("kept", "user-c")) }
+        val earlier = stored()
+        earlier.size shouldBe 1
+        val entries = auditRows()
+        entries.size shouldBe 1
+        shouldThrow<AuditWriteFailed> { inOwnTransaction { failing.replace(acceptanceOf("lost", "user-d")) } }
+        stored() shouldBe earlier
+        auditRows() shouldBe entries
+    }
+
+    @Test
+    fun `of two first calls at once the second waits for the first and records its values as the prior state`() {
+        val written = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val firstAcceptedAt = AtomicReference<String>()
+        val first =
+            CompletableFuture.supplyAsync {
+                inOwnTransaction {
+                    acceptanceStore.replace(acceptanceOf("first", "user-c"))
+                    firstAcceptedAt.set(acceptanceStore.acceptedAt(tenant, "S1").toInstant().toString())
+                    written.countDown()
+                    check(release.await(WAIT_SECONDS, TimeUnit.SECONDS)) { "the first call was never released" }
+                }
+            }
+        val second: CompletableFuture<Unit>
+        try {
+            check(written.await(WAIT_SECONDS, TimeUnit.SECONDS)) { "the first call never wrote" }
+            second =
+                CompletableFuture.supplyAsync {
+                    inOwnTransaction { acceptanceStore.replace(acceptanceOf("second", "user-d")) }
+                }
+            awaitLockWait(second)
+            second.isDone shouldBe false
+            stored() shouldBe emptyList()
+        } finally {
+            release.countDown()
+        }
+        first.get(WAIT_SECONDS, TimeUnit.SECONDS)
+        second.get(WAIT_SECONDS, TimeUnit.SECONDS)
+        stored().single()["rationale"] shouldBe "second"
+        val entries = auditRows()
+        entries.size shouldBe 2
+        assertEntry(entries.first(), "user-c", "first") shouldBe mapper.createObjectNode()
+        assertPriorState(
+            assertEntry(entries.last(), "user-d", "second"),
+            "first",
+            today.plusDays(1),
+            "user-c",
+            firstAcceptedAt.get(),
+        )
     }
 
     @Test

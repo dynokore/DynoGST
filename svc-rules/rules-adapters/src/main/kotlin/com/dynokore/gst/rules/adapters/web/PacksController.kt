@@ -351,17 +351,24 @@ open class PacksController(
             )
         }
 
-    // The `clientNote` of the optional body is stored and answered by INV-T-28439; until then the body changes nothing.
+    /**
+     * Interim until INV-T-28439 stores it: a `clientNote` is refused before the use case, so no input is answered as
+     * accepted and then discarded (OWASP ASVS V5). A body without a note changes nothing.
+     */
     override fun submitForApproval(
         packId: String,
         idempotencyKey: UUID,
         entityRef: String?,
         submitForApprovalRequest: SubmitForApprovalRequest?,
-    ): ResponseEntity<MappingPack> =
-        transactions.inTransaction {
+    ): ResponseEntity<MappingPack> {
+        if (submitForApprovalRequest?.clientNote != null) {
+            throw ApiRefusal(ClosedErrorCode.CONTRACT_VIOLATION, CLIENT_NOTE_NOT_STORED)
+        }
+        return transactions.inTransaction {
             repeatable(authoring.submit(PackActionCommand(actor(), entityRef.orEmpty(), packId)), PackStatus.SUBMITTED)
             ResponseEntity.ok(packAnswer(packId, withApprovals = false))
         }
+    }
 
     override fun approvePack(
         packId: String,
@@ -822,6 +829,9 @@ open class PacksController(
     ) = MappingRefusal(code.httpStatus, code.code, code.title, detail)
 
     companion object {
+        private const val CLIENT_NOTE_NOT_STORED =
+            "clientNote is not accepted: this service does not store it yet"
+
         /** The scoped permission of `rollbackPack`: equals `x-operation.permission` of the pinned contract. */
         const val REGULATORY_PACK_ROLLBACK = "regulatory-pack.rollback"
 

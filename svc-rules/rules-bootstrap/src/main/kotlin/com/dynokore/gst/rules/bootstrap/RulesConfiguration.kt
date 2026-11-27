@@ -116,6 +116,7 @@ import com.dynokore.gst.rules.application.TrustAnchorSource
 import com.dynokore.gst.rules.domain.resolution.PackResolver
 import com.dynokore.gst.rules.domain.resolution.PackTypes
 import com.dynokore.gst.rules.domain.scope.ScopeVerdictPort
+import com.dynokore.platform.auditlog.AuditWriter
 import com.dynokore.platform.configresolver.PolicyScope
 import com.dynokore.platform.crypto.DetachedSigner
 import com.dynokore.platform.outboxandqueue.CatalogueEntry
@@ -1061,7 +1062,8 @@ class RulesConfiguration {
     fun rateSourceAcceptanceStore(
         dsl: DSLContext,
         clock: Clock,
-    ): JooqRateSourceAcceptanceStore = JooqRateSourceAcceptanceStore(dsl, clock)
+        audit: AuditWriter,
+    ): JooqRateSourceAcceptanceStore = JooqRateSourceAcceptanceStore(dsl, clock, audit)
 
     /**
      * The acceptance of an INFERRED rate source. Its inferred ids come from the replica port, not from the
