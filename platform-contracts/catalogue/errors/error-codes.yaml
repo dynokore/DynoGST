@@ -1,4 +1,5 @@
-# Vendored, read-only copy of invoice-docs' model/architecture/error-codes.yaml, pinned at commit 08b2ed6ed3b97f930dba308c00af1c738de3d4af (2026-11-23), the merge of invoice-docs INV-T-28038 adding ING-028, record line without a tax code, HTTP 400 (re-vendor INV-T-28039, INV-REQ-479, owner ruling of 2026-11-23 option C, breakdown tooling/gap21416-gap.md);
+# Vendored, read-only copy of invoice-docs' model/architecture/error-codes.yaml, pinned at commit 4dd5af56cd1ffccad6f3276812728ab2b489297e (2026-11-27), the merge of invoice-docs INV-T-29328 adding EVD-010, chain lookup refused, reproduction version with no recorded source, HTTP 409 (re-vendor INV-T-29330, INV-AC-29329, coordinator ruling (delegated) HIGH, breakdown tooling/qfu1127-gap.md); this re-vendor also brings MDM-019 (invoice-docs INV-T-28599) and the reworded ING-021 condition (invoice-docs INV-T-29017);
+# previously pinned at 08b2ed6ed3b97f930dba308c00af1c738de3d4af (2026-11-23), the merge of invoice-docs INV-T-28038 adding ING-028, record line without a tax code, HTTP 400 (re-vendor INV-T-28039, INV-REQ-479, owner ruling of 2026-11-23 option C, breakdown tooling/gap21416-gap.md);
 # previously pinned at b298418105fb5b9133a1e0066f1e46a1fa8acddd (2026-11-23), the merge of invoice-docs INV-T-27728 adding ING-027, aggregation window not closed (re-vendor INV-T-27729, INV-REQ-413, coordinator ruling (delegated) HIGH option A of the owner ruling of 2026-11-22, breakdown tooling/oa1122-gap.md);
 # previously pinned at 18cc81a39793815b123dda42759bb19fb7d69e39 (2026-11-21), the last invoice-docs main commit that changed the file, bringing PAY-020, no accepted specification release (invoice-docs INV-T-26405; re-vendor INV-T-26406, INV-REQ-590, coordinator ruling (delegated) HIGH option A of breakdown tooling/ansq1121d-gap.md); this re-vendor also brings SRT-016, ING-025, ING-026 and the willTransmit and residualRisk members of the OVERRIDABLE codes (invoice-docs INV-T-26325);
 # previously pinned at f30d4acd763184a05db8b9fad3b16043fc7ea2b1 (2026-11-20), the merge of invoice-docs INV-T-25061 giving every code its required headline (re-vendor INV-T-25063, INV-REQ-1022, coordinator ruling (delegated) HIGH option A of the owner ruling of 2026-11-18, breakdown tooling/owner-answers-1118-oa1118d-gap.md);
@@ -167,7 +168,7 @@ error_codes:
   owner: Integration
   headline: Request too large to accept
 - code: ING-021
-  condition: 'Header-marked test request refused: the installation has no paired non-production workspace, so the request is not processed and nothing is stored in production (HTTP 422; INV-REQ-829, INV-AC-2060, INV-Q-6041)'
+  condition: 'Header-marked test request refused: it was made with a production credential; a test request is made with the credential of a non-production workspace, so the request is not processed and nothing is stored in production (HTTP 422; INV-REQ-829, INV-AC-14108, INV-AC-2060, INV-Q-6041)'
   severity: BLOCK
   disposition: TERMINAL
   owner: Integration
@@ -283,6 +284,12 @@ error_codes:
   disposition: TERMINAL
   owner: Platform
   headline: "Connection test blocked: wrong environment"
+- code: MDM-019
+  condition: "Rate import names no usable dry run: the request has no `dryRunId` or a blank one, or the dry run is unknown, of another tenant or entity, not SUCCEEDED, or for another source, fileHash or rows, so nothing is stored and no ReferenceRateLoaded is emitted (HTTP 422; INV-REQ-506)"
+  severity: BLOCK
+  disposition: MANUAL
+  owner: Finance
+  headline: Rate import has no usable dry run
 - code: RUL-001
   condition: Internal tax code has no mapping in the active pack
   severity: BLOCK
@@ -981,6 +988,12 @@ error_codes:
   disposition: TERMINAL
   owner: Platform and security.officer
   headline: Deletion already in progress
+- code: EVD-010
+  condition: 'Evidence chain lookup refused: a version of the chain has a pack version with no recorded source, so its reproduction cannot be stated (HTTP 409; INV-REQ-1345)'
+  severity: BLOCK
+  disposition: TERMINAL
+  owner: Platform
+  headline: Reproduction record missing
 - code: SRT-001
   condition: 'Request does not match the contract: shape, type or a missing required field (ContractViolation, ARC-19; HTTP
     400; INV-Q-3720, INV-REQ-827 b3)'
