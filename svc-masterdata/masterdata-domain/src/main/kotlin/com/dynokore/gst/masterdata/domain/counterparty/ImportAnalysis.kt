@@ -1,6 +1,7 @@
 package com.dynokore.gst.masterdata.domain.counterparty
 
 import com.dynokore.platform.partyregistry.IdentifierScheme
+import java.time.LocalDate
 
 /** One mapped row of a counterparty import file (`CounterpartyImportRow` of the contract), as given. */
 data class ImportRow(
@@ -217,11 +218,15 @@ private fun schemeChange(
 
 private fun SchemeInput.item() = Triple(scheme, effectiveFrom, effectiveTo)
 
+/** The order of a rendered list: an item without an end comes after every dated one of equal start and scheme. */
+private val renderOrder =
+    compareBy<SchemeInput>({ it.effectiveFrom }, { it.scheme }).thenBy(nullsLast<LocalDate>()) { it.effectiveTo }
+
 /** `scheme:effectiveFrom/effectiveTo` per item (nothing after the slash without an end), sorted and `;`-joined. */
 private fun rendered(items: List<SchemeInput>): String {
     val text =
         items
-            .sortedWith(compareBy<SchemeInput>({ it.effectiveFrom }, { it.scheme }, { it.effectiveTo }))
+            .sortedWith(renderOrder)
             .joinToString(";") { "${it.scheme}:${it.effectiveFrom}/${it.effectiveTo ?: ""}" }
     return if (text.length <= MAX_CHANGE_VALUE) text else text.take(MAX_CHANGE_VALUE - CUT_MARK.length) + CUT_MARK
 }

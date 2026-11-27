@@ -202,6 +202,14 @@ class ImportAnalysisTest {
     }
 
     @Test
+    fun `INV-AC-29508 an open-ended item given first renders after the dated one, supplied and held`() {
+        val open = mes.copy(effectiveTo = null)
+        val both = "MES:2026-01-01/2026-12-31;MES:2026-01-01/"
+        assertSchemeChange(analyseSchemes(listOf(open, mes), mes), both, "MES:2026-01-01/2026-12-31")
+        assertSchemeChange(analyseSchemes(emptyList(), open, mes), "", both)
+    }
+
+    @Test
     fun `INV-AC-29508 an empty list is one change with an empty newValue`() {
         assertSchemeChange(analyseSchemes(emptyList(), mes), "", "MES:2026-01-01/2026-12-31")
     }
