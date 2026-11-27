@@ -56,12 +56,15 @@ internal object EnvelopeFields {
 
     // INV-Q-3165: "tenantid present, entityref absent" maps back to the tenant-wide entity, for a platform
     // event type or the domain events AccessPointRouteChanged, PlanLimitExceeded, UnsubmittedDocumentCountMeasured,
-    // OffboardingExportFinished and OffboardingExportRequested only (INV-Q-15474); any other domain event
-    // without entityref is a contract violation (FR-K.3). The reserved id
+    // OffboardingExportFinished and OffboardingExportRequested (INV-Q-15474), or the pair of type
+    // com.dynokore.gst.access.MessageRequested.v1 and source /gst/evidence-svc (owner ruling, chat 2026-11-26)
+    // only; any other domain event without entityref is a contract violation (FR-K.3). The reserved id
     // itself never travels on the wire.
     private fun realTenantEntityOf(node: ObjectNode): EntityRef {
         if (!node.has("entityref")) {
-            if (!Envelope.allowsTenantWide(text(node, "type"))) throw ContractViolation("entityref is required")
+            if (!Envelope.allowsTenantWide(text(node, "type"), text(node, "source"))) {
+                throw ContractViolation("entityref is required")
+            }
             return EntityRef.TENANT_WIDE
         }
         val entity = EntityRef(text(node, "entityref"))

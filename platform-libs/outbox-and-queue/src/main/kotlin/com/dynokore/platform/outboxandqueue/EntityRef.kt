@@ -42,7 +42,9 @@ value class EntityRef(
          * `com.dynokore.gst.submission.UnsubmittedDocumentCountMeasured.v1`
          * (delegated ruling of tooling/gap23031-gap.md) and
          * `com.dynokore.gst.evidence.OffboardingExportFinished.v1` (delegated ruling of tooling/gap22956-gap.md) and
-         * `com.dynokore.gst.tenancy.OffboardingExportRequested.v1` (delegated ruling of tooling/gap22966-gap.md).
+         * `com.dynokore.gst.tenancy.OffboardingExportRequested.v1` (delegated ruling of tooling/gap22966-gap.md),
+         * and the pair of the type `com.dynokore.gst.access.MessageRequested.v1` with the source
+         * `/gst/evidence-svc` only (owner ruling, chat 2026-11-26, option A).
          */
         val TENANT_WIDE: EntityRef = EntityRef(TENANT_WIDE_VALUE)
     }

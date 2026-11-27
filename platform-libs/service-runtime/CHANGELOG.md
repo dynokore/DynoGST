@@ -6,6 +6,10 @@ train is its own (README.md: "own version and changelog").
 
 ## [Unreleased]
 
+## [14.1.1] - 2026-11-27
+### Changed
+- Version step only (G-DVS, INV-T-29023, INV-AC-29022): the published bytes change because the dependency `outbox-and-queue` steps to 6.31.0; no code change in this module.
+
 ## [14.1.0] - 2026-11-27
 ### Added
 - `Principal.environment: StructureEnvironment?`: the claim `environment` of the verified machine access token, set by the machine token filter (INV-T-29096, INV-AC-29094). An absent claim gives null; a string gives `StructureEnvironment.of(value)` (exact match); any other JSON value gives `UNKNOWN`. The public constructor gives null. It is not part of `equals`, `hashCode` or `toString`, no authority decision reads it, and which tokens are accepted or refused does not change.

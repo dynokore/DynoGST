@@ -6,6 +6,10 @@ train is its own (README.md: "own version and changelog").
 
 ## [Unreleased]
 
+## [6.31.0] - 2026-11-27
+### Added
+- The tenant-wide entity is also allowed for one pair: the exact type `com.dynokore.gst.access.MessageRequested.v1` together with the exact event source `/gst/evidence-svc`, both by string equality, through the new `Envelope.allowsTenantWide(type, source)`, which the envelope, the reader (a record without `entityref`) and the outbox writer use. `allowsTenantWide(type)` and the five exact types are unchanged; the same type from any other source and every look-alike stay refused, and the platform tenant stays refused for the pair. The producer states the source, so this is not authentication of the sender (owner ruling, chat 2026-11-26, option A, breakdown tooling `oa1126a-gap.md`; INV-REQ-1162, INV-AC-29022, INV-T-29023).
+
 ## [6.30.0] - 2026-11-18
 ### Added
 - `EventHandler.handle(event, record)`, a default method that forwards to `handle(event)`: a handler that needs the position overrides it and receives the `LogRecord` (offset and stored envelope JSON) of each polled record, in the transaction that applies the envelope; a replayed dead letter carries `LogRecord.REPLAY_OFFSET` and `LogRecord.replayed` is true for it. The replay intake forwards the record and a replay-completed marker reaches no handler call. Existing handlers are unchanged (INV-T-24593, INV-AC-24592).

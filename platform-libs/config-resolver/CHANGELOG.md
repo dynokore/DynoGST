@@ -6,6 +6,10 @@ train is its own (README.md: "own version and changelog").
 
 ## [Unreleased]
 
+## [6.1.4] - 2026-11-27
+### Changed
+- Version step only (G-DVS, INV-T-29023, INV-AC-29022): the published bytes change because the dependency `outbox-and-queue` steps to 6.31.0; no code change in this module.
+
 ## [6.1.3] - 2026-11-22
 ### Changed
 - INV-T-27167, INV-AC-27166: `setPolicy` decides the setting permission before the planned and the retired refusals (order: key lookup, scope, permission, key state, reason); a caller without the permission is refused `ROLE_NOT_ALLOWED` and learns nothing about the key state. Types, signatures and refusal codes are unchanged; `validate` and the acknowledgement keep their order.

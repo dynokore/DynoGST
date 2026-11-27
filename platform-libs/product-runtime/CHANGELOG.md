@@ -6,6 +6,10 @@ train is its own (README.md: "own version and changelog").
 
 ## [Unreleased]
 
+## [3.0.2] - 2026-11-27
+### Changed
+- Version step only (G-DVS, INV-T-29023, INV-AC-29022): the published bytes change because the dependency `outbox-and-queue` steps to 6.31.0; no code change in this module.
+
 ## [3.0.1] - 2026-11-27
 ### Changed
 - Version step only (G-DVS, INV-T-29096, INV-AC-29094): the published bytes change because the dependency `service-runtime` steps to 14.1.0 (`Principal.environment`); no code change in this module.

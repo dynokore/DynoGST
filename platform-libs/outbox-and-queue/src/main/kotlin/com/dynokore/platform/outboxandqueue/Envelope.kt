@@ -44,10 +44,11 @@ data class Envelope(
         require(instanceId.isNotBlank()) { "instance id must not be blank" }
         require(docSequence == null || docSequence >= 1) { "docsequence starts at 1" }
         require(pairingHolds(tenant, entity)) { PLATFORM_PAIR }
-        require(!entity.isTenantWide || allowsTenantWide(type)) {
-            "only a platform event type or the domain events AccessPointRouteChanged, PlanLimitExceeded, " +
-                "UnsubmittedDocumentCountMeasured, OffboardingExportFinished and OffboardingExportRequested " +
-                "may carry the tenant-wide entity (FR-K.3, INV-Q-3165, INV-Q-15474), was '$type'"
+        require(!entity.isTenantWide || allowsTenantWide(type, source)) {
+            "only a platform event type, the domain events AccessPointRouteChanged, PlanLimitExceeded, " +
+                "UnsubmittedDocumentCountMeasured, OffboardingExportFinished and OffboardingExportRequested, or " +
+                "$EVIDENCE_MESSAGE_REQUESTED from the source $EVIDENCE_SOURCE " +
+                "may carry the tenant-wide entity (FR-K.3, INV-Q-3165, INV-Q-15474), was '$type' from '$source'"
         }
         require(!tenant.isPlatform || isPlatformType(type)) {
             "only a platform event type may be tenantless (FR-K.3, INV-Q-3018), was '$type'"
@@ -59,6 +60,10 @@ data class Envelope(
 
     companion object {
         private const val PLATFORM_TYPE_PREFIX = "com.dynokore.gst.platform."
+
+        // The one pair of type and source that may carry the tenant-wide entity (INV-REQ-1162, INV-AC-29022).
+        private const val EVIDENCE_MESSAGE_REQUESTED = "com.dynokore.gst.access.MessageRequested.v1"
+        private const val EVIDENCE_SOURCE = "/gst/evidence-svc"
 
         /** INV-REQ-1226 behaviour 1: the closed platform class, exact names only (INV-Q-14069 added the last). */
         private val PLATFORM_EVENTS =
@@ -137,6 +142,19 @@ data class Envelope(
          * is not a platform type: it still needs a real tenant.
          */
         fun allowsTenantWide(type: String): Boolean = isPlatformType(type) || type in TENANT_WIDE_DOMAIN_EVENTS
+
+        /**
+         * True when an event of [type] from [source] may carry the tenant-wide entity: [allowsTenantWide] of the
+         * type alone, or the pair of the exact type `com.dynokore.gst.access.MessageRequested.v1` and the exact
+         * source `/gst/evidence-svc`, both by string equality (owner ruling, chat 2026-11-26, option A;
+         * INV-REQ-1162). The envelope, its reader and the outbox writer use this function. The pair is a domain
+         * event and still needs a real tenant. The producer states the source, so this limits services that
+         * follow the library; it is not authentication of the sender.
+         */
+        fun allowsTenantWide(
+            type: String,
+            source: String,
+        ): Boolean = allowsTenantWide(type) || (type == EVIDENCE_MESSAGE_REQUESTED && source == EVIDENCE_SOURCE)
 
         private val SOURCE_PATTERN = Regex("^/gst/[a-z-]+$")
         private val TYPE_PATTERN = Regex("^com\\.dynokore\\.gst\\.[a-z-]+\\.[A-Za-z]+\\.v[0-9]+$")

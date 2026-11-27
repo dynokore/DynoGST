@@ -143,9 +143,10 @@ class JdbcOutboxWriter(
         }
         // INV-Q-3165, INV-Q-15474: the tenant-wide entity is for platform event types and the five exact domain
         // events AccessPointRouteChanged, PlanLimitExceeded, UnsubmittedDocumentCountMeasured,
-        // OffboardingExportFinished and OffboardingExportRequested only (FR-K.3).
+        // OffboardingExportFinished and OffboardingExportRequested, and for the pair of type
+        // com.dynokore.gst.access.MessageRequested.v1 and source /gst/evidence-svc only (FR-K.3).
         if (context.entity.isTenantWide) {
-            events.firstOrNull { !Envelope.allowsTenantWide(it.type) }?.let {
+            events.firstOrNull { !Envelope.allowsTenantWide(it.type, "/gst/$service") }?.let {
                 throw EmissionNotPermitted(service, it.type, "a domain event cannot carry the tenant-wide entity")
             }
         }
