@@ -64,7 +64,7 @@ class OperationsGateTest {
 
     @Test
     fun `INV-AC-14437 the real table covers the real contract`() {
-        OperationsGate.contractOperations(openapi).size shouldBe 18
+        OperationsGate.contractOperations(openapi).size shouldBe 19
         OperationsGate.contractChannels(asyncapi).size shouldBe 1
         run(done = doneText).shouldBeEmpty()
         doneLines() shouldBe
@@ -79,9 +79,9 @@ class OperationsGateTest {
     }
 
     @Test
-    fun `INV-AC-21120 eighteen operations, nine added rows UNASSIGNED, stubs equal the contract`() {
+    fun `INV-AC-21120 nineteen operations, ten added rows UNASSIGNED, stubs equal the contract`() {
         val ids = OperationsGate.contractOperations(openapi)
-        ids.size shouldBe 18
+        ids.size shouldBe 19
         OperationsGate.contractChannels(asyncapi).size shouldBe 1
         val rows = tsv.lines().filter { it.isNotBlank() }.map { it.split('\t') }
         rows.filter { it[0] == "operation" }.map { it[1] }.toSet() shouldBe ids
@@ -94,6 +94,7 @@ class OperationsGateTest {
                 "compareDocumentVersions",
                 "previewConfigurationPromotion",
                 "applyOperatingProfile",
+                "getRenditionSampleContent",
             )
         for (id in added) {
             val own = rows.filter { it[0] == "operation" && it[1] == id }
@@ -103,7 +104,7 @@ class OperationsGateTest {
         rows.single { it[0] == "operation" && it[1] == "getPortfolio" }[2] shouldBe "INV-T-26286"
         rows.single { it[0] == "operation" && it[1] == "correctPersonalData" }[2] shouldBe "INV-T-27145"
         rows.single { it[0] == "operation" && it[1] == "getEntityRenditionEvidence" }[2] shouldBe "INV-T-27623"
-        stubs.size shouldBe 11
+        stubs.size shouldBe 12
         stubs shouldBe ids - implemented
         run(done = doneText).shouldBeEmpty()
         doneLines() shouldBe
@@ -115,6 +116,18 @@ class OperationsGateTest {
                 "INV-T-27145",
                 "INV-T-27623",
             )
+    }
+
+    @Test
+    fun `INV-AC-27783 getRenditionSampleContent is one UNASSIGNED stub row, and the gate fails without the row`() {
+        val row = "operation\tgetRenditionSampleContent\tUNASSIGNED"
+        tsv.lines().filter { it.split('\t').getOrNull(1) == "getRenditionSampleContent" } shouldBe listOf(row)
+        ("getRenditionSampleContent" in OperationsGate.contractOperations(openapi)) shouldBe true
+        ("getRenditionSampleContent" in stubs) shouldBe true
+        doneLines().size shouldBe 6
+        run(done = doneText).shouldBeEmpty()
+        run(table = tsv.lines().filterNot { it == row }.joinToString("\n"), done = doneText) shouldBe
+            listOf("operation getRenditionSampleContent: in the contract, missing from operations.tsv")
     }
 
     @Test

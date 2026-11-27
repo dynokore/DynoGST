@@ -154,6 +154,13 @@ class CatalogueReadPermissions(
                     "rendition-evidence.view",
                     entityPathVariable = "entityRef",
                 ),
+                Entry(
+                    "GET",
+                    "/bff/entities/{entityRef}/rendition-sample-checks/{checkId}/content",
+                    "getRenditionSampleContent",
+                    "rendition-evidence.view",
+                    entityPathVariable = "entityRef",
+                ),
             )
     }
 }

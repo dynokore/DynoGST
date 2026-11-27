@@ -220,6 +220,70 @@ class ReadPermissionContractTest {
         }
     }
 
+    @Test
+    fun `INV-AC-27783 the route of getRenditionSampleContent is mapped to its key at entity scope`() {
+        val template = "/bff/entities/{entityRef}/rendition-sample-checks/{checkId}/content"
+        check("getRenditionSampleContent" !in EXPECTED_UNMAPPED) { "listed as unmapped" }
+        val e = CatalogueReadPermissions.ENTRIES.single { it.operationId == "getRenditionSampleContent" }
+        check(
+            e ==
+                CatalogueReadPermissions.Entry(
+                    "GET",
+                    template,
+                    "getRenditionSampleContent",
+                    "rendition-evidence.view",
+                    entityPathVariable = "entityRef",
+                ),
+        ) { "entry: $e" }
+        check(real().isEmpty()) { "${real()}" }
+        check(ask("keyFor", "GET", template) == "rendition-evidence.view") { "key of the template" }
+        check(ask("entityPathVariableFor", "GET", template) == "entityRef") { "entity variable" }
+        check(ask("entityParameterFor", "GET", template) == null) { "a query parameter names the entity" }
+        check(ask("admitsAnyEntityFor", "GET", template) == false) { "admits any entity" }
+        val path = "/bff/entities/ENT-0001/rendition-sample-checks/chk-0001/content"
+        check(ask("keyFor", "GET", path) == "rendition-evidence.view") { "key of a path" }
+        check(ask("entityRefFor", "GET", path) == "ENT-0001") { "entity of a path" }
+        for (other in listOf(template.removeSuffix("/content"), "$template/")) {
+            check(ask("keyFor", "GET", other) == null) { "mapped: $other" }
+            check(ask("entityRefFor", "GET", other) == null) { "entity taken: $other" }
+        }
+        check(ask("keyFor", "POST", template) == null) { "mapped for POST" }
+    }
+
+    /**
+     * One lookup in the real table. It is called by reflection: the table implements a port of the application module,
+     * which is not on the compile classpath of this module.
+     */
+    private fun ask(
+        lookup: String,
+        method: String,
+        path: String,
+    ): Any? =
+        CatalogueReadPermissions::class.java
+            .getMethod(lookup, String::class.java, String::class.java)
+            .invoke(CatalogueReadPermissions::class.java.getConstructor().newInstance(), method, path)
+
+    @Test
+    fun `INV-AC-27783 the contract check fails on the sample content entry removed or changed`() {
+        val e = CatalogueReadPermissions.ENTRIES.single { it.operationId == "getRenditionSampleContent" }
+        val others = CatalogueReadPermissions.ENTRIES.filter { it != e }
+        val removed = findings(getOperations(openapi), others, DOMAINS, EXPECTED_UNMAPPED, allKeys())
+        check(removed == listOf("GET operation not in the table or the unmapped list: getRenditionSampleContent")) {
+            "$removed"
+        }
+        val variants =
+            listOf(
+                e.copy(permissionKey = "rendition-evidence.view "),
+                e.copy(permissionKey = "rendition-evidence.views"),
+                e.copy(pathTemplate = e.pathTemplate.removeSuffix("/content")),
+                e.copy(pathTemplate = e.pathTemplate + "/"),
+            )
+        for (v in variants) {
+            val offences = findings(getOperations(openapi), others + v, DOMAINS, EXPECTED_UNMAPPED, allKeys())
+            check(offences.size == 1 && "getRenditionSampleContent" in offences.single()) { "$v: $offences" }
+        }
+    }
+
     private companion object {
         val DOMAINS: List<CatalogueReadPermissions.DomainEntry> = CatalogueReadPermissions.DOMAIN_ENTRIES
 

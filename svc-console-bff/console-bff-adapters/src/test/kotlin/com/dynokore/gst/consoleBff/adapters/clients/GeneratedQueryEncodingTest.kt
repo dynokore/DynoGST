@@ -323,6 +323,8 @@ class GeneratedQueryEncodingTest {
                 ("MasterdataBulkClient.kt" to "masterdata.api.RemediationApi") to NO_QUERY,
                 ("PayloadOverrideClient.kt" to "payload.api.QueriesApi") to NO_QUERY,
                 ("PayloadOverrideClient.kt" to "payload.api.ValidationApi") to NO_QUERY,
+                ("PayloadSampleMetaClient.kt" to "payload.api.RenditionApi") to NO_QUERY,
+                ("PayloadSampleRecordClient.kt" to "payload.api.RenditionApi") to NO_QUERY,
                 ("PrivacyCaseClient.kt" to "evidence.api.PrivacyApi") to NO_QUERY,
                 ("SampleCheckReadClient.kt" to "evidence.api.VerificationApi") to listOf("listRenditionSampleChecks"),
                 ("SubmissionBoundaryClient.kt" to "submission.api.TransactionsApi") to NO_QUERY,
