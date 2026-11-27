@@ -235,12 +235,49 @@ class GetEntityRenditionEvidenceWithSamplesTest {
     }
 
     @Test
-    fun `INV-AC-27771 standing is that of the read of the first item of the page`() {
+    fun `INV-AC-27771 standing is that of the first read in page order`() {
         items(3)
         for (first in listOf(true, false)) {
             metaReply = { ok(meta(it), (it == "chk-1") == first) }
-            get().shouldBeInstanceOf<RenditionSampleEvidenceResult.Composed>().standingOpen shouldBe first
+            standingOfComposed() shouldBe first
         }
+    }
+
+    @Test
+    fun `INV-AC-27771 an item of another type before the first read does not drop its open standing`() {
+        newKindThen(true)
+        standingOfComposed() shouldBe true
+    }
+
+    @Test
+    fun `INV-AC-27771 a first read that is not open wins over a later open one`() {
+        newKindThen(false, true)
+        standingOfComposed() shouldBe false
+    }
+
+    @Test
+    fun `INV-AC-27771 a first read that is open wins over a later one that is not`() {
+        newKindThen(true, false)
+        standingOfComposed() shouldBe true
+    }
+
+    @Test
+    fun `INV-AC-27771 a page with items and no SAMPLE_CHECK item has no standing and makes no read`() {
+        val others = listOf("NEW_KIND", "sample_check").map { artefact(reference("chk-1"), it) }
+        sampleReply = PageReply.Ok(EvidencePage(others, null))
+        val result = get().shouldBeInstanceOf<RenditionSampleEvidenceResult.Composed>()
+        result.sampleChecks.items shouldBe others.map { SampleCheckEntry(it, null) }
+        result.standingOpen shouldBe null
+        askedMeta.toList() shouldBe emptyList()
+    }
+
+    private fun standingOfComposed() = get().shouldBeInstanceOf<RenditionSampleEvidenceResult.Composed>().standingOpen
+
+    /** The page is a NEW_KIND item, then one SAMPLE_CHECK item per value of [open], read with that standing. */
+    private fun newKindThen(vararg open: Boolean) {
+        val checks = open.indices.map { artefact(reference("chk-${it + 1}")) }
+        sampleReply = PageReply.Ok(EvidencePage(listOf(artefact(reference("new-1"), "NEW_KIND")) + checks, null))
+        metaReply = { ok(meta(it), open[it.removePrefix("chk-").toInt() - 1]) }
     }
 
     @Test

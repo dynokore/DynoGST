@@ -22,7 +22,10 @@ sealed interface RenditionSampleEvidenceResult {
      */
     val integrityFailures: List<Verification.Failed>
 
-    /** [standingOpen] is the PAY-014 standing of the entity; null when there is none to show (an empty page). */
+    /**
+     * [standingOpen] is the PAY-014 standing of the entity, from the first item in page order that has a payload read;
+     * null when no item of the page has one.
+     */
     data class Composed(
         val attestations: EvidencePage<AttestationRecord>,
         val sampleChecks: EvidencePage<SampleCheckEntry>,
@@ -120,7 +123,7 @@ class GetEntityRenditionEvidenceWithSamples(
                 RenditionSampleEvidenceResult.Composed(
                     page.attestations,
                     EvidencePage(done.map { it.entry }, page.sampleChecks.nextCursor),
-                    done.firstOrNull()?.standingOpen,
+                    done.firstNotNullOfOrNull { it.standingOpen },
                 )
             } else {
                 RenditionSampleEvidenceResult.IntegrityFailure(integrityFailures)
