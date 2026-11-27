@@ -641,20 +641,43 @@ class BreachTermsTypeAndActivationDbTest : BreachTermsReplicaHarness() {
                 CompletableFuture
                     .supplyAsync {
                         bound(platform) { JooqBreachTermsReplica(it).recordType("pack-a", "calendar") }
-                    }.also { awaitLockWait() }
+                    }.also { awaitLockWait("record_breach_terms_pack_type") }
             }
         second.get(WAIT_SECONDS, TimeUnit.SECONDS) shouldBe "breach-terms"
         typeRows() shouldBe listOf("pack-a|breach-terms")
     }
 
-    /** Returns once the second type recording waits on a lock: it is behind the uncommitted first one. */
-    private fun awaitLockWait() {
+    @Test
+    fun `INV-AC-29315 two concurrent deliveries of one activation store one row`() {
+        deliver(staged())
+        val second =
+            bound(platform) { dsl ->
+                RulePackEventsHandler(JooqBreachTermsReplica(dsl)).handle(activated()) shouldBe HandleOutcome.APPLIED
+                // the same activation under another event id, while the first delivery is not committed
+                CompletableFuture
+                    .supplyAsync { deliver(activated()) }
+                    .also { awaitLockWait("record_breach_terms_activation", it::isDone) }
+            }
+        // the losing copy fails neither the delivery nor the retry: it just adds no row
+        second.get(WAIT_SECONDS, TimeUnit.SECONDS)
+        activationRows() shouldBe listOf("pack-a|1|$day")
+        terms(day) shouldBe seventyTwo
+    }
+
+    /**
+     * Returns once the second call of [function] waits on a lock: it is behind the uncommitted first one. [over] also
+     * ends the wait: a second delivery that finished without waiting is judged by the assertions that follow.
+     */
+    private fun awaitLockWait(
+        function: String,
+        over: () -> Boolean = { false },
+    ) {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(WAIT_SECONDS)
         val waiting =
             "select count(*) from pg_stat_activity where datname = current_database() " +
-                "and wait_event_type = 'Lock' and query ilike 'select%record_breach_terms_pack_type%'"
-        while (query(waiting).single() == "0") {
-            check(System.nanoTime() < deadline) { "the second staging never waited on the first" }
+                "and wait_event_type = 'Lock' and query ilike 'select%$function%'"
+        while (!over() && query(waiting).single() == "0") {
+            check(System.nanoTime() < deadline) { "the second call never waited on the first" }
             Thread.onSpinWait()
         }
     }

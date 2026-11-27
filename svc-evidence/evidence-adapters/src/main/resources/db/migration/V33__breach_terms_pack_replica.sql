@@ -27,13 +27,15 @@ create table evidence.breach_terms_pack_version (
     unique (tenant_id, pack_identifier, pack_version)
 );
 
--- applied_seq only identifies a row: the order in which activations were applied decides nothing.
+-- applied_seq only identifies a row: the order in which activations were applied decides nothing. The unique key keeps
+-- one row per activation also when two deliveries of it run at once (a database constraint, not check-then-insert).
 create table evidence.breach_terms_pack_activation (
     applied_seq bigint generated always as identity primary key,
     tenant_id uuid not null check (tenant_id = 'ffffffff-ffff-ffff-ffff-ffffffffffff'::uuid),
     pack_identifier text not null,
     pack_version text not null,
     effective_from date not null,
+    unique (tenant_id, pack_identifier, pack_version, effective_from),
     foreign key (tenant_id, pack_identifier, pack_version)
         references evidence.breach_terms_pack_version (tenant_id, pack_identifier, pack_version)
 );
@@ -125,7 +127,8 @@ begin
         raise exception 'every argument is required' using errcode = '22004';
     end if;
     insert into evidence.breach_terms_pack_activation (tenant_id, pack_identifier, pack_version, effective_from)
-    values ('ffffffff-ffff-ffff-ffff-ffffffffffff'::uuid, p_pack_identifier, p_pack_version, p_effective_from);
+    values ('ffffffff-ffff-ffff-ffff-ffffffffffff'::uuid, p_pack_identifier, p_pack_version, p_effective_from)
+    on conflict do nothing; -- no conflict target: naming the key would need select on the table
 end
 $$;
 
