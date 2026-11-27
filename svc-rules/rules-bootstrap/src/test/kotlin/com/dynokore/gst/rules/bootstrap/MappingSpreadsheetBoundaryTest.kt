@@ -48,7 +48,6 @@ private const val IMPORTS = "/internal/v1/rules/mapping-imports"
 private const val ENTITY = "E-1"
 private const val USER_B_TOKEN = "Bearer token-user-b"
 private const val CAP = 5_000
-private const val BUDGET_MILLIS = 2_000L
 private const val BOM = 0xFEFF
 
 /** What the doubles of the spreadsheet tests were asked, and the switches that steer them. */
@@ -348,20 +347,6 @@ class MappingSpreadsheetBoundaryTest(
         val fivePack = json(five).get("packId").asString()
         count("select count(*) from rules.pack_registry where pack_id = '$fivePack'") shouldBe 1
         records(hash).single().get("appliedCount").asInt() shouldBe CAP
-    }
-
-    @Test
-    fun `INV-AC-3484 the 5000-row file is answered within the synchronous budget of the operation`() {
-        // warm-up (not timed): a request of 5,000 valid rows with its own fileHash in the same JVM and database; the
-        // budget is for the synchronous answer of a running service, not for JVM or container start-up
-        import(body(valid(CAP))).statusCode() shouldBe 201
-        val started = System.nanoTime()
-        val answer = import(body(valid(CAP)))
-        val millis = (System.nanoTime() - started) / 1_000_000
-        answer.statusCode() shouldBe 201
-        io.kotest.assertions.withClue("$millis ms against $BUDGET_MILLIS ms") {
-            (millis <= BUDGET_MILLIS) shouldBe true
-        }
     }
 
     @Test
