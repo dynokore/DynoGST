@@ -19,4 +19,10 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+    // INV-T-29253: RyukStartupWaitTest reads the root .gitlab-ci.yml, so a change of that file alone re-runs the task.
+    inputs
+        .file(rootProject.file(".gitlab-ci.yml"))
+        .withPropertyName("gitlabCiFile")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    systemProperty("platformLibs.rootDir", rootDir.absolutePath)
 }

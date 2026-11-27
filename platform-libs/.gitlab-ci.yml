@@ -48,6 +48,11 @@ variables:
   # runs and leaves the JUnit XML that keel-report reads.
   GST_SKIP_REPEATS: "true"
   GST_SKIP_WHEN_VERIFIED_JOBS: "arch-guards lint verify-rules split-jars impl-poms"
+  # INV-T-29253: Testcontainers waits 30 s by default for the Ryuk reaper to start. On a loaded Mac runner the path to
+  # its published port can be slower ("Could not connect to Ryuk", jobs 700835, 522314, 397619), in tests and in jOOQ
+  # code generation. The wait stays bounded and fails closed; Ryuk stays enabled and no job retries.
+  # RyukStartupWaitTest (testcontainers-pins) checks this entry.
+  TESTCONTAINERS_RYUK_CONTAINER_TIMEOUT: "120"
   # IMAGE_NAME, HELM_CHART_NAME stay unset: platform-libs ships jars, not a
   # bootable service or a Helm chart.
 
