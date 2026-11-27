@@ -96,6 +96,8 @@ data class StoredOverride(
     val requestedAt: Instant,
     val releasedBy: String?,
     val releasedAt: Instant?,
+    /** The position of the release among those of its version, from 1 in lock order; null when none was given. */
+    val releaseSequence: Int? = null,
 )
 
 /** The store of the overrides of the caller's tenant; a row of another tenant is never seen (forced RLS). */
@@ -124,6 +126,12 @@ interface OverrideStore {
         after: Pair<Instant, String>?,
         limit: Int,
     ): List<StoredOverride>
+}
+
+/** The numbered releases of a document of the caller's tenant (INV-AC-29372). */
+fun interface ReleasedOverrides {
+    /** Every released row with a release sequence, of every version, by ascending version, then release sequence. */
+    fun ofDocument(docUuid: UUID): List<StoredOverride>
 }
 
 /** The audit trail; entries name the acting user ID, never a role (INV-Q-10647). */

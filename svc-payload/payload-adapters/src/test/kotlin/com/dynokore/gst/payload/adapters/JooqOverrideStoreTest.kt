@@ -12,9 +12,11 @@ import org.jooq.SQLDialect
 import org.jooq.impl.DSL
 import org.junit.jupiter.api.Test
 import java.io.File
+import java.sql.Connection
 import java.util.UUID
 import java.util.concurrent.CyclicBarrier
 import java.util.concurrent.Executors
+import java.util.concurrent.Future
 import java.util.concurrent.TimeUnit
 
 /** The override store against the real database as `payload_runtime` with a signed binding (INV-T-10713). */
@@ -146,6 +148,153 @@ class JooqOverrideStoreTest {
         }
     }
 
+    private fun immediate(
+        code: String,
+        version: Int = 1,
+        docUuid: UUID = doc,
+    ) = NewOverride(docUuid, version, code, "register lag", OverrideStatus.RELEASED, "A1", "A1")
+
+    private fun numbers(
+        tenant: UUID = t1,
+        docUuid: UUID = doc,
+    ) = bound(tenant) { s -> s.ofDocument(docUuid).map { Triple(it.version, it.code, it.releaseSequence) } }
+
+    @Test
+    fun `INV-AC-29372 releases at once and by approval are numbered 1 to n, pending rows not`() {
+        bound(t1) { it.insert(pending("PAY-011")) }!!.releaseSequence shouldBe null
+        bound(t1) { it.insert(pending("PAY-012")) }!!.releaseSequence shouldBe null
+        bound(t1) { it.insert(immediate("PAY-013")) }!!.releaseSequence shouldBe 1
+        bound(t1) { it.release(doc, 1, "PAY-012", "A2") }!!.releaseSequence shouldBe 2
+        bound(t1) { it.insert(immediate("PAY-014")) }!!.releaseSequence shouldBe 3
+        bound(t1) { it.find(doc, 1, "PAY-011") }!!.releaseSequence shouldBe null
+        bound(t1) { it.release(doc, 1, "PAY-011", "A2") }!!.releaseSequence shouldBe 4
+        bound(t1) { s -> s.entries(doc, 1, null, 10).map { it.releaseSequence!! }.sorted() } shouldBe listOf(1, 2, 3, 4)
+    }
+
+    @Test
+    fun `INV-AC-29372 lost, rolled-back and repeated releases consume and change no number`() {
+        bound(t1) { it.insert(pending("PAY-011")) }
+        bound(t1) { it.insert(immediate("PAY-012")) }!!.releaseSequence shouldBe 1
+        bound(t1) { it.insert(immediate("PAY-012")) } shouldBe null
+        bound(t1) { it.insert(immediate("PAY-011")) } shouldBe null
+        bound(t1, commit = false) { it.release(doc, 1, "PAY-011", "A2") }!!.releaseSequence shouldBe 2
+        bound(t1, commit = false) { it.insert(immediate("PAY-013")) }!!.releaseSequence shouldBe 2
+        bound(t1) { it.release(doc, 1, "PAY-011", "A2") }!!.releaseSequence shouldBe 2
+        bound(t1) { it.release(doc, 1, "PAY-011", "A3") } shouldBe null
+        bound(t1) { it.release(doc, 1, "PAY-012", "A3") } shouldBe null
+        bound(t1) { it.insert(immediate("PAY-013")) }!!.releaseSequence shouldBe 3
+        numbers() shouldBe listOf(Triple(1, "PAY-012", 1), Triple(1, "PAY-011", 2), Triple(1, "PAY-013", 3))
+    }
+
+    @Test
+    fun `INV-AC-29372 another version and another tenant count from 1`() {
+        bound(t1) { it.insert(immediate("PAY-011")) }!!.releaseSequence shouldBe 1
+        bound(t1) { it.insert(immediate("PAY-012")) }!!.releaseSequence shouldBe 2
+        bound(t1) { it.insert(immediate("PAY-011", version = 2)) }!!.releaseSequence shouldBe 1
+        bound(t1) { it.insert(pending("PAY-012", version = 3)) }
+        bound(t1) { it.release(doc, 3, "PAY-012", "A2") }!!.releaseSequence shouldBe 1
+        bound(t2) { it.insert(immediate("PAY-013")) }!!.releaseSequence shouldBe 1
+    }
+
+    @Test
+    fun `INV-AC-29372 of two concurrent approvals the first to lock has 1 and the other 2`() {
+        bound(t1) { it.insert(pending("PAY-011")) }
+        bound(t1) { it.insert(pending("PAY-012")) }
+        val (first, second) =
+            overlapping(
+                t1,
+                { it.release(doc, 1, "PAY-012", "A2")!!.releaseSequence },
+                { it.release(doc, 1, "PAY-011", "A3")!!.releaseSequence },
+            )
+        first shouldBe 1
+        second shouldBe 2
+    }
+
+    @Test
+    fun `INV-AC-29372 an immediate and an approved release at once number in lock order`() {
+        bound(t1) { it.insert(pending("PAY-012")) }
+        overlapping(
+            t1,
+            { it.insert(immediate("PAY-011"))!!.releaseSequence },
+            { it.release(doc, 1, "PAY-012", "A2")!!.releaseSequence },
+        ) shouldBe (1 to 2)
+        bound(t1) { it.insert(pending("PAY-013")) }
+        overlapping(
+            t1,
+            { it.release(doc, 1, "PAY-013", "A2")!!.releaseSequence },
+            { it.insert(immediate("PAY-014"))!!.releaseSequence },
+        ) shouldBe (3 to 4)
+    }
+
+    @Test
+    fun `INV-AC-29372 releases on two versions serialize and the second lists both before its commit`() {
+        bound(t1) { it.insert(pending("PAY-011", version = 1)) }
+        bound(t1) { it.insert(pending("PAY-011", version = 2)) }
+        val (_, listed) =
+            overlapping(
+                t1,
+                { it.release(doc, 2, "PAY-011", "A2") },
+                { store ->
+                    store.release(doc, 1, "PAY-011", "A3")
+                    store.ofDocument(doc).map { it.version to it.releaseSequence }
+                },
+            )
+        listed shouldBe listOf(1 to 1, 2 to 1)
+    }
+
+    @Test
+    fun `INV-AC-29372 the first to lock has 1 although its release time is later`() {
+        bound(t1) { it.insert(pending("PAY-011")) }
+        bound(t1) { it.insert(pending("PAY-012")) }
+        OpenTransaction(t1).use { startedFirst ->
+            // the transaction of startedFirst has already run statements, so its now() is the earlier one
+            Thread.sleep(20)
+            OpenTransaction(t1).use { lockedFirst ->
+                lockedFirst.store.release(doc, 1, "PAY-012", "A2")!!.releaseSequence shouldBe 1
+                lockedFirst.commit()
+            }
+            startedFirst.store.release(doc, 1, "PAY-011", "A3")!!.releaseSequence shouldBe 2
+            startedFirst.commit()
+        }
+        val rows = bound(t1) { it.ofDocument(doc) }
+        rows.map { it.code to it.releaseSequence } shouldBe listOf("PAY-012" to 1, "PAY-011" to 2)
+        rows[0].releasedAt!!.isAfter(rows[1].releasedAt) shouldBe true
+    }
+
+    @Test
+    fun `INV-AC-29372 a document lists its numbered releases only, by version, sequence`() {
+        val otherDoc = UUID.randomUUID()
+        unnumberedRelease(t1, doc, "PAY-019")
+        bound(t1) { it.insert(immediate("PAY-013", version = 2)) }
+        bound(t1) { it.insert(immediate("PAY-013", version = 1)) }!!.releaseSequence shouldBe 1
+        bound(t1) { it.insert(immediate("PAY-011", version = 2)) }
+        bound(t1) { it.insert(immediate("PAY-011", version = 1)) }
+        bound(t1) { it.insert(pending("PAY-012")) }
+        bound(t1) { it.insert(immediate("PAY-014", docUuid = otherDoc)) }!!.releaseSequence shouldBe 1
+        bound(t2) { it.insert(immediate("PAY-015")) }!!.releaseSequence shouldBe 1
+        numbers() shouldBe
+            listOf(
+                Triple(1, "PAY-013", 1),
+                Triple(1, "PAY-011", 2),
+                Triple(2, "PAY-013", 1),
+                Triple(2, "PAY-011", 2),
+            )
+        numbers(docUuid = otherDoc) shouldBe listOf(Triple(1, "PAY-014", 1))
+        numbers(tenant = t2) shouldBe listOf(Triple(1, "PAY-015", 1))
+        bound(t1) { it.find(doc, 1, "PAY-019") }!!.releaseSequence shouldBe null
+    }
+
+    @Test
+    fun `INV-AC-29372 the database refuses a number below 1, pending or repeated`() {
+        refusal(t1, doc, "PAY-011", "RELEASED", 1) shouldBe null
+        refusal(t1, doc, "PAY-012", "RELEASED", 1) shouldBe "23505"
+        refusal(t1, doc, "PAY-013", "RELEASED", 0) shouldBe "23514"
+        refusal(t1, doc, "PAY-014", "PENDING", 2) shouldBe "23514"
+        refusal(t1, doc, "PAY-015", "PENDING", null) shouldBe null
+        refusal(t1, doc, "PAY-016", "RELEASED", null) shouldBe null
+        refusal(t1, doc, "PAY-017", "RELEASED", null) shouldBe null
+    }
+
     private fun migration() =
         File("src/main/resources/db/migration")
             .listFiles()!!
@@ -228,3 +377,134 @@ class JooqOverrideStoreTest {
         }
     }
 }
+
+/** A transaction of [tenant] held open by the test; closing it without a commit rolls it back. */
+private class OpenTransaction(
+    tenant: UUID,
+) : AutoCloseable {
+    private val connection: Connection = PayloadDb.connect(PayloadDb.RUNTIME, PayloadDb.RUNTIME_PASSWORD)
+    val pid: Int
+    val store: JooqOverrideStore
+
+    init {
+        connection.autoCommit = false
+        SignedBindings.bind(connection, tenant)
+        pid =
+            connection.createStatement().use { s ->
+                s.executeQuery("select pg_backend_pid()").use { r ->
+                    r.next()
+                    r.getInt(1)
+                }
+            }
+        store = JooqOverrideStore(DSL.using(connection, SQLDialect.POSTGRES)) { tenant }
+    }
+
+    fun commit() = connection.commit()
+
+    fun rollback() = connection.rollback()
+
+    override fun close() {
+        connection.rollback()
+        connection.close()
+    }
+}
+
+/** Whether the backend [pid] is waiting for an advisory lock. */
+private fun waitsForAdvisoryLock(pid: Int): Boolean =
+    PayloadDb.superuser().use { c ->
+        c
+            .prepareStatement(
+                "select exists (select 1 from pg_locks " +
+                    "where pid = ? and locktype = 'advisory' and not granted)",
+            ).use { p ->
+                p.setInt(1, pid)
+                p.executeQuery().use { r -> r.next() && r.getBoolean(1) }
+            }
+    }
+
+/** Fails unless [job], run on the backend [pid], comes to wait for an advisory lock before it ends. */
+private fun awaitBlocked(
+    job: Future<*>,
+    pid: Int,
+) {
+    val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
+    while (!waitsForAdvisoryLock(pid)) {
+        job.isDone shouldBe false
+        (System.nanoTime() < deadline) shouldBe true
+        Thread.sleep(20)
+    }
+}
+
+/** Runs [first] uncommitted, starts [second], sees it wait for the lock, then commits [first]. */
+private fun <A, B> overlapping(
+    tenant: UUID,
+    first: (JooqOverrideStore) -> A,
+    second: (JooqOverrideStore) -> B,
+): Pair<A, B> {
+    val pool = Executors.newSingleThreadExecutor()
+    try {
+        OpenTransaction(tenant).use { a ->
+            OpenTransaction(tenant).use { b ->
+                try {
+                    val firstResult = first(a.store)
+                    val job = pool.submit<B> { second(b.store).also { b.commit() } }
+                    awaitBlocked(job, b.pid)
+                    a.commit()
+                    return firstResult to job.get(60, TimeUnit.SECONDS)
+                } finally {
+                    // b may still wait for a, and closing b waits for its statement: end a first (no-op once committed)
+                    a.rollback()
+                }
+            }
+        }
+    } finally {
+        pool.shutdownNow()
+    }
+}
+
+/** A row released before the release sequence existed: only a superuser can write it, past the store. */
+private fun unnumberedRelease(
+    tenant: UUID,
+    doc: UUID,
+    code: String,
+) = PayloadDb.superuser().use { c ->
+    c
+        .prepareStatement(
+            "insert into payload.validation_override " +
+                "(tenant_id, doc_uuid, version, code, reason, status, requested_by, " +
+                "released_by, released_at) " +
+                "values (?, ?, 1, ?, 'r', 'RELEASED', 'A1', 'A1', now())",
+        ).use { p ->
+            p.setObject(1, tenant)
+            p.setObject(2, doc)
+            p.setString(3, code)
+            p.executeUpdate()
+        }
+}
+
+/** The SQL state with which the database refuses [releaseSequence] on a new row of [status], or null. */
+private fun refusal(
+    tenant: UUID,
+    doc: UUID,
+    code: String,
+    status: String,
+    releaseSequence: Int?,
+): String? =
+    PayloadDb.superuser().use { c ->
+        val released = if (status == "RELEASED") "'A1', now()" else "null, null"
+        c
+            .prepareStatement(
+                "insert into payload.validation_override (tenant_id, doc_uuid, version, code, reason, " +
+                    "status, requested_by, released_by, released_at, release_sequence) " +
+                    "values (?, ?, 1, ?, 'r', ?, 'A1', $released, ?)",
+            ).use { p ->
+                p.setObject(1, tenant)
+                p.setObject(2, doc)
+                p.setString(3, code)
+                p.setString(4, status)
+                p.setObject(5, releaseSequence, java.sql.Types.INTEGER)
+                runCatching { p.executeUpdate() }
+                    .exceptionOrNull()
+                    ?.let { (it as java.sql.SQLException).sqlState }
+            }
+    }
