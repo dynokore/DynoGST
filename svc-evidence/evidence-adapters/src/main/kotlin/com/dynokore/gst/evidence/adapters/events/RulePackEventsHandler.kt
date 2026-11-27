@@ -4,6 +4,7 @@ import com.dynokore.gst.evidence.application.cases.BreachTermsActivation
 import com.dynokore.gst.evidence.application.cases.BreachTermsRefusal
 import com.dynokore.gst.evidence.application.cases.BreachTermsReplica
 import com.dynokore.gst.evidence.application.cases.BreachTermsStage
+import com.dynokore.gst.evidence.application.cases.BreachTermsStaging
 import com.dynokore.gst.evidence.application.cases.BreachTermsVersion
 import com.dynokore.platform.outboxandqueue.ContractViolation
 import com.dynokore.platform.outboxandqueue.Envelope
@@ -48,7 +49,7 @@ class RulePackEventsHandler(
         val packType = Payload.text(data, "packType")
         val version = Payload.text(data, "version")
         return if (event.tenant.isPlatform) {
-            stagedByPlatform(identifier, packType, version, contents)
+            stagedByPlatform(identifier, packType, version, contents, BreachTermsStaging(event.time, event.id.value))
         } else {
             stagedByTenant(identifier, packType)
         }
@@ -59,10 +60,11 @@ class RulePackEventsHandler(
         packType: String,
         version: String,
         contents: JsonNode,
+        staging: BreachTermsStaging,
     ): HandleOutcome {
         if (replica.recordType(identifier, packType) != packType) refuseTypeConflict()
         if (packType != BREACH_TERMS_PACK_TYPE) return HandleOutcome.IGNORED
-        return when (replica.stage(identifier, version, Contents.terms(contents))) {
+        return when (replica.stage(identifier, version, Contents.terms(contents), staging)) {
             BreachTermsStage.STORED -> {
                 HandleOutcome.APPLIED
             }

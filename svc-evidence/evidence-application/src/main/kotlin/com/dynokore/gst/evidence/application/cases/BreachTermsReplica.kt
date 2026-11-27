@@ -1,6 +1,7 @@
 package com.dynokore.gst.evidence.application.cases
 
 import com.dynokore.gst.evidence.domain.cases.BreachTerms
+import java.time.Instant
 import java.time.LocalDate
 
 /** Why a staged breach terms event is refused. A refusal message starts with the reason name and a colon. */
@@ -17,6 +18,12 @@ data class BreachTermsVersion(
     val assessmentWithinHours: Long,
     val notificationWithinHours: Long,
     val sourceReference: String,
+)
+
+/** The envelope time and event id of the staged event that carries a version. */
+data class BreachTermsStaging(
+    val at: Instant,
+    val eventId: String,
 )
 
 /** What [BreachTermsReplica.stage] did with a staged version. */
@@ -42,16 +49,21 @@ interface BreachTermsReplica {
     /** The recorded type of [packIdentifier], or null when none is recorded. Writes nothing. */
     fun typeOf(packIdentifier: String): String?
 
-    /** Stores a version once. A stored version is never changed: other terms are [BreachTermsStage.CONFLICT]. */
+    /**
+     * Stores a version once, with the [staging] of the event that first stores it. A stored version is never changed,
+     * its staging included: other terms are [BreachTermsStage.CONFLICT]; equal terms are
+     * [BreachTermsStage.UNCHANGED] whatever their staging.
+     */
     fun stage(
         packIdentifier: String,
         version: String,
         terms: BreachTermsVersion,
+        staging: BreachTermsStaging,
     ): BreachTermsStage
 
     /**
-     * Activates a staged version from [effectiveFrom]. [BreachTermsActivation.UNCHANGED] when it is already the
-     * version in force for exactly that date; a version that is not staged is never invented.
+     * Activates a staged version from [effectiveFrom]. [BreachTermsActivation.UNCHANGED] when this activation of this
+     * version from that date is already stored; a version that is not staged is never invented.
      */
     fun activate(
         packIdentifier: String,
@@ -60,8 +72,9 @@ interface BreachTermsReplica {
     ): BreachTermsActivation
 
     /**
-     * The terms of the activated version with the latest effective date on or before [on], the later applied
-     * activation winning a tie; null when there is none.
+     * The terms of the activated version with the latest effective date on or before [on]; on an equal date, of the
+     * version whose first staging is later, and on an equal time, of the greater staging event id (compared as text).
+     * The order in which activations are applied does not count. Null when there is none.
      */
     fun activeTerms(on: LocalDate): BreachTerms?
 }

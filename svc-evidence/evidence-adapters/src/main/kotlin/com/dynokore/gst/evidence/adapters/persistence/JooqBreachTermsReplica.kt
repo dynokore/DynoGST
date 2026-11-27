@@ -6,17 +6,23 @@ import com.dynokore.gst.evidence.adapters.persistence.jooq.tables.BreachTermsPac
 import com.dynokore.gst.evidence.application.cases.BreachTermsActivation
 import com.dynokore.gst.evidence.application.cases.BreachTermsReplica
 import com.dynokore.gst.evidence.application.cases.BreachTermsStage
+import com.dynokore.gst.evidence.application.cases.BreachTermsStaging
 import com.dynokore.gst.evidence.application.cases.BreachTermsVersion
 import com.dynokore.gst.evidence.domain.cases.BreachTerms
 import com.dynokore.platform.tenancykernel.TenantId
 import org.jooq.DSLContext
+import org.jooq.DataType
+import org.jooq.Field
+import org.jooq.impl.DSL
+import org.jooq.impl.SQLDataType
 import java.time.Duration
 import java.time.LocalDate
+import java.time.ZoneOffset
 
 /**
  * [BreachTermsReplica] over the `breach_terms_pack_*` tables (jOOQ only, STK §3). It opens no transaction: every write
- * commits or rolls back with the caller's, the inbox consumer's. Every statement names the platform tenant; row
- * security lets only the platform binding write and any signed binding read these rows.
+ * commits or rolls back with the caller's, the inbox consumer's. The tables are of tenancy class REFERENCE: every write
+ * is a definer function that answers the platform binding only, and every read names the platform tenant.
  */
 class JooqBreachTermsReplica(
     private val dsl: DSLContext,
@@ -30,15 +36,14 @@ class JooqBreachTermsReplica(
         packIdentifier: String,
         packType: String,
     ): String {
-        // insert-if-absent, then read: a concurrent first staging waits on the unique key and reads the winner's type
-        dsl
-            .insertInto(types)
-            .set(types.TENANT_ID, platform)
-            .set(types.PACK_IDENTIFIER, packIdentifier)
-            .set(types.PACK_TYPE, packType)
-            .onConflict(types.TENANT_ID, types.PACK_IDENTIFIER)
-            .doNothing()
-            .execute()
+        // insert-if-absent, then a new statement reads: a concurrent first staging waits on the unique key and reads
+        // the winner's type
+        call(
+            "record_breach_terms_pack_type",
+            SQLDataType.OTHER,
+            DSL.`val`(packIdentifier, SQLDataType.CLOB),
+            DSL.`val`(packType, SQLDataType.CLOB),
+        )
         return checkNotNull(typeOf(packIdentifier)) { "the pack type row is not readable after its insert" }
     }
 
@@ -53,20 +58,21 @@ class JooqBreachTermsReplica(
         packIdentifier: String,
         version: String,
         terms: BreachTermsVersion,
+        staging: BreachTermsStaging,
     ): BreachTermsStage {
         val inserted =
-            dsl
-                .insertInto(versions)
-                .set(versions.TENANT_ID, platform)
-                .set(versions.PACK_IDENTIFIER, packIdentifier)
-                .set(versions.PACK_VERSION, version)
-                .set(versions.ASSESSMENT_WITHIN_HOURS, terms.assessmentWithinHours)
-                .set(versions.NOTIFICATION_WITHIN_HOURS, terms.notificationWithinHours)
-                .set(versions.SOURCE_REFERENCE, terms.sourceReference)
-                .onConflict(versions.TENANT_ID, versions.PACK_IDENTIFIER, versions.PACK_VERSION)
-                .doNothing()
-                .execute() == 1
-        if (inserted) return BreachTermsStage.STORED
+            call(
+                "store_breach_terms_pack_version",
+                SQLDataType.BOOLEAN,
+                DSL.`val`(packIdentifier, SQLDataType.CLOB),
+                DSL.`val`(version, SQLDataType.CLOB),
+                DSL.`val`(terms.assessmentWithinHours, SQLDataType.BIGINT),
+                DSL.`val`(terms.notificationWithinHours, SQLDataType.BIGINT),
+                DSL.`val`(terms.sourceReference, SQLDataType.CLOB),
+                DSL.`val`(staging.at.atOffset(ZoneOffset.UTC), SQLDataType.TIMESTAMPWITHTIMEZONE),
+                DSL.`val`(staging.eventId, SQLDataType.CLOB),
+            )
+        if (inserted == true) return BreachTermsStage.STORED
         val same =
             dsl.fetchExists(
                 versions,
@@ -88,32 +94,35 @@ class JooqBreachTermsReplica(
                 BreachTermsActivation.NOT_STAGED
             }
 
-            inForceFor(effectiveFrom) == packIdentifier to version -> {
+            isStored(packIdentifier, version, effectiveFrom) -> {
                 BreachTermsActivation.UNCHANGED
             }
 
             else -> {
-                dsl
-                    .insertInto(activations)
-                    .set(activations.TENANT_ID, platform)
-                    .set(activations.PACK_IDENTIFIER, packIdentifier)
-                    .set(activations.PACK_VERSION, version)
-                    .set(activations.EFFECTIVE_FROM, effectiveFrom)
-                    .execute()
+                call(
+                    "record_breach_terms_activation",
+                    SQLDataType.OTHER,
+                    DSL.`val`(packIdentifier, SQLDataType.CLOB),
+                    DSL.`val`(version, SQLDataType.CLOB),
+                    DSL.`val`(effectiveFrom, SQLDataType.LOCALDATE),
+                )
                 BreachTermsActivation.APPLIED
             }
         }
 
-    /** The pack identifier and version last applied for exactly [effectiveFrom], or null. */
-    private fun inForceFor(effectiveFrom: LocalDate): Pair<String?, String?>? =
-        dsl
-            .select(activations.PACK_IDENTIFIER, activations.PACK_VERSION)
-            .from(activations)
-            .where(activations.TENANT_ID.eq(platform).and(activations.EFFECTIVE_FROM.eq(effectiveFrom)))
-            .orderBy(activations.APPLIED_SEQ.desc())
-            .limit(1)
-            .fetchOne()
-            ?.let { it.value1() to it.value2() }
+    private fun isStored(
+        packIdentifier: String,
+        version: String,
+        effectiveFrom: LocalDate,
+    ): Boolean =
+        dsl.fetchExists(
+            activations,
+            activations.TENANT_ID
+                .eq(platform)
+                .and(activations.PACK_IDENTIFIER.eq(packIdentifier))
+                .and(activations.PACK_VERSION.eq(version))
+                .and(activations.EFFECTIVE_FROM.eq(effectiveFrom)),
+        )
 
     override fun activeTerms(on: LocalDate): BreachTerms? =
         dsl
@@ -126,7 +135,7 @@ class JooqBreachTermsReplica(
                     .and(versions.PACK_IDENTIFIER.eq(activations.PACK_IDENTIFIER))
                     .and(versions.PACK_VERSION.eq(activations.PACK_VERSION)),
             ).where(activations.TENANT_ID.eq(platform).and(activations.EFFECTIVE_FROM.le(on)))
-            .orderBy(activations.EFFECTIVE_FROM.desc(), activations.APPLIED_SEQ.desc())
+            .orderBy(activations.EFFECTIVE_FROM.desc(), versions.STAGED_AT.desc(), versions.STAGED_EVENT_ID.desc())
             .limit(1)
             .fetchOne()
             ?.let {
@@ -136,6 +145,13 @@ class JooqBreachTermsReplica(
                 )
             }
 
+    /** One definer function of schema `evidence`, called through a select (tenancy-jooq refuses a generated routine). */
+    private fun <T : Any> call(
+        function: String,
+        type: DataType<T>,
+        vararg arguments: Field<*>,
+    ): T? = dsl.select(DSL.function(DSL.name(SCHEMA, function), type, *arguments)).fetchSingle().value1()
+
     private fun versionKey(
         packIdentifier: String,
         version: String,
@@ -143,4 +159,8 @@ class JooqBreachTermsReplica(
         .eq(platform)
         .and(versions.PACK_IDENTIFIER.eq(packIdentifier))
         .and(versions.PACK_VERSION.eq(version))
+
+    private companion object {
+        const val SCHEMA = "evidence"
+    }
 }

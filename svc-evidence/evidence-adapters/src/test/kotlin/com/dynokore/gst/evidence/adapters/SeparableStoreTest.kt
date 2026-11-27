@@ -1,6 +1,7 @@
 package com.dynokore.gst.evidence.adapters
 
 import com.dynokore.gst.evidence.adapters.persistence.jooq.DefaultCatalog
+import com.dynokore.platform.tenancykernel.TenantId
 import io.kotest.matchers.shouldBe
 import org.jooq.Record
 import org.jooq.SQLDialect
@@ -80,7 +81,7 @@ class SeparableStoreTest {
     /** Written by `create_retention_partition` for the sample chain rows, so read back instead of inserted. */
     private val createdByPartitions = setOf("retention_partition", "retention_partition_member")
 
-    /** The one foreign key of the schema: the category child row points at the `submission_index` row written here. */
+    /** A foreign key: the category child row points at the `submission_index` row written here. */
     private val indexKey: Map<String, Any> =
         UUID.randomUUID().let { doc ->
             mapOf("submission_index.doc_uuid" to doc, "submission_index_category.doc_uuid" to doc)
@@ -95,7 +96,13 @@ class SeparableStoreTest {
     /** The id of the registry unit once the partition function has written it (the notice and approval FK). */
     private val unitSamples = mutableMapOf<String, Any>()
 
-    private val constrained: Map<String, Any> = consumerConstrained + configConstrained() + indexKey + retentionKey
+    /** The breach terms replica (V33) holds rows of the platform tenant only (a check on each table). */
+    private val platformRows: Map<String, Any> =
+        listOf("breach_terms_pack_type", "breach_terms_pack_version", "breach_terms_pack_activation")
+            .associate { "$it.tenant_id" to TenantId.PLATFORM.value }
+
+    private val constrained: Map<String, Any> =
+        consumerConstrained + configConstrained() + indexKey + retentionKey + platformRows
 
     /** Columns left unset: a SECURITY case has no subject and no privacy facts (the shape check of `case_register`). */
     private val unset =
@@ -261,7 +268,7 @@ class SeparableStoreTest {
                 unitSamples["partition_deletion_operation.partition_id"] = unit
                 // the dead letters are written through a sys function, never by the runtime login itself
                 // the registry row comes first: the member, notice and approval rows refer to it
-                written.sortedBy { if (it.name == "retention_partition") "" else it.name }.associate { table ->
+                written.sortedBy { insertOrder(it.name) }.associate { table ->
                     table.name to
                         if (table.name in createdByPartitions) {
                             owner.selectFrom(table).fetch().toList()
@@ -270,6 +277,14 @@ class SeparableStoreTest {
                         }
                 }
             }
+        }
+
+    /** By name, except a row that another row refers to: the registry row first, a pack version before its activation. */
+    private fun insertOrder(table: String): String =
+        when (table) {
+            "retention_partition" -> ""
+            "breach_terms_pack_version" -> "breach_terms_pack_"
+            else -> table
         }
 
     /** prior_evidence (V24) is the fifth member of the sample unit; it is not a chain table of the fixture. */

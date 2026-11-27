@@ -37,6 +37,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.postgresql.ds.PGSimpleDataSource
 import java.sql.Connection
+import java.sql.SQLException
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
@@ -46,6 +47,10 @@ import java.util.concurrent.TimeUnit
 
 /** The platform-scoped declarations of evidence-bootstrap's application.yaml (`inv.tenancy`). */
 private val PLATFORM_SCOPED = listOf("evidence.config_purge_tenant", "evidence.write_installation_setting")
+
+/** The tables of the replica, declared REFERENCE here; INV-T-29321 declares them in the service's application.yaml. */
+private val REFERENCE =
+    listOf("type", "version", "activation").map { "evidence.breach_terms_pack_$it" }
 
 /** The table classes as service-runtime builds them: the libraries' declarations and the service's, verified. */
 private fun serviceTables(): TenancyTables {
@@ -59,7 +64,7 @@ private fun serviceTables(): TenancyTables {
             JobSchema.platformScopedTables(EvidenceDb.SCHEMA) +
             EventLogSchema.platformScopedTables()
     return TableClasses
-        .of(platformScoped = (PLATFORM_SCOPED + libraries.filter { it in present }).distinct())
+        .of(platformScoped = (PLATFORM_SCOPED + libraries.filter { it in present }).distinct(), reference = REFERENCE)
         .verify(Evidence.EVIDENCE)
 }
 
@@ -149,12 +154,14 @@ open class BreachTermsReplicaHarness {
         type: String,
         data: String,
         who: TenantId,
+        at: Instant = PRODUCED,
+        id: String = UUID.randomUUID().toString(),
     ) = Envelope(
-        id = EventId(UUID.randomUUID().toString()),
+        id = EventId(id),
         source = "/gst/rules-svc",
         type = type,
         subject = "pack",
-        time = Instant.parse("2026-02-01T00:00:00Z"),
+        time = at,
         tenant = who,
         entity = if (who.isPlatform) EntityRef.PLATFORM else EntityRef("ENT-1"),
         docUuid = null,
@@ -180,27 +187,35 @@ open class BreachTermsReplicaHarness {
         version: String = "1",
         artefact: String = """{"contents":${contents()}}""",
         who: TenantId = platform,
+        at: Instant = PRODUCED,
+        id: String = UUID.randomUUID().toString(),
     ) = envelope(
         RulePackEventsHandler.STAGED_TYPE,
         """{"packIdentifier":"$identifier","packType":"$type","version":"$version","artefact":$artefact}""",
         who,
+        at,
+        id,
     )
 
     protected fun stagedWith(
         contents: String,
         identifier: String = "pack-a",
         version: String = "1",
-    ) = staged(identifier = identifier, version = version, artefact = """{"contents":$contents}""")
+        at: Instant = PRODUCED,
+        id: String = UUID.randomUUID().toString(),
+    ) = staged(identifier = identifier, version = version, artefact = """{"contents":$contents}""", at = at, id = id)
 
     protected fun activated(
         identifier: String = "pack-a",
         version: String = "1",
         from: LocalDate = day,
         who: TenantId = platform,
+        at: Instant = PRODUCED,
     ) = envelope(
         RulePackEventsHandler.ACTIVATED_TYPE,
         """{"packIdentifier":"$identifier","version":"$version","effectiveFrom":"$from"}""",
         who,
+        at,
     )
 
     protected fun query(sql: String): List<String> =
@@ -245,6 +260,12 @@ open class BreachTermsReplicaHarness {
     }
 
     protected val seventyTwo = BreachTerms(Duration.ofHours(72), Duration.ofHours(48))
+
+    protected fun hours(assessment: Long) = BreachTerms(Duration.ofHours(assessment), Duration.ofHours(48))
+
+    protected companion object {
+        val PRODUCED: Instant = Instant.parse("2026-02-01T00:00:00Z")
+    }
 }
 
 /** INV-AC-29315: which staged events and contents the replica stores or refuses. */
@@ -541,11 +562,12 @@ class BreachTermsTypeAndActivationDbTest : BreachTermsReplicaHarness() {
     }
 
     @Test
-    fun `INV-AC-29315 the terms on a date are of the latest effective activation and a later one wins a tie`() {
-        fun hours(assessment: Long) = BreachTerms(Duration.ofHours(assessment), Duration.ofHours(48))
-        deliver(stagedWith(contents(assessment = "1"), version = "1"))
-        deliver(stagedWith(contents(assessment = "2"), version = "2"))
-        deliver(stagedWith(contents(assessment = "3"), identifier = "pack-b", version = "1"))
+    fun `INV-AC-29315 the terms on a date are of the latest effective activation and the later staged wins a tie`() {
+        deliver(stagedWith(contents(assessment = "1"), version = "1", at = PRODUCED))
+        deliver(stagedWith(contents(assessment = "2"), version = "2", at = PRODUCED.plusSeconds(1)))
+        deliver(
+            stagedWith(contents(assessment = "3"), identifier = "pack-b", version = "1", at = PRODUCED.plusSeconds(2)),
+        )
         terms(day) shouldBe null
         // applied out of date order: the effective date decides, not the order of arrival
         deliver(activated(version = "2", from = day.plusDays(10)))
@@ -554,11 +576,17 @@ class BreachTermsTypeAndActivationDbTest : BreachTermsReplicaHarness() {
         terms(day) shouldBe hours(1)
         terms(day.plusDays(9)) shouldBe hours(1)
         terms(day.plusDays(10)) shouldBe hours(2)
-        // a tie on the effective date: the later applied activation wins, also back to an earlier one
+        // a tie on the effective date, across identifiers too: the later staged version wins
         deliver(activated(identifier = "pack-b", from = day))
         terms(day) shouldBe hours(3)
-        deliver(activated(version = "1", from = day)) shouldBe HandleOutcome.APPLIED
-        terms(day) shouldBe hours(1)
+        // an activation that is already stored adds no row, also after another one on its date
+        val before = everything()
+        deliver(activated(version = "1", from = day)) shouldBe HandleOutcome.IGNORED
+        everything() shouldBe before
+        // the same version from another date adds a row
+        deliver(activated(version = "1", from = day.plusDays(1))) shouldBe HandleOutcome.APPLIED
+        terms(day) shouldBe hours(3)
+        terms(day.plusDays(1)) shouldBe hours(1)
         terms(day.plusDays(10)) shouldBe hours(2)
     }
 
@@ -567,6 +595,7 @@ class BreachTermsTypeAndActivationDbTest : BreachTermsReplicaHarness() {
         deliver(staged())
         deliver(activated())
         terms(day, tenant) shouldBe seventyTwo
+        bound(tenant) { JooqBreachTermsReplica(it).typeOf("pack-a") } shouldBe "breach-terms"
         val before = everything()
         shouldThrowAny {
             bound(tenant) { dsl -> JooqBreachTermsReplica(dsl).recordType("pack-z", "calendar") }
@@ -590,11 +619,17 @@ class BreachTermsTypeAndActivationDbTest : BreachTermsReplicaHarness() {
         }
         for (table in listOf("type", "version", "activation")) {
             for (sql in listOf(
+                "insert into evidence.breach_terms_pack_$table (tenant_id) " +
+                    "select tenant_id from evidence.breach_terms_pack_$table",
                 "update evidence.breach_terms_pack_$table set pack_identifier = 'x'",
                 "delete from evidence.breach_terms_pack_$table",
             )) {
                 withClue(sql) {
-                    shouldThrowAny { session(platform) { c -> c.createStatement().use { it.execute(sql) } } }
+                    val refused =
+                        shouldThrow<SQLException> {
+                            session(platform) { c -> c.createStatement().use { it.execute(sql) } }
+                        }
+                    refused.sqlState shouldBe INSUFFICIENT_PRIVILEGE
                 }
             }
         }
@@ -615,12 +650,12 @@ class BreachTermsTypeAndActivationDbTest : BreachTermsReplicaHarness() {
         typeRows() shouldBe listOf("pack-a|breach-terms")
     }
 
-    /** Returns once the second type insert waits on a lock: it is behind the uncommitted first one. */
+    /** Returns once the second type recording waits on a lock: it is behind the uncommitted first one. */
     private fun awaitLockWait() {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(WAIT_SECONDS)
         val waiting =
             "select count(*) from pg_stat_activity where datname = current_database() " +
-                "and wait_event_type = 'Lock' and query ilike 'insert%breach_terms_pack_type%'"
+                "and wait_event_type = 'Lock' and query ilike 'select%record_breach_terms_pack_type%'"
         while (query(waiting).single() == "0") {
             check(System.nanoTime() < deadline) { "the second staging never waited on the first" }
             Thread.onSpinWait()
@@ -629,5 +664,265 @@ class BreachTermsTypeAndActivationDbTest : BreachTermsReplicaHarness() {
 
     private companion object {
         const val WAIT_SECONDS = 30L
+        const val INSUFFICIENT_PRIVILEGE = "42501"
+    }
+}
+
+/** INV-AC-29315: the same-date order is the registration order of the versions at the producer. */
+class BreachTermsSameDateOrderDbTest : BreachTermsReplicaHarness() {
+    private val earlier = PRODUCED
+    private val later = PRODUCED.plusSeconds(60)
+
+    /** The envelope time of the activation of V1 is later than that of V2: activation times decide nothing. */
+    private fun activateV1() = activated(version = "1", at = PRODUCED.plusSeconds(900))
+
+    private fun activateV2() = activated(version = "2", at = PRODUCED.plusSeconds(600))
+
+    private fun stageV1(
+        at: Instant = earlier,
+        id: String = UUID.randomUUID().toString(),
+    ) = stagedWith(contents(assessment = "1"), version = "1", at = at, id = id)
+
+    private fun stageV2(
+        at: Instant = later,
+        id: String = UUID.randomUUID().toString(),
+    ) = stagedWith(contents(assessment = "2"), version = "2", at = at, id = id)
+
+    private fun stagings() =
+        query(
+            "select pack_version || '|' || extract(epoch from staged_at)::bigint || '|' || staged_event_id " +
+                "from evidence.breach_terms_pack_version order by 1",
+        )
+
+    @Test
+    fun `INV-AC-29315 an older activation applied late does not win, V2 staged first`() {
+        deliver(stageV2())
+        deliver(stageV1())
+        deliver(activateV2()) shouldBe HandleOutcome.APPLIED
+        deliver(activateV1()) shouldBe HandleOutcome.APPLIED
+        terms(day) shouldBe hours(2)
+    }
+
+    @Test
+    fun `INV-AC-29315 an older activation applied late does not win, V1 staged first`() {
+        deliver(stageV1())
+        deliver(stageV2())
+        deliver(activateV2())
+        deliver(activateV1())
+        terms(day) shouldBe hours(2)
+    }
+
+    @Test
+    fun `INV-AC-29315 the later staged version also wins when its activation is applied last`() {
+        deliver(stageV1())
+        deliver(stageV2())
+        deliver(activateV1())
+        deliver(activateV2())
+        terms(day) shouldBe hours(2)
+    }
+
+    @Test
+    fun `INV-AC-29315 on equal staged times the greater event id wins in both orders of application`() {
+        // compared as text under the C collation: lower case is after upper case, and "9" is after "10"
+        for ((smaller, greater) in listOf("event-a" to "event-b", "event-B" to "event-a", "event-10" to "event-9")) {
+            for (greaterLast in listOf(true, false)) {
+                withClue("$smaller $greater $greaterLast") {
+                    emptyReplica()
+                    deliver(stageV1(at = earlier, id = smaller))
+                    deliver(stageV2(at = earlier, id = greater))
+                    val order = listOf(activateV1(), activateV2())
+                    (if (greaterLast) order else order.reversed()).forEach { deliver(it) }
+                    terms(day) shouldBe hours(2)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `INV-AC-29315 a later effective date wins over a later staged time`() {
+        deliver(stageV1(at = later))
+        deliver(stageV2(at = earlier))
+        deliver(activated(version = "2", from = day.plusDays(1)))
+        deliver(activated(version = "1", from = day))
+        terms(day.plusDays(1)) shouldBe hours(2)
+        terms(day.plusDays(5)) shouldBe hours(2)
+        terms(day) shouldBe hours(1)
+    }
+
+    @Test
+    fun `INV-AC-29315 a later staging with equal contents keeps the first staged time and event id`() {
+        deliver(stageV1(id = "first-1"))
+        deliver(stageV2(id = "first-2"))
+        val before = stagings()
+        before shouldBe listOf("1|${earlier.epochSecond}|first-1", "2|${later.epochSecond}|first-2")
+        deliver(stageV1(at = later.plusSeconds(60), id = "second-1")) shouldBe HandleOutcome.IGNORED
+        stagings() shouldBe before
+        deliver(activateV2())
+        deliver(activateV1())
+        terms(day) shouldBe hours(2)
+    }
+
+    @Test
+    fun `INV-AC-29315 a redelivered activation adds no row`() {
+        deliver(stageV1())
+        deliver(stageV2())
+        val first = activateV1()
+        deliver(first)
+        deliver(activateV2())
+        val before = activationRows()
+        before shouldBe listOf("pack-a|1|$day", "pack-a|2|$day")
+        deliver(first) shouldBe HandleOutcome.IGNORED
+        deliver(activateV1()) shouldBe HandleOutcome.IGNORED
+        activationRows() shouldBe before
+        terms(day) shouldBe hours(2)
+    }
+}
+
+/** INV-AC-29315: what the database itself refuses, whatever the store does. */
+class BreachTermsDatabaseDbTest : BreachTermsReplicaHarness() {
+    private val functions =
+        mapOf(
+            "record_breach_terms_pack_type" to "'p', 'calendar'",
+            "store_breach_terms_pack_version" to "'p', '1', 1, 1, 's', timestamptz '2026-02-01Z', 'e'",
+            "record_breach_terms_activation" to "'pack-a', '1', date '2026-03-02'",
+        )
+
+    private fun sqlStateOf(block: () -> Unit): String? = shouldThrow<SQLException> { block() }.sqlState
+
+    private fun asSuperuser(sql: String) {
+        EvidenceDb.superuser().use { c -> c.createStatement().use { it.execute(sql) } }
+    }
+
+    private fun call(
+        who: TenantId,
+        function: String,
+        arguments: String,
+    ) = session(who) { c -> c.createStatement().use { it.execute("select evidence.$function($arguments)") } }
+
+    @Test
+    fun `INV-AC-29315 each write function is a definer function of evidence_sys that PUBLIC cannot execute`() {
+        for (function in functions.keys) {
+            withClue(function) {
+                query(
+                    "select pg_get_userbyid(proowner) || '|' || prosecdef || '|' || " +
+                        "array_to_string(proconfig, ';') from pg_proc " +
+                        "where pronamespace = 'evidence'::regnamespace and proname = '$function'",
+                ) shouldBe listOf("evidence_sys|true|search_path=pg_catalog, evidence, pg_temp")
+                // grantee 0 is PUBLIC; a null proacl would be the default, which grants PUBLIC
+                query(
+                    "select case when a.grantee = 0 then 'PUBLIC' else pg_get_userbyid(a.grantee) end " +
+                        "from pg_proc p, aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a " +
+                        "where p.pronamespace = 'evidence'::regnamespace and p.proname = '$function' " +
+                        "and a.privilege_type = 'EXECUTE' order by 1",
+                ) shouldBe listOf("evidence_runtime", "evidence_sys")
+            }
+        }
+    }
+
+    @Test
+    fun `INV-AC-29315 each write function refuses a tenant binding with 42501 and writes nothing`() {
+        deliver(staged())
+        val before = everything()
+        for ((function, arguments) in functions) {
+            withClue(function) {
+                sqlStateOf { call(tenant, function, arguments) } shouldBe "42501"
+                everything() shouldBe before
+            }
+        }
+    }
+
+    @Test
+    fun `INV-AC-29315 each write function refuses a null argument and writes the platform tenant itself`() {
+        deliver(staged())
+        val before = everything()
+        for ((function, arguments) in functions) {
+            val values = arguments.split(", ")
+            values.indices.forEach { index ->
+                val withNull = values.mapIndexed { i, value -> if (i == index) "null" else value }.joinToString()
+                withClue("$function($withNull)") {
+                    sqlStateOf { call(platform, function, withNull) } shouldBe "22004"
+                    everything() shouldBe before
+                }
+            }
+        }
+        functions.forEach { (function, arguments) -> call(platform, function, arguments) }
+        for (table in listOf("type", "version", "activation")) {
+            query("select distinct tenant_id::text from evidence.breach_terms_pack_$table") shouldBe
+                listOf(platform.value.toString())
+        }
+    }
+
+    @Test
+    fun `INV-AC-29315 the runtime login may select and may not write any of the three tables`() {
+        for (table in listOf("type", "version", "activation")) {
+            withClue(table) {
+                val may =
+                    listOf("select", "insert", "update", "delete", "truncate").filter { privilege ->
+                        query(
+                            "select has_table_privilege('evidence_runtime', " +
+                                "'evidence.breach_terms_pack_$table', '$privilege')",
+                        ).single() == "t"
+                    }
+                may shouldBe listOf("select")
+                // no column grant either
+                for (privilege in listOf("insert", "update")) {
+                    query(
+                        "select has_any_column_privilege('evidence_runtime', " +
+                            "'evidence.breach_terms_pack_$table', '$privilege')",
+                    ) shouldBe listOf("f")
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `INV-AC-29315 a type row of another tenant is refused by the database`() {
+        sqlStateOf {
+            asSuperuser("insert into evidence.breach_terms_pack_type values ('${tenant.value}', 'p', 'calendar')")
+        } shouldBe CHECK_VIOLATION
+        everything() shouldBe empty
+    }
+
+    @Test
+    fun `INV-AC-29315 a version row of another tenant is refused by the database`() {
+        sqlStateOf {
+            asSuperuser(
+                "insert into evidence.breach_terms_pack_version " +
+                    "values ('${tenant.value}', 'p', '1', 1, 1, 's', now(), 'e')",
+            )
+        } shouldBe CHECK_VIOLATION
+        everything() shouldBe empty
+    }
+
+    @Test
+    fun `INV-AC-29315 an activation row of another tenant is refused by the database`() {
+        // the check answers before the foreign key, whose trigger runs after the row checks
+        sqlStateOf { asSuperuser(activationOf(tenant, "p", "1")) } shouldBe CHECK_VIOLATION
+        everything() shouldBe empty
+    }
+
+    @Test
+    fun `INV-AC-29315 an activation of a version that is not stored is refused by the database`() {
+        deliver(staged(identifier = "pack-b", version = "7"))
+        val before = everything()
+        for ((identifier, version) in listOf("pack-a" to "7", "pack-b" to "8", "Pack-B" to "7")) {
+            withClue("$identifier $version") {
+                sqlStateOf { asSuperuser(activationOf(platform, identifier, version)) } shouldBe FOREIGN_KEY_VIOLATION
+                everything() shouldBe before
+            }
+        }
+        asSuperuser(activationOf(platform, "pack-b", "7"))
+    }
+
+    private fun activationOf(
+        who: TenantId,
+        identifier: String,
+        version: String,
+    ) = "insert into evidence.breach_terms_pack_activation (tenant_id, pack_identifier, pack_version, " +
+        "effective_from) values ('${who.value}', '$identifier', '$version', '$day')"
+
+    private companion object {
+        const val CHECK_VIOLATION = "23514"
+        const val FOREIGN_KEY_VIOLATION = "23503"
     }
 }
