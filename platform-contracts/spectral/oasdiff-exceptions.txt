@@ -220,3 +220,9 @@ POST /v1/pre-issuance-checks added the new required request property `submission
 POST /v1/pre-issuance-checks added the new required request property `supplierGstn`
 POST /v1/pre-issuance-checks added the new required request property `invoiceDate`
 POST /v1/pre-issuance-checks added the new required request property `gstAmount`
+#
+# Owner ruling 2026-11-18 (option A of INV-Q-8047; INV-T-24963), INV-Q-3569's reasoning: no release train is cut, no consumer is deployed and the existing drill trains are never delivered to a customer; tooling/gap24963-gap.md.
+POST /internal/v1/transport/packages added the new required request property `entityRef`
+POST /internal/v1/transport/packages added the new required request property `members/items/payload`
+POST /internal/v1/transport/packages removed the request property `adapterRef`
+POST /internal/v1/transport/packages removed the request property `members/items/payloadRef`

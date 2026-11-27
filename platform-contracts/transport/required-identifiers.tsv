@@ -17,9 +17,10 @@ entityRefs	property	schemas/access-point-route-changed-payload.schema.json	INV-Q
 version	property	schemas/access-point-route-changed-payload.schema.json	INV-Q-4872
 submitPackage	operation	openapi.yaml	INV-REQ-424
 SubmitPackageRequest.packageRef	schema_property	openapi.yaml	INV-REQ-424
-SubmitPackageRequest.adapterRef	schema_property	openapi.yaml	INV-REQ-424
+SubmitPackageRequest.entityRef	schema_property	openapi.yaml	INV-REQ-424
 SubmitPackageRequest.documentTypeCode	schema_property	openapi.yaml	INV-REQ-424
 SubmitPackageRequest.members	schema_property	openapi.yaml	INV-REQ-424
+payload	property	openapi.yaml	INV-REQ-424
 PackageOutcome.packageRef	schema_property	openapi.yaml	INV-REQ-424
 PackageOutcome.outcome	schema_property	openapi.yaml	INV-REQ-424
 PackageOutcome.members	schema_property	openapi.yaml	INV-REQ-424

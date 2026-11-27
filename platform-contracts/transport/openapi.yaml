@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: transport API
-  version: 1.15.0
+  version: 1.16.0
   description: >-
     Contract-first source of truth for transport (API-01, STK-44). The
     `transport-contract` module generates its server interfaces and DTOs
@@ -148,6 +148,9 @@ paths:
         limit is never a member and is never truncated (payload-svc holds it
         with PAY-010, INV-REQ-426); (d) the mixed-type refusal SUB-009 stays
         the batcher's own, since a package carries one `documentTypeCode`.
+        transport-svc picks the adapter from the entity's AP connection
+        record (`entityRef`), as `submitPayload` does; each member carries its
+        payload bytes by value.
         Every transmission to a third party is irreversible (§31.3, FR-AC.9).
       tags: [despatch]
       x-principal: filing-workflow
@@ -174,19 +177,19 @@ paths:
               default:
                 value:
                   packageRef: "PKG-0001"
-                  adapterRef: "AP-PRIMARY"
+                  entityRef: "ENT-CL0043"
                   documentTypeCode: "380"
                   members:
-                    - { docUuid: "3fa85f64-5717-4562-b3fc-2c963f660001", version: 1, payloadRef: "PAY-9001", sizeBytes: 120001 }
-                    - { docUuid: "3fa85f64-5717-4562-b3fc-2c963f660002", version: 1, payloadRef: "PAY-9002", sizeBytes: 120002 }
-                    - { docUuid: "3fa85f64-5717-4562-b3fc-2c963f660003", version: 1, payloadRef: "PAY-9003", sizeBytes: 120003 }
-                    - { docUuid: "3fa85f64-5717-4562-b3fc-2c963f660004", version: 1, payloadRef: "PAY-9004", sizeBytes: 120004 }
-                    - { docUuid: "3fa85f64-5717-4562-b3fc-2c963f660005", version: 1, payloadRef: "PAY-9005", sizeBytes: 120005 }
-                    - { docUuid: "3fa85f64-5717-4562-b3fc-2c963f660006", version: 1, payloadRef: "PAY-9006", sizeBytes: 120006 }
-                    - { docUuid: "3fa85f64-5717-4562-b3fc-2c963f660007", version: 1, payloadRef: "PAY-9007", sizeBytes: 120007 }
-                    - { docUuid: "3fa85f64-5717-4562-b3fc-2c963f660008", version: 1, payloadRef: "PAY-9008", sizeBytes: 120008 }
-                    - { docUuid: "3fa85f64-5717-4562-b3fc-2c963f660009", version: 1, payloadRef: "PAY-9009", sizeBytes: 120009 }
-                    - { docUuid: "3fa85f64-5717-4562-b3fc-2c963f660010", version: 1, payloadRef: "PAY-9010", sizeBytes: 120010 }
+                    - { docUuid: "3fa85f64-5717-4562-b3fc-2c963f660001", version: 1, payload: "PGludm9pY2U+PC9pbnZvaWNlPg==", sizeBytes: 120001 }
+                    - { docUuid: "3fa85f64-5717-4562-b3fc-2c963f660002", version: 1, payload: "PGludm9pY2U+PC9pbnZvaWNlPg==", sizeBytes: 120002 }
+                    - { docUuid: "3fa85f64-5717-4562-b3fc-2c963f660003", version: 1, payload: "PGludm9pY2U+PC9pbnZvaWNlPg==", sizeBytes: 120003 }
+                    - { docUuid: "3fa85f64-5717-4562-b3fc-2c963f660004", version: 1, payload: "PGludm9pY2U+PC9pbnZvaWNlPg==", sizeBytes: 120004 }
+                    - { docUuid: "3fa85f64-5717-4562-b3fc-2c963f660005", version: 1, payload: "PGludm9pY2U+PC9pbnZvaWNlPg==", sizeBytes: 120005 }
+                    - { docUuid: "3fa85f64-5717-4562-b3fc-2c963f660006", version: 1, payload: "PGludm9pY2U+PC9pbnZvaWNlPg==", sizeBytes: 120006 }
+                    - { docUuid: "3fa85f64-5717-4562-b3fc-2c963f660007", version: 1, payload: "PGludm9pY2U+PC9pbnZvaWNlPg==", sizeBytes: 120007 }
+                    - { docUuid: "3fa85f64-5717-4562-b3fc-2c963f660008", version: 1, payload: "PGludm9pY2U+PC9pbnZvaWNlPg==", sizeBytes: 120008 }
+                    - { docUuid: "3fa85f64-5717-4562-b3fc-2c963f660009", version: 1, payload: "PGludm9pY2U+PC9pbnZvaWNlPg==", sizeBytes: 120009 }
+                    - { docUuid: "3fa85f64-5717-4562-b3fc-2c963f660010", version: 1, payload: "PGludm9pY2U+PC9pbnZvaWNlPg==", sizeBytes: 120010 }
       responses:
         '202':
           description: The outcome of the whole package.
@@ -964,6 +967,7 @@ components:
       required: [reference, receivedAt]
     SubmitPackageRequest:
       type: object
+      additionalProperties: false
       description: >-
         A bulk package of 1 to 10 same-type documents, at most 10 MB in total.
         Not expressible here and enforced by the producer and the consumer:
@@ -971,7 +975,22 @@ components:
         `sizeBytes` is at most 10000000.
       properties:
         packageRef: { type: string, minLength: 1, maxLength: 40, description: Assigned by submission-svc. }
-        adapterRef: { type: string, maxLength: 40 }
+        entityRef:
+          type: string
+          minLength: 1
+          maxLength: 40
+          description: >-
+            The entity the document belongs to. transport-svc picks the adapter
+            from that entity's AP connection record and records it on the first
+            attempt of the Doc UUID; a Doc UUID already recorded under another
+            entity is refused with 404 SRT-005. The caller is the service
+            submission-svc, the only caller the sync edge of the operation names,
+            and the business authorisation of the filing happens upstream in
+            submission-svc, so transport-svc asks no authorisation decision; it
+            checks only that the verified calling service is submission-svc, that
+            the tenant it acts for equals the request's tenant and, where its
+            credential names entities, that this entity is one of them (403
+            SRT-004 otherwise, no retry hint).
         documentTypeCode:
           type: string
           pattern: '^38[01]$'
@@ -982,13 +1001,21 @@ components:
           maxItems: 10
           items:
             type: object
+            additionalProperties: false
             properties:
               docUuid: { type: string, format: uuid }
               version: { type: integer, minimum: 1 }
-              payloadRef: { type: string, maxLength: 100 }
+              payload:
+                type: string
+                format: byte
+                minLength: 1
+                maxLength: 13333336
+                description: >-
+                  The bytes of the document exactly as submission-svc holds them,
+                  base64-encoded (at most 10000000 bytes).
               sizeBytes: { type: integer, minimum: 1, maximum: 10000000, description: The byte length of the XML payload. }
-            required: [docUuid, version, payloadRef, sizeBytes]
-      required: [packageRef, adapterRef, documentTypeCode, members]
+            required: [docUuid, version, payload, sizeBytes]
+      required: [packageRef, entityRef, documentTypeCode, members]
     PackageOutcome:
       type: object
       description: The outcome of the whole package; it applies to every member.
