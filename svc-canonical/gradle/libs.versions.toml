@@ -11,7 +11,7 @@ platformLibsBom = "0.226.0"
 # The generated ErrorCode / VariationPoint catalogue (STK-61), from platform-contracts' registry (226).
 gstCatalogue = "1.28.0"
 # The published platform-contracts bundle the contract module generates from (a main build of platform-contracts).
-platformContractsBundle = "0.0.0-dev+86dee180"
+platformContractsBundle = "0.0.0-dev+270e317e"
 springBoot = "4.1.1"
 jooq = "3.21.9"
 flyway = "12.4.0"
@@ -30,6 +30,8 @@ swaggerAnnotations = "2.2.55"
 [libraries]
 platform-bom = { module = "com.dynokore.platform:platform-libs-bom", version.ref = "platformLibsBom" }
 platform-konsistRules = { module = "com.dynokore.gst.build:konsist-rules", version.ref = "platformBuild" }
+# crypto (CS-53): the MAC of the listIngestedDocuments cursor (API-18).
+platform-crypto-impl = { module = "com.dynokore.platform:crypto" }
 platform-tenancyKernel-api = { module = "com.dynokore.platform:tenancy-kernel-api" }
 platform-tenancyKernel-impl = { module = "com.dynokore.platform:tenancy-kernel" }
 platform-outboxAndQueue-api = { module = "com.dynokore.platform:outbox-and-queue-api" }

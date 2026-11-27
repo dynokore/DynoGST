@@ -13,3 +13,4 @@ channel	gst.canonical.period-reassigned.v1	UNASSIGNED
 channel	gst.canonical.example-happened.v1	UNASSIGNED
 channel	gst.canonical.net-derivation-refused.v1	UNASSIGNED
 operation	releaseHeldDocument	UNASSIGNED
+operation	listIngestedDocuments	INV-T-28721

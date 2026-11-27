@@ -15,7 +15,9 @@ import jakarta.servlet.Filter
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import org.springframework.boot.test.context.FilteredClassLoader
+import org.springframework.boot.test.context.runner.WebApplicationContextRunner
 import org.springframework.boot.web.servlet.FilterRegistrationBean
+import org.springframework.context.ApplicationContext
 import org.springframework.core.io.ClassPathResource
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
@@ -190,9 +192,11 @@ class ServedService(
     val counter: ReachCounter,
     val tenants: TenantContext,
     val handlers: List<MappedHandler>,
-    val classLoader: ClassLoader,
     private val workloadDoubles: WorkloadDoubles,
+    val context: ApplicationContext,
 ) {
+    val classLoader: ClassLoader get() = checkNotNull(context.classLoader)
+
     private val flowContextOperations = ContractDocument.operations(ContractDocument.text())
 
     /** The `X-Flow-Context` of a call to an operation the document marks `x-flow-context: required`, else none. */
@@ -252,6 +256,23 @@ class ServedService(
         return Answer(response.status, response.contentAsString)
     }
 
+    /** A GET of [path] with the query parameters [query], each sent as written. */
+    fun get(
+        path: String,
+        query: List<Pair<String, String>>,
+        workload: String?,
+        authorization: String?,
+    ): Answer {
+        val request =
+            MockMvcRequestBuilders.get(path).apply {
+                query.forEach { (name, value) -> queryParam(name, value) }
+                if (workload != null) header("X-Workload-Token", workload)
+                if (authorization != null) header("Authorization", authorization)
+            }
+        val response = mvc.perform(request).andReturn().response
+        return Answer(response.status, response.contentAsString)
+    }
+
     /** Rows of every table of the service schema, the outbox included: a refused call must leave it unchanged. */
     fun state(): Long =
         CanonicalDb.superuser().use { c ->
@@ -293,7 +314,7 @@ class ServedService(
 
         /** MockMvc over the context with every servlet filter the container registers, in their order. */
         private fun mockMvcOf(
-            context: org.springframework.context.ApplicationContext,
+            context: ApplicationContext,
             web: WebApplicationContext,
         ): MockMvc {
             val filters =
@@ -315,6 +336,7 @@ class ServedService(
         fun run(
             workload: WorkloadDoubles,
             removed: List<String> = emptyList(),
+            customize: (WebApplicationContextRunner) -> WebApplicationContextRunner = { it },
             block: (ServedService) -> Unit,
         ) {
             val mountRoot = Files.createTempDirectory("canonical-served")
@@ -335,7 +357,7 @@ class ServedService(
                 val hidden = removed.map { ClassPathResource(it) }.toTypedArray()
                 runner = runner.withClassLoader(FilteredClassLoader(*hidden))
             }
-            runner.run { context ->
+            customize(runner).run { context ->
                 context.startupFailure?.let { throw it }
                 val web = context.sourceApplicationContext as WebApplicationContext
                 tenantsHolder = context.getBean(TenantContext::class.java)
@@ -346,8 +368,8 @@ class ServedService(
                         counter,
                         tenantsHolder,
                         mappedHandlers(web),
-                        checkNotNull(context.classLoader),
                         workload,
+                        context,
                     ),
                 )
             }

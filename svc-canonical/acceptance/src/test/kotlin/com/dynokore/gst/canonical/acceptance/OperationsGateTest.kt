@@ -29,15 +29,15 @@ class OperationsGateTest {
 
     @Test
     fun `the real table covers the real contract`() {
-        OperationsGate.contractOperations(openapi).size shouldBe 6
+        OperationsGate.contractOperations(openapi).size shouldBe 7
         OperationsGate.contractChannels(asyncapi).size shouldBe 8
         run(done = doneText).shouldBeEmpty()
-        doneText shouldBe ""
+        doneText shouldBe "INV-T-28721\n"
     }
 
     @Test
     fun `every operation of the real contract is a stub until a task overrides it`() {
-        stubs shouldBe OperationsGate.contractOperations(openapi)
+        stubs shouldBe OperationsGate.contractOperations(openapi) - "listIngestedDocuments"
     }
 
     @Test

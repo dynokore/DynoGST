@@ -9,11 +9,15 @@ import java.nio.file.Path
 
 /** The service composed as TPL-18 writes it, over a TPL-16 configuration (application.yaml plus these overrides). */
 object CanonicalContext {
+    private const val CURSOR_KEY = "test-only-ingested-documents-cursor-key-0001"
+
     private fun secrets(mountRoot: Path) {
         Files.createDirectories(mountRoot.resolve("db"))
         Files.createDirectories(mountRoot.resolve("tenancy"))
         Files.writeString(mountRoot.resolve("db/canonical_runtime"), CanonicalDb.RUNTIME_PASSWORD)
         Files.writeString(mountRoot.resolve("tenancy/binding-key-current"), CanonicalDb.BINDING_SECRET)
+        Files.createDirectories(mountRoot.resolve("canonical"))
+        Files.writeString(mountRoot.resolve(SignedIngestedDocumentCursors.CURRENT_SECRET), CURSOR_KEY)
     }
 
     /** No connection is opened at start: the pool is lazy (TPL-16). */
