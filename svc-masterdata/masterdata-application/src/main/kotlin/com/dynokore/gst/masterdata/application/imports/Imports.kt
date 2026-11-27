@@ -350,7 +350,7 @@ class ImportCounterparties(
                 legalName = data.legalName,
                 address = PostalAddress(data.addressLine1, held?.address?.line2, data.postalCode),
                 arcsGstChargeAgreed = null,
-                approvedSchemes = null,
+                approvedSchemes = data.approvedSchemes,
             )
         val content = held.after(change, record.importId, record.providedBy.origin, now)
         val version = parties.append(target.party, content, now, record.importId)

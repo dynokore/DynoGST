@@ -9,6 +9,7 @@ data class ImportRow(
     val legalName: String?,
     val addressLine1: String?,
     val postalCode: String?,
+    val approvedSchemes: List<SchemeInput>? = null,
 )
 
 /** A row refused at the dry run: its 1-based [row] number, the finding [code] and the [field] it names. */
@@ -67,6 +68,10 @@ private const val MDM_UEN_ABSENT = "MDM-002"
 private const val MDM_UEN_INVALID = "MDM-003"
 private const val MDM_ADDRESS_INCOMPLETE = "MDM-006"
 private const val MDM_NO_TARGET = "MDM-010"
+
+/** The longest `oldValue` or `newValue` of a preview change in the contract; a longer one ends in [CUT_MARK]. */
+private const val MAX_CHANGE_VALUE = 500
+private const val CUT_MARK = "..."
 
 /**
  * The dry run of a counterparty import (INV-Q-9793, INV-Q-17289), a pure function of the rows and the held records.
@@ -163,16 +168,62 @@ private fun preview(
                 Triple("addressLine1", before?.address?.line1, t.data.addressLine1),
                 Triple("postalCode", before?.address?.postalCode, t.data.postalCode),
             ).filter { (_, old, new) -> new != null && new != old }
-        fields.forEach { (field, old, new) ->
-            changes += ImportChange(uen, field, checkNotNull(new), t.party.value, old)
-        }
+        val rowChanges =
+            fields.map { (field, old, new) -> ImportChange(uen, field, checkNotNull(new), t.party.value, old) } +
+                listOfNotNull(schemeChange(t, before?.schemes.orEmpty()))
+        changes += rowChanges
         when {
             before == null -> create++
-            fields.isEmpty() -> unchanged++
+            rowChanges.isEmpty() -> unchanged++
             else -> update++
         }
     }
     return ImportAnalysis(rejected, duplicates, targets, create, update, unchanged, changes)
+}
+
+/**
+ * The one `approvedSchemes` change of a row, or null when its list is absent or equals the [held] one. The lists are
+ * compared as sets of (scheme, effectiveFrom, effectiveTo), so their order does not count; an evidence reference the
+ * row supplies must also be the held one of the item, and one it leaves out is not compared.
+ */
+private fun schemeChange(
+    target: ImportTarget,
+    held: List<SchemeStatus>,
+): ImportChange? {
+    val supplied = target.data.approvedSchemes ?: return null
+    val heldItems =
+        held.map {
+            SchemeInput(
+                it.scheme,
+                it.effectiveFrom,
+                it.effectiveTo,
+                it.provenance.evidenceRef.value,
+            )
+        }
+    val sameItems = supplied.map { it.item() }.toSet() == heldItems.map { it.item() }.toSet()
+    val sameEvidence = supplied.filter { it.evidenceRef != null }.all { it in heldItems }
+    return if (sameItems && sameEvidence) {
+        null
+    } else {
+        ImportChange(
+            target.data.uen.orEmpty(),
+            "approvedSchemes",
+            rendered(supplied),
+            target.party.value,
+            heldItems.takeIf { it.isNotEmpty() }?.let(::rendered),
+        )
+    }
+}
+
+private fun SchemeInput.item() = Triple(scheme, effectiveFrom, effectiveTo)
+
+/** `scheme:effectiveFrom/effectiveTo` per item (nothing after the slash without an end), sorted and `;`-joined. */
+private fun rendered(items: List<SchemeInput>): String {
+    val text =
+        items
+            .sortedWith(compareBy<SchemeInput>({ it.effectiveFrom }, { it.scheme }, { it.effectiveTo }))
+            .joinToString(";") { "${it.scheme}:${it.effectiveFrom}/${it.effectiveTo ?: ""}" }
+    return if (text.length <= MAX_CHANGE_VALUE) text else text.take(MAX_CHANGE_VALUE - CUT_MARK.length) + CUT_MARK
 }
 
 private fun IdentifierScheme.isUenOrNone() = this == IdentifierScheme.UEN || this == IdentifierScheme.NONE
