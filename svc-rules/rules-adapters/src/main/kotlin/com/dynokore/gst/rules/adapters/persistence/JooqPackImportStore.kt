@@ -195,6 +195,7 @@ class JooqPackImportStore(
                 java.util.Base64
                     .getEncoder()
                     .encodeToString(pack.artefact.signature),
+            contents = pack.artefact.contents,
         )
     }
 

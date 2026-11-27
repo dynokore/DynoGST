@@ -18,7 +18,24 @@ sealed interface PackEvent {
         val manifest: Map<String, String>,
         val checksums: Map<String, String>,
         val signature: String,
-    ) : PackEvent
+        /** The bytes of the verified pack's `contents.json`, sent as `artefact.contents` (INV-AC-29312). */
+        val contents: ByteArray,
+    ) : PackEvent {
+        override fun equals(other: Any?): Boolean =
+            other is RulePackStaged &&
+                packIdentifier == other.packIdentifier &&
+                packType == other.packType &&
+                version == other.version &&
+                effectiveFrom == other.effectiveFrom &&
+                minEngineVersion == other.minEngineVersion &&
+                manifest == other.manifest &&
+                checksums == other.checksums &&
+                signature == other.signature &&
+                contents.contentEquals(other.contents)
+
+        override fun hashCode(): Int =
+            listOf(packIdentifier, packType, version, signature, contents.contentHashCode()).hashCode()
+    }
 
     data class RulePackActivated(
         val packIdentifier: String,

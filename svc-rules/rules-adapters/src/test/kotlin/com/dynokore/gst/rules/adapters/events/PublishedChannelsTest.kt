@@ -8,6 +8,8 @@ import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldNotBeEmpty
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
+import tools.jackson.databind.DeserializationFeature
+import tools.jackson.databind.json.JsonMapper
 import java.time.LocalDate
 
 /**
@@ -17,6 +19,7 @@ import java.time.LocalDate
  */
 class PublishedChannelsTest {
     private val mapper = PackEventMapper()
+    private val exact = JsonMapper.builder().enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS).build()
 
     @Test
     fun `channel rulesRulePackStaged carries a payload that validates against its schema`() {
@@ -31,12 +34,65 @@ class PublishedChannelsTest {
                     mapOf("packType" to "SCOPE"),
                     mapOf("content/scope.json" to "sha256:ab"),
                     "c2ln",
+                    """{"codes":[]}""".toByteArray(),
                 ),
             )
         event.type shouldBe ContractFiles.platformType("RulePackStaged")
         RulesEventCatalogue.TOPICS.getValue(event.type) shouldBe ContractFiles.platformAddress("RulePackStaged")
         ContractFiles.platformErrors("rule-pack-staged-payload.schema.json", event.dataJson).shouldBeEmpty()
     }
+
+    @Test
+    fun `INV-AC-29312 the staged event carries the contents of an object pack JSON-equal to the input`() {
+        val contents =
+            """
+            {"codes":[{"code":"SR","percent":9.000000000000000000001,"big":123456789012345678901234567890}],
+             "note":"\u00e9 é \"q\"","none":null,"flag":true,"empty":{}}
+            """.trimIndent()
+        val event = mapper.map(staged(contents.toByteArray()))
+        val data = exact.readTree(event.dataJson)
+        data.get("artefact").get("contents") shouldBe exact.readTree(contents)
+        data.get("artefact").get("contents").isObject shouldBe true
+        data.get("artefact").get("manifest") shouldBe exact.readTree("""{"packType":"SCOPE"}""")
+        data.get("artefact").get("checksums") shouldBe exact.readTree("""{"content/scope.json":"sha256:ab"}""")
+        data.get("artefact").get("signature").asString() shouldBe "c2ln"
+        data.get("artefact").propertyNames().toSet() shouldBe setOf("manifest", "checksums", "signature", "contents")
+        ContractFiles.platformErrors("rule-pack-staged-payload.schema.json", event.dataJson).shouldBeEmpty()
+    }
+
+    @Test
+    fun `INV-AC-29312 contents that are not exactly one JSON value fail the mapping without quoting them`() {
+        listOf(
+            "",
+            "  \n ",
+            "not json",
+            "{} {}",
+            "{}x",
+            """{} "secretmarker" """,
+            """{"a":"secretmarker"}]""",
+            """{"a":"secretmarker""",
+            "secretmarker",
+            "{} // secretmarker",
+            "NaN",
+        ).forEach { contents ->
+            val failure = shouldThrow<IllegalArgumentException> { mapper.map(staged(contents.toByteArray())) }
+            failure.message shouldBe "the pack contents are not exactly one JSON value"
+            failure.cause shouldBe null
+        }
+    }
+
+    private fun staged(contents: ByteArray) =
+        PackEvent.RulePackStaged(
+            "scope-pack",
+            "SCOPE",
+            "2026.4",
+            LocalDate.of(2026, 4, 1),
+            "1.0.0",
+            mapOf("packType" to "SCOPE"),
+            mapOf("content/scope.json" to "sha256:ab"),
+            "c2ln",
+            contents,
+        )
 
     @Test
     fun `INV-AC-23119 channel platformRulePackActivated carries a payload that validates against its schema`() {

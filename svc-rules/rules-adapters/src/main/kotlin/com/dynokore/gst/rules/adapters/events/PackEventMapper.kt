@@ -2,6 +2,9 @@ package com.dynokore.gst.rules.adapters.events
 
 import com.dynokore.gst.rules.application.PackEvent
 import com.dynokore.platform.outboxandqueue.OutboundEvent
+import tools.jackson.core.JacksonException
+import tools.jackson.databind.DeserializationFeature
+import tools.jackson.databind.JsonNode
 import tools.jackson.databind.json.JsonMapper
 
 /**
@@ -33,10 +36,32 @@ class PackEventMapper(
                             "manifest" to event.manifest,
                             "checksums" to event.checksums,
                             "signature" to event.signature,
+                            "contents" to jsonValue(event.contents),
                         ),
                 ),
             ),
         )
+
+    /**
+     * The one JSON value of [contents], numbers kept exact. Empty bytes, text that does not parse and trailing text
+     * fail the mapping, so the import transaction stores no outbox row. The parser's exception quotes its input, so it
+     * is neither a cause nor part of the message.
+     */
+    @Suppress("SwallowedException") // the parser's message quotes the contents
+    private fun jsonValue(contents: ByteArray): JsonNode {
+        val value =
+            try {
+                mapper
+                    .reader()
+                    .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+                    .with(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
+                    .readTree(contents)
+            } catch (e: JacksonException) {
+                null
+            }
+        require(value != null && !value.isMissingNode) { "the pack contents are not exactly one JSON value" }
+        return value
+    }
 
     private fun activated(event: PackEvent.RulePackActivated): OutboundEvent =
         OutboundEvent(
