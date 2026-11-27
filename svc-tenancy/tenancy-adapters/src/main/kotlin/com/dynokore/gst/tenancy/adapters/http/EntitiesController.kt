@@ -14,6 +14,7 @@ import com.dynokore.gst.tenancy.application.election.ExemptPurchaseOutcome
 import com.dynokore.gst.tenancy.application.election.PendingChange
 import com.dynokore.gst.tenancy.application.lifecycle.DeregisterEntity
 import com.dynokore.gst.tenancy.application.lifecycle.GoLive
+import com.dynokore.gst.tenancy.application.lifecycle.LifecycleCodes
 import com.dynokore.gst.tenancy.application.lifecycle.LifecycleOutcome
 import com.dynokore.gst.tenancy.application.lifecycle.SuspendEntity
 import com.dynokore.gst.tenancy.application.migration.GetMigrationCutover
@@ -22,6 +23,7 @@ import com.dynokore.gst.tenancy.application.migration.MigrationCutoverOutcome
 import com.dynokore.gst.tenancy.application.migration.MigrationCutoverPermissions
 import com.dynokore.gst.tenancy.application.migration.NewMigrationCutover
 import com.dynokore.gst.tenancy.application.migration.RecordMigrationCutover
+import com.dynokore.gst.tenancy.application.offboarding.OffboardingCodes
 import com.dynokore.gst.tenancy.application.period.FilingFrequencyCommands
 import com.dynokore.gst.tenancy.application.rendition.RecordRenditionOutcome
 import com.dynokore.gst.tenancy.application.rendition.RecordRenditionResponsibility
@@ -613,7 +615,7 @@ open class EntitiesController(
         val outcome =
             tx.inTransaction {
                 suspendUseCase.handle(entityRef).also {
-                    if (it is LifecycleOutcome.Done) {
+                    if (it is LifecycleOutcome.Done && !it.repeated) {
                         lifecycleAudit.suspended(
                             actor,
                             entityRef,
@@ -671,11 +673,27 @@ open class EntitiesController(
             }
 
             is LifecycleOutcome.Conflict -> {
-                conflict(TenancyErrorCode.UNSUBMITTED_DOCUMENTS_REFUSED, outcome.reason)
+                lifecycleConflict(outcome)
             }
 
             is LifecycleOutcome.Refused -> {
                 constraintRefused(outcome.detail)
+            }
+        }
+
+    /** The catalogue code of a lifecycle conflict; a code with no mapping is an internal error (fail closed). */
+    private fun lifecycleConflict(outcome: LifecycleOutcome.Conflict): Nothing =
+        when (outcome.code) {
+            OffboardingCodes.UNSUBMITTED_DOCUMENT -> {
+                conflict(TenancyErrorCode.UNSUBMITTED_DOCUMENTS_REFUSED, outcome.reason)
+            }
+
+            LifecycleCodes.ILLEGAL_TRANSITION -> {
+                conflict(TenancyErrorCode.ILLEGAL_LIFECYCLE_TRANSITION, outcome.reason)
+            }
+
+            else -> {
+                error("unmapped lifecycle conflict code ${outcome.code}")
             }
         }
 

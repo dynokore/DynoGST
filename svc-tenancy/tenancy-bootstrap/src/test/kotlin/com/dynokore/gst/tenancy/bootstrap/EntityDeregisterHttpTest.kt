@@ -6,6 +6,7 @@ import com.dynokore.gst.tenancy.adapters.http.TenancyRefusal
 import com.dynokore.gst.tenancy.application.lifecycle.TriggerCoverage
 import com.dynokore.gst.tenancy.application.offboarding.UnavailableInput
 import com.dynokore.gst.tenancy.application.offboarding.UnsubmittedDocuments
+import com.dynokore.gst.tenancy.contract.model.CreateGroupRequest
 import com.dynokore.gst.tenancy.contract.model.DeregisterEntityRequest
 import com.dynokore.gst.tenancy.contract.model.EntityResponse
 import com.dynokore.gst.tenancy.contract.model.GoLiveRequest
@@ -58,6 +59,151 @@ class EntityDeregisterHttpTest {
                 assertThat(structureEventRows(entity).size).isEqualTo(structure)
             }
         }
+    }
+
+    @Test
+    fun `INV-AC-16049 a repeated goLive changes nothing and suspendEntity sets SUSPENDED and removes nothing`() {
+        lifecycleRun { l ->
+            val setUpCaller = l.people.caller
+            val foreign =
+                l.env.withEntity { _, other ->
+                    lifecycleReady(l, other)
+                    other
+                }
+            l.people.caller = setUpCaller
+            l.env.withGroup(2, CreateGroupRequest.GroupKind.DIVISIONAL) { _, _, (entity, draft) ->
+                lifecycleReady(l, entity)
+                listOf(draft, foreign).forEach { l.people.grant(ADMIN, it.entityRef, ElectionRoles.ENTITY_ADMIN) }
+                val certifications = l.e.rows(entity)
+                val live = assertGoLiveThenRepeats(l, entity)
+                val suspended = assertSuspendThenRepeat(l, entity)
+                assertThat(suspended).containsAll(live)
+                assertIllegalSuspend(l, draft, "DRAFT")
+                assertForeignGoLiveRefused(l, foreign)
+                assertThat(l.e.rows(entity)).isEqualTo(certifications)
+                assertThat(outboxRows(entity, "%")).isEqualTo(suspended)
+            }
+        }
+    }
+
+    /** goLive from DRAFT, then with the same and a new key; answers every outbox row recorded by the first call. */
+    private fun assertGoLiveThenRepeats(
+        l: Lab,
+        entity: EntityResponse,
+    ): List<JsonNode> {
+        assertThat(storedState(entity)).isEqualTo("DRAFT")
+        val key = UUID.randomUUID()
+        assertAnswers(callGoLiveWithKey(l.env, entity, key), EntityResponse.LifecycleState.LIVE)
+        assertThat(storedState(entity)).isEqualTo("LIVE")
+        val events = profileEventRows(entity).size
+        // every audit entry of the entity, whatever its action: any second entry of a go-live is counted
+        val audits = auditRows(entity, "").size
+        val recorded = outboxRows(entity, "%")
+        listOf(key, UUID.randomUUID()).forEach { repeatKey ->
+            assertAnswers(callGoLiveWithKey(l.env, entity, repeatKey), EntityResponse.LifecycleState.LIVE)
+            assertThat(storedState(entity)).isEqualTo("LIVE")
+            assertThat(profileEventRows(entity).size).isEqualTo(events)
+            assertThat(auditRows(entity, "").size).isEqualTo(audits)
+            assertThat(outboxRows(entity, "%")).isEqualTo(recorded)
+        }
+        return recorded
+    }
+
+    /** suspendEntity twice; answers every outbox row recorded after the first suspension. */
+    private fun assertSuspendThenRepeat(
+        l: Lab,
+        entity: EntityResponse,
+    ): List<JsonNode> {
+        assertAnswers(callSuspend(l.env, entity), EntityResponse.LifecycleState.SUSPENDED)
+        assertThat(storedState(entity)).isEqualTo("SUSPENDED")
+        assertThat(auditRows(entity, "entity.suspended").size).isEqualTo(1)
+        val events = profileEventRows(entity).size
+        val recorded = outboxRows(entity, "%")
+        assertAnswers(callSuspend(l.env, entity), EntityResponse.LifecycleState.SUSPENDED)
+        assertThat(storedState(entity)).isEqualTo("SUSPENDED")
+        assertThat(auditRows(entity, "entity.suspended").size).isEqualTo(1)
+        assertThat(profileEventRows(entity).size).isEqualTo(events)
+        assertThat(outboxRows(entity, "%")).isEqualTo(recorded)
+        return recorded
+    }
+
+    /** goLive of an entity of another tenant: 404 as an unknown entity, and that entity is unchanged. */
+    private fun assertForeignGoLiveRefused(
+        l: Lab,
+        foreign: EntityResponse,
+    ) {
+        assertThat(storedState(foreign)).isEqualTo("DRAFT")
+        val rows = outboxRows(foreign, "%")
+        val answer = callGoLive(l.env, foreign)
+        assertThat(listOf(answer.status, answer.code)).isEqualTo(listOf(404, "SRT-005"))
+        assertThat(storedState(foreign)).isEqualTo("DRAFT")
+        assertThat(outboxRows(foreign, "%")).isEqualTo(rows)
+    }
+
+    @Test
+    fun `INV-AC-25957 suspendEntity of a DRAFT entity is 409 TNC-015 and writes nothing`() {
+        lifecycleRun { l ->
+            l.env.withEntity { _, entity ->
+                lifecycleReady(l, entity)
+                assertIllegalSuspend(l, entity, "DRAFT")
+            }
+        }
+    }
+
+    @Test
+    fun `INV-AC-25957 suspendEntity of a DEREGISTERED entity is 409 TNC-015 and writes nothing`() {
+        lifecycleRun { l ->
+            l.env.withEntity { _, entity ->
+                lifecycleReady(l, entity)
+                lifecycleRegistered(l, entity)
+                assertThat(callGoLive(l.env, entity).status).isEqualTo(200)
+                val deregistered = callDeregister(l.env, entity)
+                assertThat(deregistered.status).describedAs(deregistered.detail).isEqualTo(200)
+                assertIllegalSuspend(l, entity, "DEREGISTERED")
+            }
+        }
+    }
+
+    @Test
+    fun `INV-AC-25957 a repeated suspendEntity is 200 SUSPENDED and writes no second audit entry or event`() {
+        lifecycleRun { l ->
+            l.env.withEntity { _, entity ->
+                lifecycleReady(l, entity)
+                assertThat(callGoLive(l.env, entity).status).isEqualTo(200)
+                assertThat(callSuspend(l.env, entity).status).isEqualTo(200)
+                val audits = auditRows(entity, "entity.suspended").size
+                val events = profileEventRows(entity).size
+                assertThat(audits).isEqualTo(1)
+                assertAnswers(callSuspend(l.env, entity), EntityResponse.LifecycleState.SUSPENDED)
+                assertThat(storedState(entity)).isEqualTo("SUSPENDED")
+                assertThat(auditRows(entity, "entity.suspended").size).isEqualTo(audits)
+                assertThat(profileEventRows(entity).size).isEqualTo(events)
+            }
+        }
+    }
+
+    private fun assertAnswers(
+        answer: Answer,
+        state: EntityResponse.LifecycleState,
+    ) {
+        assertThat(answer.status).describedAs(answer.detail).isEqualTo(200)
+        assertThat(answer.body!!.lifecycleState).isEqualTo(state)
+    }
+
+    private fun assertIllegalSuspend(
+        l: Lab,
+        entity: EntityResponse,
+        state: String,
+    ) {
+        assertThat(storedState(entity)).isEqualTo(state)
+        val rows = outboxRows(entity, "%")
+        val audits = auditRows(entity, "entity.suspended")
+        val answer = callSuspend(l.env, entity)
+        assertThat(listOf(answer.status, answer.code)).isEqualTo(listOf(409, "TNC-015"))
+        assertThat(answer.detail).contains(state)
+        assertThat(storedState(entity)).isEqualTo(state)
+        assertThat(outboxRows(entity, "%")).isEqualTo(rows)
+        assertThat(auditRows(entity, "entity.suspended")).isEqualTo(audits)
     }
 
     // ---- deregisterEntity ----

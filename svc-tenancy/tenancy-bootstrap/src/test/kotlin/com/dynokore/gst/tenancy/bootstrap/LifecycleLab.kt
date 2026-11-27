@@ -300,3 +300,10 @@ internal fun callSuspendWith(
     entity: EntityResponse,
     reason: String,
 ) = lifecycleCall { env.api.suspendEntity(entity.entityRef, UUID.randomUUID(), SuspendEntityRequest(reason)) }
+
+internal fun callGoLiveWithKey(
+    env: ProfileEnv,
+    entity: EntityResponse,
+    key: UUID,
+    confirmer: String = APPROVER,
+) = lifecycleCall { env.api.goLive(entity.entityRef, key, GoLiveRequest(confirmer)) }
