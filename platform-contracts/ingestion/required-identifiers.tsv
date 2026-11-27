@@ -158,3 +158,4 @@ DraftDocument.submissionType	schema_required_property	openapi.yaml	INV-REQ-325
 DraftDocument.supplierGstn	schema_required_property	openapi.yaml	INV-REQ-325
 DraftDocument.invoiceDate	schema_required_property	openapi.yaml	INV-REQ-325
 DraftDocument.gstAmount	schema_required_property	openapi.yaml	INV-REQ-325
+submitTransaction.ING-026	operation_error_code	openapi.yaml	INV-REQ-1086
