@@ -9,10 +9,12 @@ mapping. It fails, naming the directory and operationId, when:
   (b) that operation's x-operation has a kind other than PERMISSION, a permission not equal to the row cell, or a
       role property;
   (c) a row's permission is not a `key` of `permissions` in catalogue/role-permissions/role-permissions.yaml;
-  (d) in a directory that has a row, an operation whose x-operation has kind PERMISSION or a permission property
-      has no row;
+  (d) in a directory of COVERED or a directory that has a row, an operation whose x-operation has kind PERMISSION
+      or a permission property has no row; <directory>/openapi.yaml of each is read, and an unreadable file fails;
   (e) the header differs, a row has another number of fields, a (directory, operationId) pair occurs twice, or the
-      table has no data row.
+      table has no data row;
+  (f) a row's directory is not a member of COVERED, the fixed set of directories whose coverage does not depend on
+      the rows the table has.
 
 All comparisons are by equality: no trimming, case folding, prefix or glob.
 Prints `operation-permissions-check: N rows` and exits 0 only when nothing fails.
@@ -28,6 +30,7 @@ METHODS = ("get", "put", "post", "delete", "options", "head", "patch", "trace")
 HEADER = ["directory", "operationId", "permission"]
 TABLE = Path("spectral") / "operation-permissions.tsv"
 CATALOGUE = Path("catalogue") / "role-permissions" / "role-permissions.yaml"
+COVERED = ("masterdata", "rules", "service-runtime", "tenancy", "transport")
 
 
 def read_tsv(path: Path, errors: list) -> list:
@@ -107,7 +110,12 @@ def main(argv) -> int:
             errors.append(f"{who}: (b) x-operation has a role property")
     listed = {(r[0], r[1]) for r in rows}
     for d in sorted({r[0] for r in rows}):
-        for o in cache.get(d, ()):
+        if d not in COVERED:
+            errors.append(f"{d}: (f) the table has a row for a directory that is not a member of COVERED")
+    for d in sorted(set(COVERED) | {r[0] for r in rows}):
+        if d not in cache:
+            cache[d] = operations(root, d, errors)
+        for o in cache[d]:
             xo = o.get("x-operation")
             if isinstance(xo, dict) and (xo.get("kind") == "PERMISSION" or "permission" in xo) \
                     and (d, o.get("operationId")) not in listed:

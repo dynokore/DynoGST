@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: service-runtime shared contract components
-  version: 1.6.0
+  version: 1.7.0
   description: >-
     Not a service: the shared OpenAPI components every other directory's
     openapi.yaml references by relative $ref (error envelope, API-20) rather
@@ -371,13 +371,12 @@ paths:
       - EVL-003
       - EVL-004
       x-operation:
-        role: only the form's platform operator role, platform.engineer (SaaS) or deployment.operator (private),
-          for every mode and scope (INV-REQ-888, coordinator ruling INV-Q-3663); any other role EVL-002. Roles
-          re-checked against the authority replica, never taken from the caller (CS-23)
+        kind: PERMISSION
+        permission: consumer.rebuild
         scope: (consumer service, topic); a full sync covers every topic of the topic's producer the consumer
           subscribes to (INV-Q-3603)
-        precondition: The topic is one this service consumes (EVL-001); the caller holds the platform operator
-          role (EVL-002); the consumer holds the topic in 'rebuild required' (EVL-003); no replay for the
+        precondition: The topic is one this service consumes (EVL-001); the caller holds the permission
+          consumer.rebuild (EVL-002); the consumer holds the topic in 'rebuild required' (EVL-003); no replay for the
           (consumer, producer) pair is pending with another mode or scope (EVL-004)
         repeatKey: (consumer, producer); while a replay for the pair is pending, the same mode and scope
           returns the pending replay (200, repeat true) and writes nothing, another mode or scope is EVL-004;

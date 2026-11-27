@@ -998,3 +998,34 @@ class ReconciliationViewKeyTest {
         assertNull(RolePermissions.kind("reconciliation.views"))
     }
 }
+
+class ConsumerRebuildKeyTest {
+    @Test
+    fun `INV-AC-29167 consumer rebuild is WRITE held only by the platform operator role of the form`() {
+        val key = "consumer.rebuild"
+        assertEquals(PermissionKind.WRITE, RolePermissions.kind(key))
+        val operators =
+            mapOf(
+                DeploymentForm.SAAS to "platform.engineer",
+                DeploymentForm.PRIVATE to "deployment.operator",
+            )
+        operators.forEach { (form, operator) ->
+            val held =
+                RolePermissions
+                    .cells(form)
+                    .filter { (_, perms) -> perms[key] != null }
+                    .mapValues { (_, perms) -> perms.getValue(key) }
+            assertEquals(mapOf(operator to RoleAllowance.PERMITTED), held, "$key $form")
+            assertEquals(held, OperationRoles.rolesFor(form, key), "$key $form")
+        }
+        listOf(
+            "consumer.rebuilds",
+            "Consumer.rebuild",
+            "consumer.rebuild ",
+            "consumer.rebuild.full",
+            "consumer.*",
+        ).forEach {
+            assertNull(RolePermissions.kind(it), it)
+        }
+    }
+}

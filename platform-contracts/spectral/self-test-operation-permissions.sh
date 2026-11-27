@@ -66,6 +66,8 @@ probe header-changed "operation-permissions.tsv: the header line must be directo
 probe row-width "operation-permissions.tsv: line 2 has 2 fields, expected 3" "v = v.replace('transport\trotateCredential\tap-credential.manage', 'transport\trotateCredential', 1)"
 probe no-data-row "operation-permissions.tsv: the table has no data row" "v = 'directory\toperationId\tpermission\n'"
 probe permission-not-in-catalogue "(c) permission 'adapter.nothing'" "t = t.replace('permission: adapter.failover\n', 'permission: adapter.nothing\n', 1); v = v.replace('adapter.failover\n', 'adapter.nothing\n', 1)"
+probe covered-directory-last-row-removed "service-runtime rebuildConsumer: (d) x-operation carries a permission and the operation has no row" "v = v.replace('service-runtime\trebuildConsumer\tconsumer.rebuild\n', '', 1)"
+probe row-uncovered-directory "aggregation: (f)" "v += 'aggregation\tlistAggregationIntake\tsubmission.view-status\n'"
 
 [ "$failed" -eq 0 ] && echo "gst-ci: INV-AC-18673 check-operation-permissions.py self-test passed."
 exit $failed
