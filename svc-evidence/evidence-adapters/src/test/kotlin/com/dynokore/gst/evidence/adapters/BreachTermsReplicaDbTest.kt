@@ -187,14 +187,10 @@ open class BreachTermsReplicaHarness {
         version: String = "1",
         artefact: String = """{"contents":${contents()}}""",
         who: TenantId = platform,
-        at: Instant = PRODUCED,
-        id: String = UUID.randomUUID().toString(),
     ) = envelope(
         RulePackEventsHandler.STAGED_TYPE,
         """{"packIdentifier":"$identifier","packType":"$type","version":"$version","artefact":$artefact}""",
         who,
-        at,
-        id,
     )
 
     protected fun stagedWith(
@@ -203,7 +199,8 @@ open class BreachTermsReplicaHarness {
         version: String = "1",
         at: Instant = PRODUCED,
         id: String = UUID.randomUUID().toString(),
-    ) = staged(identifier = identifier, version = version, artefact = """{"contents":$contents}""", at = at, id = id)
+    ) = staged(identifier = identifier, version = version, artefact = """{"contents":$contents}""")
+        .copy(time = at, id = EventId(id))
 
     protected fun activated(
         identifier: String = "pack-a",

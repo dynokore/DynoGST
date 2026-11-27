@@ -145,7 +145,7 @@ class JooqBreachTermsReplica(
                 )
             }
 
-    /** One definer function of schema `evidence`, called through a select (tenancy-jooq refuses a generated routine). */
+    /** One definer function of schema `evidence`, called by a select (tenancy-jooq refuses a generated routine). */
     private fun <T : Any> call(
         function: String,
         type: DataType<T>,

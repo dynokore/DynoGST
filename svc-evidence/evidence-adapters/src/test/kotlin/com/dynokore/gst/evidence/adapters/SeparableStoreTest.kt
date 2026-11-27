@@ -279,7 +279,7 @@ class SeparableStoreTest {
             }
         }
 
-    /** By name, except a row that another row refers to: the registry row first, a pack version before its activation. */
+    /** By name, but a referred row goes first: the registry row, and a pack version before its activation. */
     private fun insertOrder(table: String): String =
         when (table) {
             "retention_partition" -> ""
