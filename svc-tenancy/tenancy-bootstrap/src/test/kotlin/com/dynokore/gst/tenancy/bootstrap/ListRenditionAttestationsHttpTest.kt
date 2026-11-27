@@ -131,11 +131,11 @@ class ListRenditionAttestationsHttpTest {
     @Test
     fun `INV-AC-27601 a holder gets the page of the contract with the stored user ID and the history sequence`() {
         run { env ->
-            env.record("TAX_INVOICE", RenditionResponsibilityRequest.Renderer.SELF)
-            env.record("CREDIT_NOTE", RenditionResponsibilityRequest.Renderer.AGENT)
+            env.record("TYPE_1A", RenditionResponsibilityRequest.Renderer.SELF)
+            env.record("TYPE_1B", RenditionResponsibilityRequest.Renderer.AGENT)
             val page = env.list()
             assertThat(page.nextCursor).isNull()
-            assertThat(page.items.map { it.documentClass }).containsExactly("TAX_INVOICE", "CREDIT_NOTE")
+            assertThat(page.items.map { it.documentClass }).containsExactly("TYPE_1A", "TYPE_1B")
             assertThat(page.items.map { it.renderer.value }).containsExactly("SELF", "AGENT")
             assertThat(page.items.map { it.attestedBy }).containsOnly(USER)
             assertThat(page.items.map { it.sequence }).isSorted().doesNotHaveDuplicates().allMatch { it >= 1 }
@@ -147,9 +147,9 @@ class ListRenditionAttestationsHttpTest {
     @Test
     fun `INV-AC-27601 the sequence is the history row number and not the index of the page`() {
         run { env ->
-            env.record("TAX_INVOICE")
-            env.record("TAX_INVOICE", RenditionResponsibilityRequest.Renderer.AGENT)
-            env.record("CREDIT_NOTE")
+            env.record("TYPE_1A")
+            env.record("TYPE_1A", RenditionResponsibilityRequest.Renderer.AGENT)
+            env.record("TYPE_1B")
             val first = env.list(limit = 1)
             val second = env.list(limit = 2, cursor = first.nextCursor)
             val rows = first.items + second.items
@@ -163,9 +163,9 @@ class ListRenditionAttestationsHttpTest {
     @Test
     fun `INV-AC-27601 the record of a replaced attestation and the replacement are both listed`() {
         run { env ->
-            env.record("TAX_INVOICE", RenditionResponsibilityRequest.Renderer.SELF)
-            env.record("TAX_INVOICE", RenditionResponsibilityRequest.Renderer.AGGREGATOR)
-            val items = env.list().items.filter { it.documentClass == "TAX_INVOICE" }
+            env.record("TYPE_1A", RenditionResponsibilityRequest.Renderer.SELF)
+            env.record("TYPE_1A", RenditionResponsibilityRequest.Renderer.AGGREGATOR)
+            val items = env.list().items.filter { it.documentClass == "TYPE_1A" }
             assertThat(items.map { it.renderer.value }).contains("SELF", "AGGREGATOR")
             assertThat(items.map { it.sequence }).doesNotHaveDuplicates()
         }
@@ -174,14 +174,14 @@ class ListRenditionAttestationsHttpTest {
     @Test
     fun `INV-AC-27601 the order is attestedAt then sequence, not the sequence alone`() {
         run { env ->
-            env.record("TAX_INVOICE")
+            env.record("TYPE_1A")
             // a later row (higher seq) that carries an earlier attestedAt must come first
             BoundaryFixture.asSuperuser { c ->
                 c
                     .prepareStatement(
                         "insert into tenancy.rendition_attestation_history " +
                             "(tenant_id, entity_id, document_class, kind, renderer, attested_by, attested_at, state) " +
-                            "select h.tenant_id, h.entity_id, 'CREDIT_NOTE', 'ATTESTED', 'SELF', h.attested_by, " +
+                            "select h.tenant_id, h.entity_id, 'TYPE_1B', 'ATTESTED', 'SELF', h.attested_by, " +
                             "h.attested_at - interval '1 day', 'CURRENT' " +
                             "from tenancy.rendition_attestation_history h join tenancy.entity e " +
                             "on e.tenant_id = h.tenant_id and e.id = h.entity_id where e.ref = ? limit 1",
@@ -191,12 +191,12 @@ class ListRenditionAttestationsHttpTest {
                     }
             }
             val all = env.list().items
-            assertThat(all.map { it.documentClass }).containsExactly("CREDIT_NOTE", "TAX_INVOICE")
+            assertThat(all.map { it.documentClass }).containsExactly("TYPE_1B", "TYPE_1A")
             assertThat(all.map { it.sequence }).isNotEqualTo(all.map { it.sequence }.sorted())
             val first = env.list(limit = 1)
-            assertThat(first.items.single().documentClass).isEqualTo("CREDIT_NOTE")
+            assertThat(first.items.single().documentClass).isEqualTo("TYPE_1B")
             val second = env.list(limit = 1, cursor = first.nextCursor)
-            assertThat(second.items.single().documentClass).isEqualTo("TAX_INVOICE")
+            assertThat(second.items.single().documentClass).isEqualTo("TYPE_1A")
             assertThat(second.nextCursor).isNull()
         }
     }
@@ -204,9 +204,9 @@ class ListRenditionAttestationsHttpTest {
     @Test
     fun `INV-AC-27601 the second page has no nextCursor and the pages together list every row once`() {
         run { env ->
-            env.record("TAX_INVOICE")
-            env.record("CREDIT_NOTE")
-            env.record("DEBIT_NOTE")
+            env.record("TYPE_1A")
+            env.record("TYPE_1B")
+            env.record("TYPE_2")
             val first = env.list(limit = 2)
             assertThat(first.items).hasSize(2)
             assertThat(first.nextCursor).isNotBlank()
@@ -221,7 +221,7 @@ class ListRenditionAttestationsHttpTest {
     @Test
     fun `INV-AC-27601 a non-holder gets 403 and the store is not read`() {
         run(holder = false) { env ->
-            env.record("TAX_INVOICE")
+            env.record("TYPE_1A")
             assertThat(env.statusOf { env.list() }).isEqualTo(ClosedErrorCode.ACCESS_DENIED)
             assertThat(env.statusOf { env.list(cursor = "ra1.x.y") }).isEqualTo(ClosedErrorCode.ACCESS_DENIED)
             assertThat(env.statusOf { env.list(limit = 0) }).isEqualTo(ClosedErrorCode.ACCESS_DENIED)
@@ -243,8 +243,8 @@ class ListRenditionAttestationsHttpTest {
     @Test
     fun `INV-AC-27601 a tampered cursor and a cursor of listPeriodRecords are 400`() {
         run { env ->
-            env.record("TAX_INVOICE")
-            env.record("CREDIT_NOTE")
+            env.record("TYPE_1A")
+            env.record("TYPE_1B")
             val cursor = env.list(limit = 1).nextCursor!!
             val flipped = cursor.dropLast(1) + (if (cursor.last() == 'A') 'B' else 'A')
             assertThat(env.statusOf { env.list(limit = 1, cursor = flipped) }).isEqualTo(INVALID)

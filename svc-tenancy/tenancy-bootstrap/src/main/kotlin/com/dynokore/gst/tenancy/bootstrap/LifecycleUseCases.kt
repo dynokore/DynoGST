@@ -10,8 +10,10 @@ import com.dynokore.gst.tenancy.application.lifecycle.DeregisterEntity
 import com.dynokore.gst.tenancy.application.lifecycle.EntityLifecycleStore
 import com.dynokore.gst.tenancy.application.lifecycle.FinalPeriod
 import com.dynokore.gst.tenancy.application.lifecycle.GoLive
+import com.dynokore.gst.tenancy.application.lifecycle.RenditionCoverage
 import com.dynokore.gst.tenancy.application.lifecycle.SuspendEntity
 import com.dynokore.gst.tenancy.application.lifecycle.TriggerCoverage
+import com.dynokore.gst.tenancy.application.lifecycle.UnboundRenditionCoverage
 import com.dynokore.gst.tenancy.application.lifecycle.UnboundTriggerCoverage
 import com.dynokore.gst.tenancy.application.lifecycle.UnsubmittedOverrideLog
 import com.dynokore.gst.tenancy.application.offboarding.UnsubmittedDocuments
@@ -39,7 +41,8 @@ import java.time.LocalDate
 /**
  * TPL-18: goLive, suspendEntity and deregisterEntity (INV-T-16414 use cases) over the boundary adapters (INV-T-4931).
  * The trigger-coverage port has no producer before Wave 3: its default binding answers "trigger coverage unknown", so
- * start-up succeeds in every profile (also `prod`) and goLive is refused (coordinator ruling INV-Q-4900). The
+ * start-up succeeds in every profile (also `prod`) and goLive is refused (coordinator ruling INV-Q-4900). The rendition
+ * port has the same fail-closed default until INV-T-27913 binds the real one (INV-AC-29258). The
  * unsubmitted-documents port is bound in [OffboardingUseCases] and is unreadable until its owner binds it.
  */
 @Configuration(proxyBeanMethods = false)
@@ -61,6 +64,10 @@ class LifecycleUseCases {
     fun triggerCoverage(): TriggerCoverage = UnboundTriggerCoverage()
 
     @Bean
+    @ConditionalOnMissingBean(RenditionCoverage::class)
+    fun renditionCoverage(): RenditionCoverage = UnboundRenditionCoverage()
+
+    @Bean
     @Suppress("LongParameterList") // one parameter per collaborator of the use case
     fun goLive(
         tx: TransactionRunner,
@@ -76,6 +83,7 @@ class LifecycleUseCases {
         tenants: TenantContext,
         tenantStore: TenantStore,
         clock: ObjectProvider<Clock>,
+        rendition: RenditionCoverage,
     ): GoLive =
         GoLive(
             tx,
@@ -91,6 +99,7 @@ class LifecycleUseCases {
             tenants::current,
             { today(clock) },
             TenantStates { tenantStore.current()?.state },
+            rendition,
         )
 
     @Bean

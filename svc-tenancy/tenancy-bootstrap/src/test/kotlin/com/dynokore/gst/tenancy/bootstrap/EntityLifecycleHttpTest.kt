@@ -45,6 +45,7 @@ class EntityLifecycleHttpTest {
                 val answer = callGoLive(env, entity)
                 assertThat(listOf(answer.status, answer.code)).isEqualTo(listOf(422, "POL-014"))
                 assertThat(answer.detail).contains(GoLiveGate.COVERAGE_UNKNOWN)
+                assertThat(answer.detail).contains(GoLiveGate.RENDITION_UNKNOWN)
                 assertThat(storedState(entity)).isNotEqualTo("LIVE")
                 assertThat(profileEventRows(entity)).isEmpty()
             }
@@ -210,6 +211,38 @@ class EntityLifecycleHttpTest {
                 val answer = callGoLive(l.env, entity)
                 assertThat(listOf(answer.status, answer.code)).isEqualTo(listOf(403, "SRT-004"))
                 assertThat(storedState(entity)).isNotEqualTo("LIVE")
+            }
+        }
+    }
+
+    // ---- rendition coverage bean of the composed service ----------------------------------------------------------
+
+    @Test
+    fun `INV-AC-29258 goLive with the rendition bean naming TYPE_2 missing is 422 and changes nothing`() {
+        lifecycleRun { l ->
+            l.env.withEntity { _, entity ->
+                lifecycleReady(l, entity)
+                l.ports.missingRendition = listOf("TYPE_2")
+                val before = storedState(entity)
+                val rows = profileEventRows(entity).size
+                val answer = callGoLive(l.env, entity)
+                assertThat(listOf(answer.status, answer.code)).isEqualTo(listOf(422, "POL-014"))
+                assertThat(answer.detail).contains("RENDITION_RESPONSIBILITY_INCOMPLETE: TYPE_2")
+                assertThat(storedState(entity)).isEqualTo(before)
+                assertThat(profileEventRows(entity).size).isEqualTo(rows)
+            }
+        }
+    }
+
+    @Test
+    fun `INV-AC-29258 goLive with the rendition bean naming no missing class is 200 and LIVE`() {
+        lifecycleRun { l ->
+            l.env.withEntity { _, entity ->
+                lifecycleReady(l, entity)
+                l.ports.missingRendition = emptyList()
+                val answer = callGoLive(l.env, entity)
+                assertThat(answer.status).describedAs(answer.detail).isEqualTo(200)
+                assertThat(storedState(entity)).isEqualTo("LIVE")
             }
         }
     }

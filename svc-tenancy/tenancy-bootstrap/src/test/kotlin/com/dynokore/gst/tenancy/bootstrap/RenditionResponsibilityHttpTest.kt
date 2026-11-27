@@ -179,15 +179,15 @@ class RenditionResponsibilityHttpTest {
     @Test
     fun `INV-AC-2008 INV-AC-16045 recordRenditionResponsibility answers 201 and the stored rows equal the requests`() {
         run { env, _, entity ->
-            val invoices = env.record(entity, "TAX_INVOICE", RenditionResponsibilityRequest.Renderer.SELF)
-            val notes = env.record(entity, "CREDIT_NOTE", RenditionResponsibilityRequest.Renderer.AGENT)
+            val invoices = env.record(entity, "TYPE_1A", RenditionResponsibilityRequest.Renderer.SELF)
+            val notes = env.record(entity, "TYPE_1B", RenditionResponsibilityRequest.Renderer.AGENT)
             assertThat(invoices.status).isEqualTo(HttpStatus.CREATED.value())
             assertThat(invoices.body!!.entityRef).isEqualTo(entity.entityRef)
-            assertThat(invoices.body.documentClass).isEqualTo("TAX_INVOICE")
+            assertThat(invoices.body.documentClass).isEqualTo("TYPE_1A")
             assertThat(invoices.body.renderer).isEqualTo(RenditionResponsibilityResponse.Renderer.SELF)
             assertThat(notes.body!!.renderer).isEqualTo(RenditionResponsibilityResponse.Renderer.AGENT)
-            val invoiceRow = env.row(entity, "TAX_INVOICE")!!
-            val noteRow = env.row(entity, "CREDIT_NOTE")!!
+            val invoiceRow = env.row(entity, "TYPE_1A")!!
+            val noteRow = env.row(entity, "TYPE_1B")!!
             assertThat(invoiceRow.renderer).isEqualTo("SELF")
             assertThat(noteRow.renderer).isEqualTo("AGENT")
             assertThat(invoiceRow.attestedBy).isEqualTo(ATTESTER)
@@ -200,22 +200,22 @@ class RenditionResponsibilityHttpTest {
     @Test
     fun `INV-AC-16045 a repeat for one class replaces that class only`() {
         run { env, _, entity ->
-            val first = env.record(entity, "TAX_INVOICE", RenditionResponsibilityRequest.Renderer.SELF)
-            val note = env.record(entity, "CREDIT_NOTE", RenditionResponsibilityRequest.Renderer.AGENT)
+            val first = env.record(entity, "TYPE_1A", RenditionResponsibilityRequest.Renderer.SELF)
+            val note = env.record(entity, "TYPE_1B", RenditionResponsibilityRequest.Renderer.AGENT)
             assertThat(first.status).isEqualTo(HttpStatus.CREATED.value())
             assertThat(note.status).isEqualTo(HttpStatus.CREATED.value())
-            val firstInvoice = env.row(entity, "TAX_INVOICE")!!
-            val noteBefore = env.row(entity, "CREDIT_NOTE")!!
+            val firstInvoice = env.row(entity, "TYPE_1A")!!
+            val noteBefore = env.row(entity, "TYPE_1B")!!
             assertThat(env.rowCount(entity)).isEqualTo(2)
-            val repeat = env.record(entity, "TAX_INVOICE", RenditionResponsibilityRequest.Renderer.AGGREGATOR)
+            val repeat = env.record(entity, "TYPE_1A", RenditionResponsibilityRequest.Renderer.AGGREGATOR)
             assertThat(repeat.status).isEqualTo(HttpStatus.CREATED.value())
-            val invoiceAfter = env.row(entity, "TAX_INVOICE")!!
+            val invoiceAfter = env.row(entity, "TYPE_1A")!!
             assertThat(invoiceAfter.renderer).isEqualTo("AGGREGATOR")
             assertThat(invoiceAfter.state).isEqualTo("CURRENT")
             assertThat(invoiceAfter.attestedBy).isEqualTo(ATTESTER)
             assertThat(invoiceAfter.attestedAt).isNotNull()
             assertThat(invoiceAfter.attestedAt).isAfterOrEqualTo(firstInvoice.attestedAt)
-            val noteAfter = env.row(entity, "CREDIT_NOTE")!!
+            val noteAfter = env.row(entity, "TYPE_1B")!!
             assertThat(noteAfter.renderer).isEqualTo(noteBefore.renderer)
             assertThat(noteAfter.attestedBy).isEqualTo(noteBefore.attestedBy)
             assertThat(noteAfter.attestedAt).isEqualTo(noteBefore.attestedAt)
@@ -228,23 +228,23 @@ class RenditionResponsibilityHttpTest {
     @Suppress("ktlint:standard:max-line-length", "MaxLineLength")
     fun `INV-AC-461 INV-AC-16046 an open finding event sets every recorded class REQUESTED_AGAIN and a new record sets CURRENT`() {
         run { env, tenant, entity ->
-            env.record(entity, "TAX_INVOICE")
-            env.record(entity, "CREDIT_NOTE")
+            env.record(entity, "TYPE_1A")
+            env.record(entity, "TYPE_1B")
             env.finding(tenant, entity, open = true, sequence = 1)
             assertThat(env.poll()).isEqualTo(APPLIED_ONE)
-            assertThat(env.row(entity, "TAX_INVOICE")!!.state).isEqualTo("REQUESTED_AGAIN")
-            assertThat(env.row(entity, "CREDIT_NOTE")!!.state).isEqualTo("REQUESTED_AGAIN")
+            assertThat(env.row(entity, "TYPE_1A")!!.state).isEqualTo("REQUESTED_AGAIN")
+            assertThat(env.row(entity, "TYPE_1B")!!.state).isEqualTo("REQUESTED_AGAIN")
             assertThat(env.lastSequence(entity)).isEqualTo(1)
-            env.record(entity, "TAX_INVOICE")
-            assertThat(env.row(entity, "TAX_INVOICE")!!.state).isEqualTo("CURRENT")
-            assertThat(env.row(entity, "CREDIT_NOTE")!!.state).isEqualTo("REQUESTED_AGAIN")
+            env.record(entity, "TYPE_1A")
+            assertThat(env.row(entity, "TYPE_1A")!!.state).isEqualTo("CURRENT")
+            assertThat(env.row(entity, "TYPE_1B")!!.state).isEqualTo("REQUESTED_AGAIN")
         }
     }
 
     @Test
     fun `probe attestedBy different from the caller is 403 and no row is stored`() {
         run { env, _, entity ->
-            val answer = env.record(entity, "TAX_INVOICE", attestedBy = OTHER)
+            val answer = env.record(entity, "TYPE_1A", attestedBy = OTHER)
             assertThat(answer.status).isEqualTo(HttpStatus.FORBIDDEN.value())
             assertThat(env.rowCount(entity)).isZero()
         }
@@ -253,7 +253,7 @@ class RenditionResponsibilityHttpTest {
     @Test
     fun `probe attestedBy of a look-alike case of the caller is 403 and no row is stored`() {
         run { env, _, entity ->
-            val answer = env.record(entity, "TAX_INVOICE", attestedBy = ATTESTER.uppercase())
+            val answer = env.record(entity, "TYPE_1A", attestedBy = ATTESTER.uppercase())
             assertThat(answer.status).isEqualTo(HttpStatus.FORBIDDEN.value())
             assertThat(env.rowCount(entity)).isZero()
         }
@@ -262,13 +262,13 @@ class RenditionResponsibilityHttpTest {
     @Test
     fun `probe an event delivered twice is one state change`() {
         run { env, tenant, entity ->
-            env.record(entity, "TAX_INVOICE")
+            env.record(entity, "TYPE_1A")
             env.finding(tenant, entity, open = true, sequence = 7)
             assertThat(env.poll()).isEqualTo(APPLIED_ONE)
-            env.record(entity, "TAX_INVOICE")
+            env.record(entity, "TYPE_1A")
             env.finding(tenant, entity, open = true, sequence = 7)
             env.poll()
-            assertThat(env.row(entity, "TAX_INVOICE")!!.state).isEqualTo("CURRENT")
+            assertThat(env.row(entity, "TYPE_1A")!!.state).isEqualTo("CURRENT")
             assertThat(env.lastSequence(entity)).isEqualTo(7)
         }
     }
@@ -276,12 +276,12 @@ class RenditionResponsibilityHttpTest {
     @Test
     fun `probe a lower sequence changes nothing`() {
         run { env, tenant, entity ->
-            env.record(entity, "TAX_INVOICE")
+            env.record(entity, "TYPE_1A")
             env.finding(tenant, entity, open = false, sequence = 5)
             env.poll()
             env.finding(tenant, entity, open = true, sequence = 4)
             env.poll()
-            assertThat(env.row(entity, "TAX_INVOICE")!!.state).isEqualTo("CURRENT")
+            assertThat(env.row(entity, "TYPE_1A")!!.state).isEqualTo("CURRENT")
             assertThat(env.lastSequence(entity)).isEqualTo(5)
         }
     }
@@ -289,10 +289,10 @@ class RenditionResponsibilityHttpTest {
     @Test
     fun `probe an event of the look-alike topic rendition-finding-changed v2 is ignored`() {
         run { env, tenant, entity ->
-            env.record(entity, "TAX_INVOICE")
+            env.record(entity, "TYPE_1A")
             env.finding(tenant, entity, open = true, sequence = 1, topic = "gst.payload.rendition-finding-changed.v2")
             env.poll()
-            assertThat(env.row(entity, "TAX_INVOICE")!!.state).isEqualTo("CURRENT")
+            assertThat(env.row(entity, "TYPE_1A")!!.state).isEqualTo("CURRENT")
             assertThat(env.lastSequence(entity)).isNull()
         }
     }
@@ -313,7 +313,7 @@ class RenditionResponsibilityHttpTest {
             assertThat(
                 TestOperationRoles.holders(ElectionPermissions.MANAGE),
             ).doesNotContain(ElectionRoles.TAX_APPROVER)
-            val answer = env.record(entity, "TAX_INVOICE")
+            val answer = env.record(entity, "TYPE_1A")
             assertThat(answer.status).isEqualTo(HttpStatus.FORBIDDEN.value())
             assertThat(env.rowCount(entity)).isZero()
         }
@@ -324,7 +324,7 @@ class RenditionResponsibilityHttpTest {
         run(admin = false) { env, _, entity ->
             env.people.grantRole(ATTESTER, entity.entityRef, ElectionRoles.TAX_APPROVER)
             env.people.grantRole(ATTESTER, "OTHER-ENTITY", ElectionRoles.ENTITY_ADMIN)
-            val answer = env.record(entity, "TAX_INVOICE")
+            val answer = env.record(entity, "TYPE_1A")
             assertThat(answer.status).isEqualTo(HttpStatus.FORBIDDEN.value())
             assertThat(env.rowCount(entity)).isZero()
         }
@@ -333,7 +333,7 @@ class RenditionResponsibilityHttpTest {
     @Test
     fun `probe a caller with entity-config manage on the entity is 201, one row, and the key asked is the constant`() {
         run { env, _, entity ->
-            val answer = env.record(entity, "TAX_INVOICE")
+            val answer = env.record(entity, "TYPE_1A")
             assertThat(answer.status).isEqualTo(HttpStatus.CREATED.value())
             assertThat(env.rowCount(entity)).isEqualTo(1)
             assertThat(env.people.asked).contains(ElectionPermissions.MANAGE)

@@ -3,6 +3,7 @@ package com.dynokore.gst.tenancy.bootstrap
 import com.dynokore.gst.tenancy.adapters.http.ApiRefusal
 import com.dynokore.gst.tenancy.adapters.http.ConstraintRefusal
 import com.dynokore.gst.tenancy.adapters.http.TenancyRefusal
+import com.dynokore.gst.tenancy.application.lifecycle.RenditionCoverage
 import com.dynokore.gst.tenancy.application.lifecycle.TriggerCoverage
 import com.dynokore.gst.tenancy.application.offboarding.ExportOrder
 import com.dynokore.gst.tenancy.application.offboarding.TenantExport
@@ -55,6 +56,8 @@ internal class Ports {
     @Volatile var uncovered: List<String> = emptyList()
 
     @Volatile var unsubmitted: Int = 0
+
+    @Volatile var missingRendition: List<String> = emptyList()
 }
 
 internal class Lab(
@@ -99,6 +102,7 @@ internal fun lifecycleRun(block: (Lab) -> Unit) {
         .withBean(Clock::class.java, { clock }, primaryBean())
         .withBean(EventLogReader::class.java, { log })
         .withBean(TriggerCoverage::class.java, { TriggerCoverage { ports.uncovered } }, primaryBean())
+        .withBean(RenditionCoverage::class.java, { RenditionCoverage { ports.missingRendition } }, primaryBean())
         .withBean(TenantExport::class.java, {
             TenantExport { order: ExportOrder ->
                 ExportManifest("EXP-${order.offboardingRef}", ExportState.READY, ExportContent.entries)
