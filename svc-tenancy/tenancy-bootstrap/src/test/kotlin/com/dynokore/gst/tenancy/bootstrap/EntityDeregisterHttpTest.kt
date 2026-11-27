@@ -75,69 +75,55 @@ class EntityDeregisterHttpTest {
                 lifecycleReady(l, entity)
                 listOf(draft, foreign).forEach { l.people.grant(ADMIN, it.entityRef, ElectionRoles.ENTITY_ADMIN) }
                 val certifications = l.e.rows(entity)
-                val live = assertGoLiveThenRepeats(l, entity)
-                val suspended = assertSuspendThenRepeat(l, entity)
-                assertThat(suspended).containsAll(live)
-                assertIllegalSuspend(l, draft, "DRAFT")
-                assertForeignGoLiveRefused(l, foreign)
+                assertThat(storedState(entity)).isEqualTo("DRAFT")
+
+                val key = UUID.randomUUID()
+                assertAnswers(callGoLiveWithKey(l.env, entity, key), EntityResponse.LifecycleState.LIVE)
+                assertThat(storedState(entity)).isEqualTo("LIVE")
+                val events = profileEventRows(entity).size
+                // every audit entry of the entity, whatever its action: any second entry of a go-live is counted
+                val audits = auditRows(entity, "").size
+                val recorded = outboxRows(entity, "%")
+                listOf(key, UUID.randomUUID()).forEach { repeatKey ->
+                    assertAnswers(callGoLiveWithKey(l.env, entity, repeatKey), EntityResponse.LifecycleState.LIVE)
+                    assertThat(storedState(entity)).isEqualTo("LIVE")
+                    assertThat(profileEventRows(entity).size).isEqualTo(events)
+                    assertThat(auditRows(entity, "").size).isEqualTo(audits)
+                    assertThat(outboxRows(entity, "%")).isEqualTo(recorded)
+                }
+
+                assertAnswers(callSuspend(l.env, entity), EntityResponse.LifecycleState.SUSPENDED)
+                assertThat(storedState(entity)).isEqualTo("SUSPENDED")
+                assertThat(auditRows(entity, "entity.suspended").size).isEqualTo(1)
+                val suspendedEvents = profileEventRows(entity).size
+                val suspended = outboxRows(entity, "%")
+                assertThat(suspended).containsAll(recorded)
+                assertAnswers(callSuspend(l.env, entity), EntityResponse.LifecycleState.SUSPENDED)
+                assertThat(storedState(entity)).isEqualTo("SUSPENDED")
+                assertThat(auditRows(entity, "entity.suspended").size).isEqualTo(1)
+                assertThat(profileEventRows(entity).size).isEqualTo(suspendedEvents)
+                assertThat(outboxRows(entity, "%")).isEqualTo(suspended)
+
+                assertThat(storedState(draft)).isEqualTo("DRAFT")
+                val draftRows = outboxRows(draft, "%")
+                val draftAudits = auditRows(draft, "")
+                val onDraft = callSuspend(l.env, draft)
+                assertThat(listOf(onDraft.status, onDraft.code)).isEqualTo(listOf(409, "TNC-015"))
+                assertThat(storedState(draft)).isEqualTo("DRAFT")
+                assertThat(outboxRows(draft, "%")).isEqualTo(draftRows)
+                assertThat(auditRows(draft, "")).isEqualTo(draftAudits)
+
+                assertThat(storedState(foreign)).isEqualTo("DRAFT")
+                val foreignRows = outboxRows(foreign, "%")
+                val onForeign = callGoLive(l.env, foreign)
+                assertThat(listOf(onForeign.status, onForeign.code)).isEqualTo(listOf(404, "SRT-005"))
+                assertThat(storedState(foreign)).isEqualTo("DRAFT")
+                assertThat(outboxRows(foreign, "%")).isEqualTo(foreignRows)
+
                 assertThat(l.e.rows(entity)).isEqualTo(certifications)
                 assertThat(outboxRows(entity, "%")).isEqualTo(suspended)
             }
         }
-    }
-
-    /** goLive from DRAFT, then with the same and a new key; answers every outbox row recorded by the first call. */
-    private fun assertGoLiveThenRepeats(
-        l: Lab,
-        entity: EntityResponse,
-    ): List<JsonNode> {
-        assertThat(storedState(entity)).isEqualTo("DRAFT")
-        val key = UUID.randomUUID()
-        assertAnswers(callGoLiveWithKey(l.env, entity, key), EntityResponse.LifecycleState.LIVE)
-        assertThat(storedState(entity)).isEqualTo("LIVE")
-        val events = profileEventRows(entity).size
-        // every audit entry of the entity, whatever its action: any second entry of a go-live is counted
-        val audits = auditRows(entity, "").size
-        val recorded = outboxRows(entity, "%")
-        listOf(key, UUID.randomUUID()).forEach { repeatKey ->
-            assertAnswers(callGoLiveWithKey(l.env, entity, repeatKey), EntityResponse.LifecycleState.LIVE)
-            assertThat(storedState(entity)).isEqualTo("LIVE")
-            assertThat(profileEventRows(entity).size).isEqualTo(events)
-            assertThat(auditRows(entity, "").size).isEqualTo(audits)
-            assertThat(outboxRows(entity, "%")).isEqualTo(recorded)
-        }
-        return recorded
-    }
-
-    /** suspendEntity twice; answers every outbox row recorded after the first suspension. */
-    private fun assertSuspendThenRepeat(
-        l: Lab,
-        entity: EntityResponse,
-    ): List<JsonNode> {
-        assertAnswers(callSuspend(l.env, entity), EntityResponse.LifecycleState.SUSPENDED)
-        assertThat(storedState(entity)).isEqualTo("SUSPENDED")
-        assertThat(auditRows(entity, "entity.suspended").size).isEqualTo(1)
-        val events = profileEventRows(entity).size
-        val recorded = outboxRows(entity, "%")
-        assertAnswers(callSuspend(l.env, entity), EntityResponse.LifecycleState.SUSPENDED)
-        assertThat(storedState(entity)).isEqualTo("SUSPENDED")
-        assertThat(auditRows(entity, "entity.suspended").size).isEqualTo(1)
-        assertThat(profileEventRows(entity).size).isEqualTo(events)
-        assertThat(outboxRows(entity, "%")).isEqualTo(recorded)
-        return recorded
-    }
-
-    /** goLive of an entity of another tenant: 404 as an unknown entity, and that entity is unchanged. */
-    private fun assertForeignGoLiveRefused(
-        l: Lab,
-        foreign: EntityResponse,
-    ) {
-        assertThat(storedState(foreign)).isEqualTo("DRAFT")
-        val rows = outboxRows(foreign, "%")
-        val answer = callGoLive(l.env, foreign)
-        assertThat(listOf(answer.status, answer.code)).isEqualTo(listOf(404, "SRT-005"))
-        assertThat(storedState(foreign)).isEqualTo("DRAFT")
-        assertThat(outboxRows(foreign, "%")).isEqualTo(rows)
     }
 
     @Test
