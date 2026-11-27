@@ -1,4 +1,5 @@
-# Vendored, read-only copy of invoice-docs' model/architecture/error-codes.yaml, pinned at commit b298418105fb5b9133a1e0066f1e46a1fa8acddd (2026-11-23), the merge of invoice-docs INV-T-27728 adding ING-027, aggregation window not closed (re-vendor INV-T-27729, INV-REQ-413, coordinator ruling (delegated) HIGH option A of the owner ruling of 2026-11-22, breakdown tooling/oa1122-gap.md);
+# Vendored, read-only copy of invoice-docs' model/architecture/error-codes.yaml, pinned at commit 08b2ed6ed3b97f930dba308c00af1c738de3d4af (2026-11-23), the merge of invoice-docs INV-T-28038 adding ING-028, record line without a tax code, HTTP 400 (re-vendor INV-T-28039, INV-REQ-479, owner ruling of 2026-11-23 option C, breakdown tooling/gap21416-gap.md);
+# previously pinned at b298418105fb5b9133a1e0066f1e46a1fa8acddd (2026-11-23), the merge of invoice-docs INV-T-27728 adding ING-027, aggregation window not closed (re-vendor INV-T-27729, INV-REQ-413, coordinator ruling (delegated) HIGH option A of the owner ruling of 2026-11-22, breakdown tooling/oa1122-gap.md);
 # previously pinned at 18cc81a39793815b123dda42759bb19fb7d69e39 (2026-11-21), the last invoice-docs main commit that changed the file, bringing PAY-020, no accepted specification release (invoice-docs INV-T-26405; re-vendor INV-T-26406, INV-REQ-590, coordinator ruling (delegated) HIGH option A of breakdown tooling/ansq1121d-gap.md); this re-vendor also brings SRT-016, ING-025, ING-026 and the willTransmit and residualRisk members of the OVERRIDABLE codes (invoice-docs INV-T-26325);
 # previously pinned at f30d4acd763184a05db8b9fad3b16043fc7ea2b1 (2026-11-20), the merge of invoice-docs INV-T-25061 giving every code its required headline (re-vendor INV-T-25063, INV-REQ-1022, coordinator ruling (delegated) HIGH option A of the owner ruling of 2026-11-18, breakdown tooling/owner-answers-1118-oa1118d-gap.md);
 # previously pinned at e6e0d41a29d6e73e0e875e6c9cda552e9a609054 (2026-11-18), the merge of invoice-docs INV-T-24689 adding PER-019, annotateVariance refused on an attested run (INV-T-24691, INV-REQ-633, coordinator ruling (delegated) HIGH option A of breakdown tooling/gap24380b-gap.md);
@@ -1417,6 +1418,12 @@ error_codes:
   disposition: AUTO_RELEASE when the part is closed
   owner: Platform
   headline: Aggregation window not closed
+- code: ING-028
+  condition: "Record line without a tax code: a line of the record request has no `taxCode`, or its `taxCode` is null or blank (empty or only whitespace), so the line cannot be mapped to an internal tax code; the request is refused at the entry, before any downstream call, and nothing is recorded (HTTP 400, as ING-019; INV-REQ-479)"
+  severity: BLOCK
+  disposition: TERMINAL
+  owner: Integration
+  headline: Line is missing its tax code
 - code: CPL-008
   condition: "The first administrator invitation cannot be reissued: the provisioning request does not read CREATED, or access-svc refused the reissue because the tenant's tenant.admin grant is not a PENDING one whose invitation has expired; nothing is sent (HTTP 409; INV-REQ-906, INV-Q-8232, INV-Q-16202)"
   severity: BLOCK
