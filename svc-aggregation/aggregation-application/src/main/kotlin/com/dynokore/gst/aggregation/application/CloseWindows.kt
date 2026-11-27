@@ -7,10 +7,11 @@ import com.dynokore.gst.aggregation.domain.WindowState
 import java.time.LocalDate
 import java.util.UUID
 
-/** What one closing run did: the parts it closed and the windows it held. */
+/** What one closing run did: the parts it closed, the windows it held and the due parts it could not close. */
 data class CloseResult(
     val closed: List<WindowChange>,
     val held: List<OpenWindow>,
+    val missed: List<MissedPart> = emptyList(),
 )
 
 /**
@@ -21,7 +22,9 @@ data class CloseResult(
  * The source key `window:<entityRef>:<aggregateType>:<partStart>:<partEnd>` at revision 1 makes a second firing of the
  * same tick replay: nothing is created twice, and a part left open by a failed run is closed and published by the
  * next. A window with no known span, or with a date no span covers, is held when its own end is on or before the
- * tick; a window that ends after the tick and has no usable spans is neither closed nor held.
+ * tick; a window that ends after the tick and has no usable spans is neither closed nor held. [CloseResult.missed]
+ * lists each due part that this run could not close, and each window held for want of usable spans with a null part;
+ * a later run lists it again while it stays unclosed.
  *
  * A part that holds refunds or returns also gets a separate credit-note aggregate (INV-REQ-438); the sales aggregate
  * carries the sales only, and each aggregate has one line per distinct internal tax code (INV-REQ-437).
@@ -37,20 +40,22 @@ class CloseWindows(
     fun execute(tick: LocalDate): CloseResult {
         val closed = mutableListOf<WindowChange>()
         val held = mutableListOf<OpenWindow>()
+        val missed = mutableListOf<MissedPart>()
         for (open in windows.openWindowsStartingOnOrBefore(tick)) {
             val parts = partsOf(open)
             if (parts == null) {
-                if (open.window.end <= tick) held += open
+                if (open.window.end <= tick) {
+                    held += open
+                    missed += MissedPart(open, null)
+                }
                 continue
             }
-            var complete = true
-            for (part in parts.filter { it.end <= tick }) {
-                if (!closePart(open, part, closed)) complete = false
-            }
-            if (!complete) held += open
+            val unclosed = parts.filter { it.end <= tick && !closePart(open, it, closed) }
+            if (unclosed.isNotEmpty()) held += open
+            missed += unclosed.map { MissedPart(open, it) }
         }
         lateSupplementaries()
-        return CloseResult(closed, held)
+        return CloseResult(closed, held, missed)
     }
 
     /**

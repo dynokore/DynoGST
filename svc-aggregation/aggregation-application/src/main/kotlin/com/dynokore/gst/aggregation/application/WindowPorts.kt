@@ -153,6 +153,17 @@ fun interface WindowChangePublisher {
     fun changed(change: WindowChange)
 }
 
+/** A due part of [window] that a closing run could not close; a null [part] means the span of the window is unknown. */
+data class MissedPart(
+    val window: OpenWindow,
+    val part: WindowPart?,
+)
+
+/** One call per missed part of a closing run (INV-REQ-413). A missed part is not a [WindowState]. */
+fun interface WindowMissedPublisher {
+    fun missed(item: MissedPart)
+}
+
 /** A dated transaction of the transaction-level feed (INV-REQ-435 item 2: windows hold the transactions by date). */
 data class DatedTransaction(
     val transactionRef: String,

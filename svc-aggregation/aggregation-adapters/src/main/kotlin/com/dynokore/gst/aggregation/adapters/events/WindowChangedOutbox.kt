@@ -1,7 +1,10 @@
 package com.dynokore.gst.aggregation.adapters.events
 
+import com.dynokore.gst.aggregation.application.MissedPart
+import com.dynokore.gst.aggregation.application.OpenWindow
 import com.dynokore.gst.aggregation.application.WindowChange
 import com.dynokore.gst.aggregation.application.WindowChangePublisher
+import com.dynokore.gst.aggregation.application.WindowMissedPublisher
 import com.dynokore.gst.aggregation.domain.WindowState
 import com.dynokore.platform.outboxandqueue.CausationId
 import com.dynokore.platform.outboxandqueue.CorrelationId
@@ -37,13 +40,19 @@ fun interface WindowStateVersions {
  * platform-contracts: `entityRef`, `prescribedPeriod` (the `periodRef` of the span), `window.from`, `window.to`,
  * `state`, `stateVersion` (the counter of [WindowStateVersions]) and, for CLOSED, `aggregateId`. A state OPEN is not
  * a change of an existing window and is refused.
+ *
+ * As the adapter of [WindowMissedPublisher] it appends one event per call with `state` MISSED and the `findingCode`
+ * [FINDING_CODE], with a `stateVersion` from the same counter and key as the CLOSED and LATE events of the part. For a
+ * missed window with no known span, `spanKnown` is false, `prescribedPeriod` is [SPAN_UNKNOWN_PERIOD] and the window
+ * dates are those of the aggregation window.
  */
 class WindowChangedOutbox(
     private val outbox: OutboxWriter,
     private val tenants: TenantContext,
     private val versions: WindowStateVersions,
     private val mapper: ObjectMapper = ObjectMapper(),
-) : WindowChangePublisher {
+) : WindowChangePublisher,
+    WindowMissedPublisher {
     override fun changed(change: WindowChange) {
         require(change.state == WindowState.CLOSED || change.state == WindowState.LATE) {
             "only a window part that moves to CLOSED or LATE is published"
@@ -73,19 +82,47 @@ class WindowChangedOutbox(
             }
         outbox.append(
             listOf(OutboundEvent(TYPE, mapper.writeValueAsString(payload))),
-            context(change),
+            context(change.window, change.part.start),
         )
     }
 
-    private fun context(change: WindowChange): EventContext {
+    override fun missed(item: MissedPart) {
+        val part = item.part
+        val periodRef = part?.periodRef ?: SPAN_UNKNOWN_PERIOD
+        val from = part?.start ?: item.window.window.start
+        val to = part?.end ?: item.window.window.end
+        val stateVersion = versions.next(tenants.current(), item.window.entityRef, periodRef, from, to)
+        val payload =
+            mapper.createObjectNode().also { node ->
+                node.put("entityRef", item.window.entityRef)
+                node.put("prescribedPeriod", periodRef)
+                node.putObject("window").also {
+                    it.put("from", from.toString())
+                    it.put("to", to.toString())
+                }
+                node.put("state", STATE_MISSED)
+                node.put("findingCode", FINDING_CODE)
+                if (part == null) node.put("spanKnown", false)
+                node.put("stateVersion", stateVersion)
+            }
+        outbox.append(
+            listOf(OutboundEvent(TYPE, mapper.writeValueAsString(payload))),
+            context(item.window, from),
+        )
+    }
+
+    private fun context(
+        window: OpenWindow,
+        from: LocalDate,
+    ): EventContext {
         val correlation = CorrelationContext.currentCorrelationId()?.value ?: UUID.randomUUID().toString()
         val causation = CorrelationContext.currentCausationId()?.value ?: correlation
         return EventContext(
             tenant = tenants.current(),
-            entity = EntityRef(change.window.entityRef),
+            entity = EntityRef(window.entityRef),
             docUuid = null,
             transactionDate = null,
-            aggregateKey = "window:${change.window.entityRef}:${change.window.aggregateType}:${change.part.start}",
+            aggregateKey = "window:${window.entityRef}:${window.aggregateType}:$from",
             aggregateVersion = null,
             correlation = CorrelationId(correlation),
             causation = CausationId(causation),
@@ -95,5 +132,14 @@ class WindowChangedOutbox(
     companion object {
         /** The type of `AggregationEvents` in the bootstrap (the catalogue entry of the AsyncAPI message). */
         const val TYPE = "com.dynokore.gst.aggregation.AggregateWindowChanged.v1"
+
+        /** The `prescribedPeriod` of a missed window with no known span (`spanKnown` false). */
+        const val SPAN_UNKNOWN_PERIOD = "UNKNOWN-SPAN"
+
+        /** "Aggregation window not closed" of `catalogue/errors/error-codes.yaml` of platform-contracts. */
+        const val FINDING_CODE = "ING-027"
+
+        /** A state of the event only: a missed part has no persisted [WindowState]. */
+        private const val STATE_MISSED = "MISSED"
     }
 }
