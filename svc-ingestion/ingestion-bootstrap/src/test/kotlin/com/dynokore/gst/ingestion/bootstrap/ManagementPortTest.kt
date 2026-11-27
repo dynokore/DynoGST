@@ -39,23 +39,8 @@ class ManagementPortTest {
         val app =
             SpringApplicationBuilder(IngestionApplication::class.java, NoUserBeans::class.java)
                 .web(WebApplicationType.SERVLET)
-                .properties(
-                    "server.port=0",
-                    "management.server.port=0",
-                    "spring.datasource.url=${IngestionDb.jdbcUrl}",
-                    "spring.datasource.username=ingestion_runtime",
-                    "service-runtime.workload-identity.audience=ingestion-svc",
-                    "INGESTION_CANONICAL_SVC_URL=http://localhost:9",
-                    "gst.service=ingestion-svc",
-                    "gst.instance-id=ingestion-svc-0",
-                    "service-runtime.pool.profile=minimal",
-                    "service-runtime.modules.schema=ingestion",
-                    "service-runtime.idempotency.schema=ingestion",
-                    "service-runtime.datasource.credential=db/ingestion_runtime",
-                    "gst.bindings.secret-store.mount-root=$dir",
-                    "gst.bindings.telemetry-export=bundled-otel",
-                    "gst.bindings.telemetry-export-otlp-endpoint=http://localhost:4318",
-                ).run()
+                .properties(*properties(dir))
+                .run()
         app.use { context ->
             val management = context.environment.getProperty("local.management.port")!!
             val main = context.environment.getProperty("local.server.port")!!
@@ -72,6 +57,26 @@ class ManagementPortTest {
             get("http://localhost:$main/metrics").statusCode() shouldBeIn listOf(401, 404)
         }
     }
+
+    private fun properties(mountRoot: Path): Array<String> =
+        arrayOf(
+            "server.port=0",
+            "management.server.port=0",
+            "spring.datasource.url=${IngestionDb.jdbcUrl}",
+            "spring.datasource.username=ingestion_runtime",
+            "service-runtime.workload-identity.audience=ingestion-svc",
+            "INGESTION_CANONICAL_SVC_URL=http://localhost:9",
+            "INGESTION_TENANCY_SVC_URL=http://localhost:9",
+            "gst.service=ingestion-svc",
+            "gst.instance-id=ingestion-svc-0",
+            "service-runtime.pool.profile=minimal",
+            "service-runtime.modules.schema=ingestion",
+            "service-runtime.idempotency.schema=ingestion",
+            "service-runtime.datasource.credential=db/ingestion_runtime",
+            "gst.bindings.secret-store.mount-root=$mountRoot",
+            "gst.bindings.telemetry-export=bundled-otel",
+            "gst.bindings.telemetry-export-otlp-endpoint=http://localhost:4318",
+        )
 }
 
 /**

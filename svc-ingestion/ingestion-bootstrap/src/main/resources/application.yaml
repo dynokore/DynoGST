@@ -19,8 +19,14 @@ service-runtime:
   event-log-pool.minimum-idle: 1
   modules.schema: ingestion
   idempotency.schema: ingestion
+  # one retry on the idempotent tenancy read (INV-REQ-1204); breaker and bulkhead keep the library values
+  resilience.edges:
+    "[ingestion-svc->tenancy-svc]":
+      timeout: PT2S
+      retry.max-attempts: 2
 ingestion:
   canonical-svc-url: ${INGESTION_CANONICAL_SVC_URL} # required, no default: the context does not start without it (TPL-16)
+  tenancy-svc-url: ${INGESTION_TENANCY_SVC_URL} # required setting, no default
 management:
   server.port: 8081 # API-33: health, metrics and diagnostics only on the management port, no token
   endpoints.web:
