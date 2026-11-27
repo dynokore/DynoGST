@@ -40,3 +40,5 @@ channel	masterdataIdentityTripleChanged	INV-T-17823	done
 channel	masterdataExampleHappened	PLACEHOLDER	open
 channel	accessSignedLinkOutcomeRecorded	INV-T-17443	done
 operation	correctCounterpartyData	INV-T-27119	done
+operation	exportIdentityTriples	INV-T-26963	open
+operation	diffIdentityTripleBundle	INV-T-26963	open
