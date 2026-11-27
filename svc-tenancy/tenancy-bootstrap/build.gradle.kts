@@ -34,7 +34,7 @@ dependencies {
     implementation(libs.springBoot.starterJdbc)
     runtimeOnly(libs.postgresql)
 
-    testImplementation(libs.gstCatalogue)
+    implementation(libs.gstCatalogue)
     testImplementation(libs.bouncycastle.bcprov)
     testImplementation(libs.bouncycastle.bcpkix)
     testImplementation(libs.springBoot.starterTest)

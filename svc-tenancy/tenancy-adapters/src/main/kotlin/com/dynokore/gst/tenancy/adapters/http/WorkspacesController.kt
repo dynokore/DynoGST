@@ -32,7 +32,9 @@ import java.util.UUID
 
 /**
  * TPL-08. createWorkspace (scope tenant): the SANDBOX sibling of the bound production tenant, the original on a repeat
- * of the same `(tenantRef, name)`; archiveWorkspace undoes it and is a no-op on a repeat (INV-REQ-1125).
+ * of the same `(tenantRef, name)`; archiveWorkspace undoes it and is a no-op on a repeat (INV-REQ-1125). The two are
+ * decided by the scoped permission keys `workspace.create` and `workspace.archive` before anything runs: 403 SRT-004
+ * and nothing written without the key (INV-AC-24913).
  */
 @RestController
 // open: the generated API interface is @Validated, so Spring proxies the controller (no kotlin-spring plugin)
@@ -48,6 +50,7 @@ open class WorkspacesController(
         idempotencyKey: UUID,
         createWorkspaceRequest: CreateWorkspaceRequest,
     ): ResponseEntity<WorkspaceResponse> {
+        requireKey(WORKSPACE_CREATE)
         val created =
             try {
                 createWorkspace.handle(createWorkspaceRequest.tenantRef, createWorkspaceRequest.name)
@@ -79,11 +82,13 @@ open class WorkspacesController(
     override fun archiveWorkspace(
         workspaceRef: String,
         idempotencyKey: UUID,
-    ): ResponseEntity<Unit> =
-        when (archiveWorkspace.handle(workspaceRef)) {
+    ): ResponseEntity<Unit> {
+        requireKey(WORKSPACE_ARCHIVE)
+        return when (archiveWorkspace.handle(workspaceRef)) {
             WorkspaceArchival.ARCHIVED, WorkspaceArchival.ALREADY_ARCHIVED -> ResponseEntity.noContent().build()
             WorkspaceArchival.MISSING -> notFound()
         }
+    }
 
     /**
      * INV-REQ-1126: decided by the scoped permission key `ap-credential.manage` (403 SRT-004 and nothing bound
@@ -94,7 +99,7 @@ open class WorkspacesController(
         idempotencyKey: UUID,
         loadCredentialRequest: LoadCredentialRequest,
     ): ResponseEntity<LoadCredentialResponse> {
-        if (!holdsCredentialKey()) throw ApiRefusal(ClosedErrorCode.ACCESS_DENIED)
+        requireKey(CREDENTIAL_MANAGE)
         return when (
             val loaded =
                 loadCredential.handle(
@@ -116,12 +121,16 @@ open class WorkspacesController(
         }
     }
 
-    private fun holdsCredentialKey(): Boolean =
-        try {
-            authority.holds(caller.actor(), CREDENTIAL_MANAGE)
-        } catch (_: RuntimeException) {
-            false
-        }
+    /** 403 SRT-004 unless the authority answers that the caller holds [permission]; a failing answer refuses. */
+    private fun requireKey(permission: String) {
+        val held =
+            try {
+                authority.holds(caller.actor(), permission)
+            } catch (_: RuntimeException) {
+                false
+            }
+        if (!held) throw ApiRefusal(ClosedErrorCode.ACCESS_DENIED)
+    }
 
     /** INV-REQ-1130: decided by `sample-copy.approve`; 403 SRT-004 and nothing recorded for a caller without it. */
     override fun recordSampleApproval(
@@ -181,5 +190,7 @@ open class WorkspacesController(
 
     private companion object {
         const val CREDENTIAL_MANAGE = "ap-credential.manage"
+        const val WORKSPACE_CREATE = "workspace.create"
+        const val WORKSPACE_ARCHIVE = "workspace.archive"
     }
 }

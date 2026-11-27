@@ -141,6 +141,7 @@ class TenantNodePublicationTest {
     fun `INV-AC-15381 createWorkspace and archiveWorkspace write the sibling's own SANDBOX events and a repeat none`() {
         run { env ->
             env.withTenant { production ->
+                env.allowRole(production, "tenant.admin")
                 env.captured.envelopes.clear()
                 val api = workspaces(env)
                 val ref =
@@ -205,6 +206,7 @@ class TenantNodePublicationTest {
             assertThat(rows(ref)).isZero()
 
             env.withTenant { production ->
+                env.allowRole(production, "tenant.admin")
                 val api = workspaces(env)
                 val wsRef =
                     api
@@ -253,6 +255,7 @@ class TenantNodePublicationTest {
             assertThat(outboxRows(ref)).isZero()
 
             env.withTenant { production ->
+                env.allowRole(production, "tenant.admin")
                 val workspaceStore = ctx.getBean(WorkspaceStore::class.java)
                 val wsRef =
                     workspaces(env)

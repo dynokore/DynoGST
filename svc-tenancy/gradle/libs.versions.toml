@@ -22,8 +22,8 @@ jsonSchemaValidator = "3.0.8"
 # INV-T-3298; 5e3e8fd2 adds the tenancy dataRegion of INV-T-8695; 6b339bef adds the replay 200 of INV-T-11876, 3030c14b adds the INV-T-8269 marker rule and the recordEntitlement operation; a85d629f is the lowest published bundle with the INV-T-18816 migration-cutover operations, TNC-011 in x-error-codes and the migration-cutover.record / .view x-operation.permission; 3236fcd7 is the lowest published bundle with the optional filingDueDate of INV-T-20742; b1b1ca29 is the lowest published bundle (d980d9b1 was not published on its own) with the ingestion TriggerCoverageChanged event of INV-T-20933); bumped deliberately, like platform-libs' product-runtime does.
 platformContractsBundle = "0.0.0-dev+2157bf70"
 bouncycastle = "1.86"
-# Explicit override of the catalogue platform-libs builds against (INV-T-12278); 2.45.0 is above the RolePermissionsPinTest floor of 2.31.0.
-gstCatalogue = "3.26.0"
+# Explicit override of the catalogue platform-libs builds against (INV-T-12278); 3.32.0 is the lowest published release with the keys workspace.create and workspace.archive (INV-T-24912, INV-T-24914).
+gstCatalogue = "3.32.0"
 
 [libraries]
 bouncycastle-bcprov = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }

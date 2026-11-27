@@ -83,8 +83,11 @@ class WorkspaceTest {
             UUID.randomUUID(),
             CreateTenantRequest(contract, "Tenant $contract", "PLAN-A", ref),
         )
-        return TenantRefs.idOf(ref)
+        return TenantRefs.idOf(ref).also { allowAdmin(it) }
     }
+
+    /** The caller holds `tenant.admin` at TENANT scope of [tenant], which holds the workspace keys (INV-AC-24913). */
+    private fun ProfileEnv.allowAdmin(tenant: TenantId) = allowRole(tenant, "tenant.admin")
 
     private fun create(
         api: WorkspacesController,
@@ -96,6 +99,7 @@ class WorkspaceTest {
     fun `INV-AC-935 a created workspace is a SANDBOX tenant paired to production, whose row is unchanged`() {
         run { env, api ->
             env.withTenant { production ->
+                env.allowAdmin(production)
                 val before = row(production.value)
                 val response = create(api, production, "pre-prod")
                 assertThat(response.statusCode).isEqualTo(HttpStatus.CREATED)
@@ -123,6 +127,7 @@ class WorkspaceTest {
     fun `createWorkspace takes its ref from TenantRefs, a repeat adds no row and another name adds a sibling`() {
         run { env, api ->
             env.withTenant { production ->
+                env.allowAdmin(production)
                 val ref = TenantRefs.refOfWorkspace(production.value.toString(), "pre-prod")
                 val start = tenants()
                 val first = create(api, production, "pre-prod").body!!
@@ -144,6 +149,7 @@ class WorkspaceTest {
     fun `createWorkspace copies the legal name and plan of the production tenant`() {
         run { env, api ->
             env.withTenant { production ->
+                env.allowAdmin(production)
                 val ref = create(api, production, "pre-prod").body!!.workspaceRef
                 val columns =
                     BoundaryFixture.asSuperuser { c ->
@@ -184,7 +190,9 @@ class WorkspaceTest {
     fun `a workspace of a workspace is refused`() {
         run { env, api ->
             env.withTenant { production ->
+                env.allowAdmin(production)
                 val workspace = TenantRefs.idOf(create(api, production, "pre-prod").body!!.workspaceRef)
+                env.allowAdmin(workspace)
                 env.inTenant(workspace) {
                     assertThatThrownBy { create(api, workspace, "nested") }
                         .isInstanceOf(ApiRefusal::class.java)
@@ -199,6 +207,7 @@ class WorkspaceTest {
     fun `INV-AC-2119 record part a workspace is a SANDBOX tenant paired to production and archiving retires it`() {
         run { env, api ->
             env.withTenant { production ->
+                env.allowAdmin(production)
                 val created = create(api, production, "pre-prod").body!!
                 assertThat(created.environment).isEqualTo(WorkspaceResponse.Environment.SANDBOX)
                 assertThat(hasSandboxPairedTo(production.value)).isTrue()
@@ -215,6 +224,7 @@ class WorkspaceTest {
     fun `INV-AC-9574 creating a workspace twice yields one sibling and archiving twice archives once`() {
         run { env, api ->
             env.withTenant { production ->
+                env.allowAdmin(production)
                 val before = row(production.value)
                 val first = create(api, production, "pre-prod").body!!
                 val repeat = create(api, production, "pre-prod").body!!

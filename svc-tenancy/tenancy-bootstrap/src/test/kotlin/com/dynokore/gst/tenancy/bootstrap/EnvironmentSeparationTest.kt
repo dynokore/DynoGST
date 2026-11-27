@@ -114,6 +114,7 @@ class EnvironmentSeparationTest {
             CreateTenantRequest(contract, "Tenant $contract", "PLAN-A", ref),
         )
         val production = TenantRefs.idOf(ref)
+        env.allowRole(production, "tenant.admin")
         val workspace =
             env.inTenant(production) {
                 val body =
