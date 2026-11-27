@@ -1,0 +1,563 @@
+package com.dynokore.gst.evidence.adapters
+
+import com.dynokore.gst.evidence.adapters.events.RulePackEventsHandler
+import com.dynokore.gst.evidence.adapters.persistence.JooqBreachTermsReplica
+import com.dynokore.gst.evidence.domain.cases.BreachTerms
+import com.dynokore.platform.outboxandqueue.CausationId
+import com.dynokore.platform.outboxandqueue.ContractViolation
+import com.dynokore.platform.outboxandqueue.CorrelationId
+import com.dynokore.platform.outboxandqueue.EntityRef
+import com.dynokore.platform.outboxandqueue.Envelope
+import com.dynokore.platform.outboxandqueue.EventId
+import com.dynokore.platform.outboxandqueue.HandleOutcome
+import com.dynokore.platform.tenancykernel.TenantId
+import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.assertions.throwables.shouldThrowAny
+import io.kotest.assertions.withClue
+import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldNotContain
+import io.kotest.matchers.string.shouldStartWith
+import io.kotest.matchers.types.shouldNotBeInstanceOf
+import org.jooq.DSLContext
+import org.jooq.SQLDialect
+import org.jooq.impl.DSL
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Test
+import java.sql.Connection
+import java.time.Duration
+import java.time.Instant
+import java.time.LocalDate
+import java.util.UUID
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.TimeUnit
+
+/**
+ * The harness of INV-AC-29315 over the real PostgreSQL. Each event is applied as the inbox consumer applies it: one
+ * transaction bound to the envelope tenant, committed on return and rolled back on a throw.
+ */
+open class BreachTermsReplicaHarness {
+    protected val platform = TenantId.PLATFORM
+    protected val tenant = TenantId(UUID.randomUUID())
+    protected val day = LocalDate.parse("2026-03-01")
+
+    @BeforeEach
+    fun emptyReplica() {
+        EvidenceDb.superuser().use { c ->
+            c.createStatement().use {
+                it.execute(
+                    "truncate evidence.breach_terms_pack_activation, evidence.breach_terms_pack_version, " +
+                        "evidence.breach_terms_pack_type",
+                )
+            }
+        }
+    }
+
+    protected fun <T> bound(
+        who: TenantId,
+        block: (Connection, DSLContext) -> T,
+    ): T =
+        EvidenceDb.connect(EvidenceDb.RUNTIME, EvidenceDb.RUNTIME_PASSWORD).use { c ->
+            c.autoCommit = false
+            SignedBindings.bind(c, who.value)
+            runCatching { block(c, DSL.using(c, SQLDialect.POSTGRES)) }
+                .onSuccess { c.commit() }
+                .onFailure { c.rollback() }
+                .getOrThrow()
+        }
+
+    protected fun deliver(event: Envelope): HandleOutcome =
+        bound(event.tenant) { _, dsl -> RulePackEventsHandler(JooqBreachTermsReplica(dsl)).handle(event) }
+
+    protected fun terms(
+        on: LocalDate,
+        who: TenantId = platform,
+    ): BreachTerms? = bound(who) { _, dsl -> JooqBreachTermsReplica(dsl).activeTerms(on) }
+
+    protected fun envelope(
+        type: String,
+        data: String,
+        who: TenantId,
+    ) = Envelope(
+        id = EventId(UUID.randomUUID().toString()),
+        source = "/gst/rules-svc",
+        type = type,
+        subject = "pack",
+        time = Instant.parse("2026-02-01T00:00:00Z"),
+        tenant = who,
+        entity = if (who.isPlatform) EntityRef.PLATFORM else EntityRef("ENT-1"),
+        docUuid = null,
+        transactionDate = null,
+        docSequence = null,
+        instanceId = "rules-svc-0",
+        correlation = CorrelationId("corr-1"),
+        causation = CausationId("cause-1"),
+        dataJson = data,
+    )
+
+    protected fun contents(
+        assessment: String = "72",
+        notification: String = "48",
+        source: String = "\"counsel-1\"",
+        extra: String = "",
+    ) = """{"assessmentWithinHours":$assessment,"notificationWithinHours":$notification,""" +
+        """"sourceReference":$source$extra}"""
+
+    protected fun staged(
+        identifier: String = "pack-a",
+        type: String = "breach-terms",
+        version: String = "1",
+        artefact: String = """{"contents":${contents()}}""",
+        who: TenantId = platform,
+    ) = envelope(
+        RulePackEventsHandler.STAGED_TYPE,
+        """{"packIdentifier":"$identifier","packType":"$type","version":"$version","artefact":$artefact}""",
+        who,
+    )
+
+    protected fun stagedWith(
+        contents: String,
+        identifier: String = "pack-a",
+        version: String = "1",
+    ) = staged(identifier = identifier, version = version, artefact = """{"contents":$contents}""")
+
+    protected fun activated(
+        identifier: String = "pack-a",
+        version: String = "1",
+        from: LocalDate = day,
+        who: TenantId = platform,
+    ) = envelope(
+        RulePackEventsHandler.ACTIVATED_TYPE,
+        """{"packIdentifier":"$identifier","version":"$version","effectiveFrom":"$from"}""",
+        who,
+    )
+
+    protected fun query(sql: String): List<String> =
+        EvidenceDb.superuser().use { c ->
+            c.createStatement().use { statement ->
+                statement.executeQuery(sql).use { rs ->
+                    generateSequence { if (rs.next()) rs.getString(1) else null }.toList()
+                }
+            }
+        }
+
+    protected fun typeRows() =
+        query(
+            "select pack_identifier || '|' || pack_type from evidence.breach_terms_pack_type " +
+                "order by pack_identifier collate \"C\"",
+        )
+
+    protected fun versionRows() =
+        query(
+            "select pack_identifier || '|' || pack_version || '|' || assessment_within_hours || '|' || " +
+                "notification_within_hours || '|' || source_reference from evidence.breach_terms_pack_version " +
+                "order by 1",
+        )
+
+    protected fun activationRows() =
+        query(
+            "select pack_identifier || '|' || pack_version || '|' || effective_from " +
+                "from evidence.breach_terms_pack_activation order by applied_seq",
+        )
+
+    protected fun everything() = listOf(typeRows(), versionRows(), activationRows())
+
+    protected val empty = listOf(emptyList<String>(), emptyList(), emptyList())
+
+    protected fun refused(
+        event: Envelope,
+        reason: String,
+    ): String {
+        val message = shouldThrow<ContractViolation> { deliver(event) }.message.orEmpty()
+        message shouldStartWith "$reason:"
+        return message
+    }
+
+    protected val seventyTwo = BreachTerms(Duration.ofHours(72), Duration.ofHours(48))
+}
+
+/** INV-AC-29315: which staged events and contents the replica stores or refuses. */
+class BreachTermsReplicaDbTest : BreachTermsReplicaHarness() {
+    @Test
+    fun `INV-AC-29315 a staged event of any type without contents is refused and no table gets a row`() {
+        for (type in listOf("breach-terms", "calendar")) {
+            for (artefact in listOf("{}", """{"contents":null}""", """{"manifest":{}}""", "null", "[]")) {
+                for (who in listOf(platform, tenant)) {
+                    withClue("$type $artefact") {
+                        refused(staged(type = type, artefact = artefact, who = who), "PACK_CONTENTS_MISSING")
+                        everything() shouldBe empty
+                    }
+                }
+            }
+        }
+        val noArtefact = """{"packIdentifier":"pack-a","packType":"breach-terms","version":"1"}"""
+        refused(envelope(RulePackEventsHandler.STAGED_TYPE, noArtefact, platform), "PACK_CONTENTS_MISSING")
+        everything() shouldBe empty
+    }
+
+    @Test
+    fun `INV-AC-29315 missing contents is reported before every other refusal`() {
+        deliver(staged(type = "calendar"))
+        val before = everything()
+        refused(staged(artefact = "{}"), "PACK_CONTENTS_MISSING")
+        refused(staged(artefact = "{}", who = tenant), "PACK_CONTENTS_MISSING")
+        everything() shouldBe before
+    }
+
+    @Test
+    fun `INV-AC-29315 invalid breach terms are refused and no table gets a row, the type record included`() {
+        val invalid =
+            listOf(
+                "{}",
+                "\"text\"",
+                "[]",
+                "true",
+                contents(assessment = "0"),
+                contents(assessment = "-1"),
+                contents(assessment = "1.5"),
+                contents(assessment = "0.5"),
+                contents(assessment = "24.0000000000000000001"),
+                contents(assessment = "\"72\""),
+                contents(assessment = "null"),
+                contents(assessment = "[72]"),
+                contents(assessment = "1e30"),
+                contents(assessment = "1e1000000"),
+                contents(assessment = "2562047788015216"),
+                contents(notification = "0"),
+                contents(notification = "\"48\""),
+                contents(notification = "true"),
+                contents(source = "\"\""),
+                contents(source = "7"),
+                contents(source = "null"),
+                contents(source = "[\"a\"]"),
+                contents(source = "\"a\\u0000b\""),
+                """{"notificationWithinHours":48,"sourceReference":"s"}""",
+                """{"assessmentWithinHours":72,"sourceReference":"s"}""",
+                """{"assessmentWithinHours":72,"notificationWithinHours":48}""",
+                """{"AssessmentWithinHours":72,"notificationWithinHours":48,"sourceReference":"s"}""",
+            )
+        for (bad in invalid) {
+            withClue(bad) {
+                refused(stagedWith(bad), "PACK_CONTENTS_INVALID")
+                everything() shouldBe empty
+            }
+        }
+    }
+
+    @Test
+    fun `INV-AC-29315 the smallest and a whole decimal figure are accepted and unknown members are ignored`() {
+        deliver(stagedWith(contents(assessment = "1", notification = "24.0", extra = ""","other":{"a":1}""")))
+        versionRows() shouldBe listOf("pack-a|1|1|24|counsel-1")
+    }
+
+    @Test
+    fun `INV-AC-29315 an equal redelivery changes nothing`() {
+        deliver(staged())
+        deliver(activated())
+        val before = everything()
+        deliver(staged()) shouldBe HandleOutcome.IGNORED
+        deliver(stagedWith(contents(extra = ""","unknown":1"""))) shouldBe HandleOutcome.IGNORED
+        deliver(activated()) shouldBe HandleOutcome.IGNORED
+        everything() shouldBe before
+    }
+
+    @Test
+    fun `INV-AC-29315 other contents for a stored version are refused and the stored row stays`() {
+        deliver(staged())
+        val before = everything()
+        for (other in listOf(
+            contents(assessment = "71"),
+            contents(notification = "47"),
+            contents(source = "\"counsel-2\""),
+        )) {
+            withClue(other) {
+                val message = refused(stagedWith(other), "PACK_VERSION_CONFLICT")
+                message shouldNotContain "counsel"
+                message shouldNotContain "pack-a"
+                everything() shouldBe before
+            }
+        }
+        deliver(stagedWith(contents(assessment = "71"), version = "2")) shouldBe HandleOutcome.APPLIED
+    }
+
+    @Test
+    fun `INV-AC-29315 invalid contents for a stored version are reported before the version conflict`() {
+        deliver(staged())
+        val before = everything()
+        refused(stagedWith(contents(assessment = "0")), "PACK_CONTENTS_INVALID")
+        everything() shouldBe before
+    }
+
+    @Test
+    fun `INV-AC-29315 only the wire value breach-terms stores a version`() {
+        val lookAlikes = listOf("breach-terms-v2", "breach_terms", "BREACH_TERMS", "breach-terms ", "Breach-Terms")
+        lookAlikes.forEachIndexed { index, type ->
+            withClue(type) {
+                deliver(staged(identifier = "look-$index", type = type)) shouldBe HandleOutcome.IGNORED
+                versionRows().shouldBeEmpty()
+                // its activation is of another type: ignored
+                deliver(activated(identifier = "look-$index")) shouldBe HandleOutcome.IGNORED
+                activationRows().shouldBeEmpty()
+            }
+        }
+        typeRows() shouldBe lookAlikes.mapIndexed { index, type -> "look-$index|$type" }
+    }
+
+    @Test
+    fun `INV-AC-29315 any other event type is refused and writes nothing`() {
+        for (type in listOf(
+            "com.dynokore.gst.rules.RulePackStaged.v1",
+            "com.dynokore.gst.rules.RulePackActivated.v1",
+            "com.dynokore.gst.platform.RulePackStaged.v2",
+            "com.dynokore.gst.platform.RulePackStagedX.v1",
+            "com.dynokore.gst.platform.PackCurrencyChanged.v1",
+        )) {
+            // an envelope takes the platform tenant for a platform event type only
+            val who = if (Envelope.isPlatformType(type)) platform else tenant
+            withClue(type) {
+                val event = envelope(type, staged().dataJson, who)
+                val violation = shouldThrow<ContractViolation> { deliver(event) }
+                violation.message shouldBe "the event type is not a platform rule pack event this consumer handles"
+                everything() shouldBe empty
+            }
+        }
+    }
+
+    @Test
+    fun `INV-AC-29315 a payload without a needed member is refused and writes nothing`() {
+        val artefact = """"artefact":{"contents":${contents()}}"""
+        val payloads =
+            listOf(
+                "not json",
+                """{"packType":"breach-terms","version":"1",$artefact}""",
+                """{"packIdentifier":"p","version":"1",$artefact}""",
+                """{"packIdentifier":"p","packType":"breach-terms",$artefact}""",
+                """{"packIdentifier":"","packType":"breach-terms","version":"1",$artefact}""",
+                """{"packIdentifier":"p","packType":["breach-terms"],"version":"1",$artefact}""",
+            )
+        for (data in payloads) {
+            withClue(data) {
+                shouldThrow<ContractViolation> {
+                    deliver(envelope(RulePackEventsHandler.STAGED_TYPE, data, platform))
+                }
+                everything() shouldBe empty
+            }
+        }
+        deliver(staged())
+        val noDate = """{"packIdentifier":"pack-a","version":"1","effectiveFrom":"secret-value"}"""
+        val violation =
+            shouldThrow<ContractViolation> {
+                deliver(envelope(RulePackEventsHandler.ACTIVATED_TYPE, noDate, platform))
+            }
+        violation.message.orEmpty() shouldNotContain "secret-value"
+        activationRows().shouldBeEmpty()
+    }
+}
+
+/** INV-AC-29315: the recorded pack type, the platform tenant, activations and the active terms. */
+class BreachTermsTypeAndActivationDbTest : BreachTermsReplicaHarness() {
+    @Test
+    fun `INV-AC-29315 staged then activated gives the terms from the effective date and none before it`() {
+        deliver(staged()) shouldBe HandleOutcome.APPLIED
+        terms(day) shouldBe null
+        deliver(activated()) shouldBe HandleOutcome.APPLIED
+        typeRows() shouldBe listOf("pack-a|breach-terms")
+        versionRows() shouldBe listOf("pack-a|1|72|48|counsel-1")
+        terms(day) shouldBe seventyTwo
+        terms(day.minusDays(1)) shouldBe null
+    }
+
+    @Test
+    fun `INV-AC-29315 type conflict with breach-terms recorded first keeps type and version and activation applies`() {
+        deliver(staged())
+        val before = everything()
+        for (event in listOf(staged(type = "calendar"), staged(type = "calendar", version = "2"))) {
+            val message = refused(event, "PACK_TYPE_CONFLICT")
+            message shouldNotContain "calendar"
+            message shouldNotContain "pack-a"
+            everything() shouldBe before
+        }
+        deliver(activated()) shouldBe HandleOutcome.APPLIED
+        typeRows() shouldBe listOf("pack-a|breach-terms")
+        terms(day) shouldBe seventyTwo
+    }
+
+    @Test
+    fun `INV-AC-29315 type conflict with another type recorded first stores no version`() {
+        deliver(staged(type = "calendar")) shouldBe HandleOutcome.IGNORED
+        typeRows() shouldBe listOf("pack-a|calendar")
+        val before = everything()
+        refused(staged(), "PACK_TYPE_CONFLICT")
+        everything() shouldBe before
+        versionRows().shouldBeEmpty()
+    }
+
+    @Test
+    fun `INV-AC-29315 the type conflict is reported before invalid contents and before the version conflict`() {
+        deliver(staged(type = "calendar"))
+        val before = everything()
+        refused(stagedWith("{}"), "PACK_TYPE_CONFLICT")
+        everything() shouldBe before
+    }
+
+    @Test
+    fun `INV-AC-29315 a staging of another type from another tenant is a type conflict and writes nothing`() {
+        deliver(staged())
+        val before = everything()
+        refused(staged(type = "calendar", who = tenant), "PACK_TYPE_CONFLICT")
+        everything() shouldBe before
+    }
+
+    @Test
+    fun `INV-AC-29315 breach terms from another tenant are refused as not platform before any other check`() {
+        refused(staged(who = tenant), "PACK_NOT_PLATFORM")
+        everything() shouldBe empty
+        deliver(staged(type = "calendar"))
+        val before = everything()
+        // not platform comes before the type conflict and before the contents check
+        refused(staged(who = tenant), "PACK_NOT_PLATFORM")
+        refused(staged(artefact = """{"contents":{}}""", who = tenant), "PACK_NOT_PLATFORM")
+        everything() shouldBe before
+    }
+
+    @Test
+    fun `INV-AC-29315 another tenant's staging of another type is ignored and cannot block the operator pack`() {
+        deliver(staged(type = "calendar", who = tenant)) shouldBe HandleOutcome.IGNORED
+        everything() shouldBe empty
+        deliver(staged()) shouldBe HandleOutcome.APPLIED
+        typeRows() shouldBe listOf("pack-a|breach-terms")
+        // an equal type from another tenant is not a conflict
+        val before = everything()
+        deliver(staged(type = "calendar", identifier = "pack-b", who = tenant)) shouldBe HandleOutcome.IGNORED
+        deliver(staged(type = "calendar", identifier = "pack-b")) shouldBe HandleOutcome.IGNORED
+        deliver(staged(type = "calendar", identifier = "pack-b", who = tenant)) shouldBe HandleOutcome.IGNORED
+        typeRows() shouldBe listOf("pack-a|breach-terms", "pack-b|calendar")
+        versionRows() shouldBe before[1]
+    }
+
+    @Test
+    fun `INV-AC-29315 an activation from another tenant is ignored and writes nothing`() {
+        deliver(staged())
+        val before = everything()
+        deliver(activated(who = tenant)) shouldBe HandleOutcome.IGNORED
+        deliver(activated(identifier = "never-staged", who = tenant)) shouldBe HandleOutcome.IGNORED
+        everything() shouldBe before
+        terms(day) shouldBe null
+    }
+
+    @Test
+    fun `INV-AC-29315 an identifier that differs by letter case or a suffix is not a conflict`() {
+        deliver(staged(type = "calendar"))
+        deliver(staged(identifier = "Pack-A")) shouldBe HandleOutcome.APPLIED
+        deliver(staged(identifier = "pack-a-2")) shouldBe HandleOutcome.APPLIED
+        typeRows() shouldBe listOf("Pack-A|breach-terms", "pack-a|calendar", "pack-a-2|breach-terms")
+    }
+
+    @Test
+    fun `INV-AC-29315 an activation of an unknown pack or an unstaged version is retried, not dead-lettered`() {
+        shouldThrowAny { deliver(activated()) }.shouldNotBeInstanceOf<ContractViolation>()
+        everything() shouldBe empty
+        deliver(staged())
+        val before = everything()
+        shouldThrow<IllegalStateException> { deliver(activated(version = "2")) }
+        shouldThrow<IllegalStateException> { deliver(activated(identifier = "pack-b")) }
+        everything() shouldBe before
+        terms(day) shouldBe null
+        // the retry succeeds once the version is staged
+        deliver(stagedWith(contents(assessment = "10"), version = "2"))
+        deliver(activated(version = "2")) shouldBe HandleOutcome.APPLIED
+        terms(day) shouldBe BreachTerms(Duration.ofHours(10), Duration.ofHours(48))
+    }
+
+    @Test
+    fun `INV-AC-29315 the terms on a date are of the latest effective activation and a later one wins a tie`() {
+        fun hours(assessment: Long) = BreachTerms(Duration.ofHours(assessment), Duration.ofHours(48))
+        deliver(stagedWith(contents(assessment = "1"), version = "1"))
+        deliver(stagedWith(contents(assessment = "2"), version = "2"))
+        deliver(stagedWith(contents(assessment = "3"), identifier = "pack-b", version = "1"))
+        terms(day) shouldBe null
+        // applied out of date order: the effective date decides, not the order of arrival
+        deliver(activated(version = "2", from = day.plusDays(10)))
+        deliver(activated(version = "1", from = day))
+        terms(day.minusDays(1)) shouldBe null
+        terms(day) shouldBe hours(1)
+        terms(day.plusDays(9)) shouldBe hours(1)
+        terms(day.plusDays(10)) shouldBe hours(2)
+        // a tie on the effective date: the later applied activation wins, also back to an earlier one
+        deliver(activated(identifier = "pack-b", from = day))
+        terms(day) shouldBe hours(3)
+        deliver(activated(version = "1", from = day)) shouldBe HandleOutcome.APPLIED
+        terms(day) shouldBe hours(1)
+        terms(day.plusDays(10)) shouldBe hours(2)
+    }
+
+    @Test
+    fun `INV-AC-29315 a tenant binding reads the active terms and cannot write the replica`() {
+        deliver(staged())
+        deliver(activated())
+        terms(day, tenant) shouldBe seventyTwo
+        val before = everything()
+        shouldThrowAny {
+            bound(tenant) { _, dsl -> JooqBreachTermsReplica(dsl).recordType("pack-z", "calendar") }
+        }
+        everything() shouldBe before
+    }
+
+    @Test
+    fun `INV-AC-29315 a tenant cannot write a platform row and the runtime login cannot change or delete one`() {
+        deliver(staged())
+        deliver(activated())
+        val before = everything()
+        shouldThrowAny {
+            bound(tenant) { c, _ ->
+                c.createStatement().use {
+                    it.execute(
+                        "insert into evidence.breach_terms_pack_type values ('${platform.value}', 'p', 'calendar')",
+                    )
+                }
+            }
+        }
+        for (table in listOf("type", "version", "activation")) {
+            for (sql in listOf(
+                "update evidence.breach_terms_pack_$table set pack_identifier = 'x'",
+                "delete from evidence.breach_terms_pack_$table",
+            )) {
+                withClue(sql) {
+                    shouldThrowAny { bound(platform) { c, _ -> c.createStatement().use { it.execute(sql) } } }
+                }
+            }
+        }
+        everything() shouldBe before
+    }
+
+    @Test
+    fun `INV-AC-29315 two concurrent first stagings cannot both set the type`() {
+        EvidenceDb.connect(EvidenceDb.RUNTIME, EvidenceDb.RUNTIME_PASSWORD).use { first ->
+            first.autoCommit = false
+            SignedBindings.bind(first, platform.value)
+            JooqBreachTermsReplica(DSL.using(first, SQLDialect.POSTGRES))
+                .recordType("pack-a", "breach-terms") shouldBe "breach-terms"
+            val second =
+                CompletableFuture.supplyAsync {
+                    bound(platform) { _, dsl -> JooqBreachTermsReplica(dsl).recordType("pack-a", "calendar") }
+                }
+            awaitLockWait()
+            first.commit()
+            second.get(WAIT_SECONDS, TimeUnit.SECONDS) shouldBe "breach-terms"
+        }
+        typeRows() shouldBe listOf("pack-a|breach-terms")
+    }
+
+    /** Returns once a session waits on a lock: the second insert is behind the uncommitted first one. */
+    private fun awaitLockWait() {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(WAIT_SECONDS)
+        while (query("select count(*) from pg_stat_activity where wait_event_type = 'Lock'").single() == "0") {
+            check(System.nanoTime() < deadline) { "the second staging never waited on the first" }
+            Thread.onSpinWait()
+        }
+    }
+
+    private companion object {
+        const val WAIT_SECONDS = 30L
+    }
+}
