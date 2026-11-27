@@ -62,6 +62,7 @@ dependencies {
     implementation(libs.platform.auditLog.impl)
     implementation(libs.platform.configResolver.impl)
     implementation(libs.platform.serviceRuntime.impl)
+    implementation(libs.platform.integrationCanon.api)
     implementation(libs.platform.integrationCanon.impl)
     implementation(libs.saxon.he)
     implementation(libs.schxslt2)
