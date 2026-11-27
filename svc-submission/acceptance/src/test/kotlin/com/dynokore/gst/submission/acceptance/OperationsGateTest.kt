@@ -36,7 +36,8 @@ class OperationsGateTest {
 
     @Test
     fun `INV-AC-21902 the real table covers the real contract`() {
-        OperationsGate.contractOperations(openapi).size shouldBe 23
+        OperationsGate.contractOperations(openapi).size shouldBe 24
+        OperationsGate.contractOperations(openapi) shouldContain "resolvePriorSolutionHold"
         OperationsGate.contractOperations(openapi) shouldContain "approveFilingGateOverride"
         OperationsGate.contractOperations(openapi) shouldContain "getFilingGateOverrides"
         OperationsGate.contractChannels(asyncapi).size shouldBe 13

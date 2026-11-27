@@ -37,6 +37,9 @@ tasks.withType<Test>().configureEach {
             "contracts-repo/platform-contracts/submission/${libs.versions.platformContractsBundle.get()}",
         )
     systemProperty("gst.contract.dir", contractDir.get().asFile.path)
+    val aggregationSchemas =
+        project(":submission-contract").layout.buildDirectory.dir("contracts-repo/aggregation/schemas")
+    systemProperty("gst.aggregation.schemas.dir", aggregationSchemas.get().asFile.path)
     systemProperty("gst.root.dir", rootProject.projectDir.path)
 }
 
