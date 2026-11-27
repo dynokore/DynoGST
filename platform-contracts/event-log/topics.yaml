@@ -685,6 +685,7 @@ topics:
       - rules-svc
     subscribers:
       - canonical-svc
+      - evidence-svc
       - masterdata-svc
       - notification-svc
       - payload-svc
@@ -700,6 +701,7 @@ topics:
       - rules-svc
     subscribers:
       - canonical-svc
+      - evidence-svc
       - masterdata-svc
       - notification-svc
       - payload-svc
@@ -1999,9 +2001,11 @@ replay_topics:
     event_types:
       - com.dynokore.gst.platform.EvidenceArtefactRecorded.v1
       - com.dynokore.gst.platform.ReplayCompleted.v1
+      - com.dynokore.gst.platform.RulePackActivated.v1
+      - com.dynokore.gst.platform.RulePackStaged.v1
     content_topic: false
     record_topic: false
-    retained_while_resolvable: false
+    retained_while_resolvable: true
     producers:
       - rules-svc
     subscribers:

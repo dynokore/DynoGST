@@ -38,7 +38,7 @@ diffs it.
 - `retained_while_resolvable` on every topic (written after `record_topic`):
   true when the topic's message declares `x-retained-while-resolvable: true`
   (today RulePackStaged), absent meaning false. A replay topic is true exactly
-  when any type it carries is (so the four replay topics that carry
+  when any type it carries is (so every replay topic that carries
   RulePackStaged); a request topic is false. The event log keeps such a topic
   for the pack artefact retention so a pack holder can refill its cache from
   it (INV-REQ-1210, INV-Q-6281). A message declaring both this marker and
