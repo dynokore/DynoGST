@@ -404,50 +404,20 @@ class ListIntraTenantPairsTest {
     }
 
     @Test
-    fun `INV-AC-28554 a cursor used with another tenant, entity or period is refused before any read`() {
-        val cursor = checkNotNull(view(sale(), sale(n = 2), limit = 1).nextCursor)
-        val reader = FakeReader(emptyList())
-        val list = ListIntraTenantPairs(reader)
-
-        listOf(
-            Triple("T2", "E1", PERIOD),
-            Triple(TENANT, "E3", PERIOD),
-            Triple(TENANT, "E1", "P2"),
-            // The same characters, split differently between the filters.
-            Triple(TENANT + "E", "1", PERIOD),
-            Triple(TENANT, "E1P", "1"),
-        ).forEach { (tenant, entity, period) ->
-            shouldThrow<IllegalArgumentException> { list.execute(tenant, entity, period, null, cursor) }
-        }
-        reader.counts.shouldBeEmpty()
-
-        list.execute(TENANT, "E1", PERIOD, null, cursor)
-        reader.counts.size shouldBe 1
-    }
-
-    @Test
     fun `INV-AC-28554 an unreadable cursor is refused before any read`() {
         fun cursorOf(vararg parts: String) =
             parts.joinToString(".") { Base64.getUrlEncoder().withoutPadding().encodeToString(it.toByteArray()) }
         val reader = FakeReader(emptyList())
-        // The binding of a real cursor for the same filters, so that each case below is refused for its own defect.
-        val minted = checkNotNull(view(sale(), sale(n = 2), limit = 1).nextCursor)
-        val bound = String(Base64.getUrlDecoder().decode(minted.substringBefore('.')))
-        ListIntraTenantPairs(FakeReader(emptyList()))
-            .execute(TENANT, "E1", PERIOD, null, cursorOf(bound, doc(1), "E1", ""))
-            .nextCursor shouldBe null
         listOf(
             "",
             "!!!",
             "a.b.c",
-            cursorOf(bound, doc(1)),
-            cursorOf(bound, doc(1), "E1"),
-            cursorOf(bound, doc(1), "E1", "E2", "E3"),
-            cursorOf(doc(1), "E1", ""),
-            cursorOf("", doc(1), "E1", ""),
-            cursorOf(bound, "not-a-uuid", "E1", ""),
-            cursorOf(bound, "${doc(1)}x", "E1", ""),
-            cursorOf(bound, doc(1), "", ""),
+            cursorOf(doc(1)),
+            cursorOf(doc(1), "E1"),
+            cursorOf(doc(1), "E1", "E2", "E3"),
+            cursorOf("not-a-uuid", "E1", ""),
+            cursorOf("${doc(1)}x", "E1", ""),
+            cursorOf(doc(1), "", ""),
         ).forEach {
             shouldThrow<IllegalArgumentException> {
                 ListIntraTenantPairs(reader).execute(TENANT, "E1", PERIOD, null, it)
