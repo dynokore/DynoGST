@@ -42,7 +42,7 @@ class OperationsGateTest {
 
     @Test
     fun `the real table covers the real contract`() {
-        OperationsGate.contractOperations(openapi).size shouldBe 13
+        OperationsGate.contractOperations(openapi).size shouldBe 14
         OperationsGate.contractChannels(asyncapi).size shouldBe 3
         run(done = doneText).shouldBeEmpty()
         // the done set is exactly the tasks the table assigns to an operation (each such task is done and answers

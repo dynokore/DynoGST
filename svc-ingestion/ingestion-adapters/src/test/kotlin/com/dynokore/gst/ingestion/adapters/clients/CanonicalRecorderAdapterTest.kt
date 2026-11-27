@@ -152,6 +152,16 @@ class CanonicalRecorderAdapterTest {
     }
 
     @Test
+    fun `INV-AC-29585 the recordDocument request carries no X-Flow-Context header of the generated config`() {
+        stub.reply = replyJson(201)
+        withAdapter { it.record(command) }
+        stub.seen
+            .single()
+            .headers
+            .containsKey("x-flow-context") shouldBe false
+    }
+
+    @Test
     fun `201 gives Created, 200 gives Replay and 202 gives Held with the reasons in the stub order`() {
         stub.reply = replyJson(201)
         withAdapter { it.record(command) } shouldBe CanonicalAnswer.Created(docUuid, 2, recorded())

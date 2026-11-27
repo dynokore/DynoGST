@@ -9,6 +9,7 @@ operation	recordControlTotals	UNASSIGNED
 operation	configureAdapter	UNASSIGNED
 operation	mapTriggerClass	INV-T-20940
 operation	waiveTriggerClass	INV-T-20940
+operation	getTriggerCoverageMap	UNASSIGNED
 operation	getFeedHealth	UNASSIGNED
 operation	replayFeed	UNASSIGNED
 operation	sendTestEvent	UNASSIGNED

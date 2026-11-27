@@ -104,13 +104,16 @@ class CanonicalRecorderAdapter(
             SuccessBody(mapper.treeToValue(tree, RecordDocumentResponse::class.java), verdict)
         }.getOrNull()
 
-    /** Method, path and headers come from the generated config; only the body is replaced by the parsed tree. */
+    /**
+     * Method, path and headers come from the generated config, except the `X-Flow-Context` header that the generator
+     * makes from the placeholder argument: no flow context is sent here. The body is replaced by the parsed tree.
+     */
     private fun requestConfig(tree: JsonNode): RequestConfig<JsonNode> {
-        val generated = api.recordDocumentRequestConfig(TEMPLATE)
+        val generated = api.recordDocumentRequestConfig("", TEMPLATE)
         return RequestConfig(
             method = generated.method,
             path = generated.path,
-            headers = generated.headers,
+            headers = generated.headers.filterKeys { it != "X-Flow-Context" }.toMutableMap(),
             params = generated.params,
             query = generated.query,
             requiresAuthentication = generated.requiresAuthentication,
@@ -198,6 +201,7 @@ class CanonicalRecorderAdapter(
                 sourceSystem = "",
                 sourceKey = "",
                 sourceRevision = 0,
+                documentNumber = "",
                 documentFunction = RecordDocumentRequest.DocumentFunction.entries.first(),
                 transactionDate = LocalDate.EPOCH,
                 currency = "",
