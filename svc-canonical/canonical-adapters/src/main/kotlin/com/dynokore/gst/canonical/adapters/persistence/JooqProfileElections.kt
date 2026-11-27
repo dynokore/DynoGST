@@ -75,6 +75,23 @@ class JooqProfileElections(
             .limit(1)
             .fetchOne { DateBasis.valueOf(checkNotNull(it.get(PROFILE_ELECTION.VALUE))) }
 
+    /** The `apportionmentMode` value in force on [on] (CLAIMABLE_PORTION or ENTIRE_INVOICE), or null when none is. */
+    fun apportionmentOf(
+        tenantId: UUID,
+        entityRef: String,
+        on: LocalDate,
+    ): String? =
+        dsl
+            .select(PROFILE_ELECTION.VALUE)
+            .from(PROFILE_ELECTION)
+            .where(PROFILE_ELECTION.TENANT_ID.eq(tenantId))
+            .and(PROFILE_ELECTION.ENTITY_REF.eq(entityRef))
+            .and(PROFILE_ELECTION.ATTRIBUTE.eq(APPORTIONMENT))
+            .and(PROFILE_ELECTION.EFFECTIVE_DATE.le(on))
+            .orderBy(PROFILE_ELECTION.EFFECTIVE_DATE.desc())
+            .limit(1)
+            .fetchOne { checkNotNull(it.get(PROFILE_ELECTION.VALUE)) }
+
     /** True exactly when a row of [attribute] for the tenant and entity has an effective date not after [on]. */
     fun isElected(
         tenantId: UUID,
@@ -115,6 +132,7 @@ class JooqProfileElections(
 
     private companion object {
         const val BASIS = "purchaseDateBasis"
+        const val APPORTIONMENT = "apportionmentMode"
         const val SCHEME_PREFIX = "gstScheme."
         const val ON = "ON"
     }

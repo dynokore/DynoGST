@@ -2,6 +2,7 @@ package com.dynokore.gst.canonical.bootstrap
 
 import com.dynokore.gst.canonical.adapters.SignedBindings
 import com.dynokore.gst.canonical.adapters.events.ProfileElectionReader
+import com.dynokore.gst.canonical.adapters.persistence.JooqProfileElections
 import com.dynokore.gst.canonical.adapters.persistence.jooq.tables.references.PROFILE_ELECTION
 import com.dynokore.platform.outboxandqueue.CausationId
 import com.dynokore.platform.outboxandqueue.ContractViolation
@@ -23,6 +24,7 @@ import org.junit.jupiter.api.io.TempDir
 import org.springframework.context.ApplicationContext
 import java.nio.file.Path
 import java.time.Instant
+import java.time.LocalDate
 import java.util.UUID
 
 /** INV-AC-21466: the EntityProfileChanged election feed over the migrated schema (handler bean, real store). */
@@ -238,6 +240,70 @@ class ProfileElectionFeedTest {
     @Test
     fun `INV-AC-26604 R7 an event holding only issuanceMode is ignored and the reader returns null`() {
         ProfileElectionReader().read(data(listOf(issuance)), t1) shouldBe null
+    }
+
+    private fun Boundary.modeOn(
+        date: String,
+        tenant: TenantId = t1,
+    ): String? =
+        scope.bind(tenant, actor) {
+            runner.inTransaction {
+                JooqProfileElections(dsl).apportionmentOf(tenant.value, "E-001", LocalDate.parse(date))
+            }
+        }
+
+    @Test
+    fun `INV-AC-26476 version 4 over 3 answers by date, a repeat of 3 is ignored and bad items store nothing`(
+        @TempDir dir: Path,
+    ) = run(dir) { b ->
+        val v3 = data(listOf(item("apportionmentMode", "CLAIMABLE_PORTION", "2026-07-01")), version = "3")
+        val v4 = data(listOf(item("apportionmentMode", "ENTIRE_INVOICE", "2026-08-01")), version = "4")
+        b.handle(v3).getOrThrow() shouldBe HandleOutcome.APPLIED
+        b.handle(v4).getOrThrow() shouldBe HandleOutcome.APPLIED
+        val stored =
+            listOf(
+                "apportionmentMode=CLAIMABLE_PORTION@2026-07-01#3",
+                "apportionmentMode=ENTIRE_INVOICE@2026-08-01#4",
+            )
+
+        fun answers() = listOf("2026-07-15", "2026-08-01", "2026-06-30").map { b.modeOn(it) }
+        answers() shouldBe listOf("CLAIMABLE_PORTION", "ENTIRE_INVOICE", null)
+
+        b.handle(v3).getOrThrow() shouldBe HandleOutcome.IGNORED
+        b.rows() shouldBe stored
+
+        // each bad item travels with a good one, at a higher version, so a partial store would show
+        val good = item("apportionmentMode", "CLAIMABLE_PORTION", "2026-09-01")
+        listOf(
+            item("apportionmentMode", "MIXED", "2026-07-01"),
+            item("apportionmentMode", "ENTIRE_INVOICE", "2026-13-01"),
+        ).forEach { bad ->
+            val failure = b.handle(data(listOf(good, bad), version = "5")).exceptionOrNull()
+            (failure is ContractViolation) shouldBe true
+            b.rows() shouldBe stored
+        }
+        answers() shouldBe listOf("CLAIMABLE_PORTION", "ENTIRE_INVOICE", null)
+    }
+
+    @Test
+    fun `INV-AC-26476 a purchaseDateBasis item without an apportionmentMode item still stores the basis`(
+        @TempDir dir: Path,
+    ) = run(dir) { b ->
+        b.handle(data(listOf(basis))).getOrThrow() shouldBe HandleOutcome.APPLIED
+        b.rows() shouldBe listOf("purchaseDateBasis=POSTING_DATE@2026-07-01#8")
+        b.modeOn("2026-07-15") shouldBe null
+    }
+
+    @Test
+    fun `INV-AC-26476 the look-alike attribute apportionmentModeX is dropped and not stored`(
+        @TempDir dir: Path,
+    ) = run(dir) { b ->
+        val lookAlike = item("apportionmentModeX", "CLAIMABLE_PORTION", "2026-07-01")
+        b.handle(data(listOf(lookAlike))).getOrThrow() shouldBe HandleOutcome.IGNORED
+        b.rows() shouldBe emptyList()
+        b.handle(data(listOf(lookAlike, basis))).getOrThrow() shouldBe HandleOutcome.APPLIED
+        b.rows() shouldBe listOf("purchaseDateBasis=POSTING_DATE@2026-07-01#8")
+        b.modeOn("2026-07-15") shouldBe null
     }
 
     @Test

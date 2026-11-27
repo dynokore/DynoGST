@@ -264,4 +264,56 @@ class ProfileElectionStoreTest {
         b.sqlStateOf(t1, source("MAS_DAILY", jan)) shouldBe null
         b.sqlStateOf(t1, scheme("GST9", "ON", jan)) shouldBe null
     }
+
+    private fun Boundary.modeAs(
+        session: UUID,
+        tenant: UUID,
+        on: LocalDate,
+        entity: String = "E1",
+    ): String? =
+        scope.bind(TenantId(session), actor) { runner.inTransaction { store.apportionmentOf(tenant, entity, on) } }
+
+    @Test
+    fun `INV-AC-26476 the mode in force is the latest on or before the date and a repeated version changes nothing`(
+        @TempDir dir: Path,
+    ) = run(dir) { b ->
+        val t1 = UUID.randomUUID()
+        val aug = LocalDate.of(2026, 8, 1)
+        b.applyAs(t1, 3, mode("CLAIMABLE_PORTION", jul)) shouldBe true
+        b.applyAs(t1, 4, mode("ENTIRE_INVOICE", aug)) shouldBe true
+        b.applyAs(t1, 3, mode("CLAIMABLE_PORTION", jul)) shouldBe false
+        b.valuesOf(t1).sorted() shouldBe
+            listOf("apportionmentMode=CLAIMABLE_PORTION#3", "apportionmentMode=ENTIRE_INVOICE#4")
+
+        b.modeAs(t1, t1, LocalDate.of(2026, 7, 15)) shouldBe "CLAIMABLE_PORTION"
+        b.modeAs(t1, t1, aug) shouldBe "ENTIRE_INVOICE"
+        b.modeAs(t1, t1, LocalDate.of(2026, 6, 30)) shouldBe null
+        b.modeAs(t1, t1, aug, entity = "E2") shouldBe null
+    }
+
+    @Test
+    fun `INV-AC-26476 a tenant never reads the mode of another tenant with the same entity`(
+        @TempDir dir: Path,
+    ) = run(dir) { b ->
+        val a = UUID.randomUUID()
+        val other = UUID.randomUUID()
+        b.applyAs(a, 3, mode("CLAIMABLE_PORTION", jan)) shouldBe true
+        b.modeAs(other, other, jul) shouldBe null
+        // a session bound to the other tenant asking for tenant A reads nothing (row level security)
+        b.modeAs(other, a, jul) shouldBe null
+        // with both holding E1, each reads only its own; the later row of the other tenant never wins for A
+        b.applyAs(other, 3, mode("ENTIRE_INVOICE", jul)) shouldBe true
+        b.modeAs(a, a, sep) shouldBe "CLAIMABLE_PORTION"
+        b.modeAs(other, other, sep) shouldBe "ENTIRE_INVOICE"
+    }
+
+    @Test
+    fun `INV-AC-26476 other attributes never answer for the apportionment mode`(
+        @TempDir dir: Path,
+    ) = run(dir) { b ->
+        val t1 = UUID.randomUUID()
+        b.applyAs(t1, 1, basis("POSTING_DATE", jan), source("MAS_DAILY", jan)) shouldBe true
+        b.modeAs(t1, t1, jul) shouldBe null
+        b.basisAs(t1, t1, jul) shouldBe DateBasis.POSTING_DATE
+    }
 }
