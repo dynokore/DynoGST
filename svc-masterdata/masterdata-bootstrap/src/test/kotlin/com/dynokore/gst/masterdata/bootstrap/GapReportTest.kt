@@ -1,8 +1,18 @@
 package com.dynokore.gst.masterdata.bootstrap
 
+import com.dynokore.gst.masterdata.adapters.events.ConsumedHeldDocumentEvents
+import com.dynokore.gst.masterdata.contract.model.ApprovedScheme
 import com.dynokore.gst.masterdata.contract.model.CounterpartyAddress
+import com.dynokore.platform.outboxandqueue.CausationId
+import com.dynokore.platform.outboxandqueue.CorrelationId
+import com.dynokore.platform.outboxandqueue.EntityRef
+import com.dynokore.platform.outboxandqueue.Envelope
+import com.dynokore.platform.outboxandqueue.EventHandler
+import com.dynokore.platform.outboxandqueue.EventId
+import com.dynokore.platform.outboxandqueue.HandleOutcome
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.springframework.boot.autoconfigure.AutoConfigurations
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders
@@ -10,6 +20,8 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
 import tools.jackson.databind.JsonNode
 import tools.jackson.databind.json.JsonMapper
+import java.time.Instant
+import java.time.LocalDate
 import java.util.UUID
 
 /**
@@ -297,6 +309,144 @@ class GapReportTest {
                     env.call("GET", "/internal/v1/masterdata/gap-reports/GAP-unknown/export").status,
                 ).isEqualTo(404)
             }
+        }
+
+    private fun runHeld(block: (RegistryEnv) -> Unit) =
+        runRegistry(
+            customize = { it.withConfiguration(AutoConfigurations.of(HeldDocumentFeed::class.java)) },
+            block = block,
+        )
+
+    /** One event of canonical-svc through the consumer [HeldDocumentFeed] wires, under the tenant of the test. */
+    private fun RegistryEnv.consume(
+        handler: String,
+        type: String,
+        entity: String,
+        data: String,
+    ) {
+        val event =
+            Envelope(
+                id = EventId(UUID.randomUUID().toString()),
+                source = "/gst/canonical",
+                type = type,
+                subject = "document",
+                time = Instant.now(),
+                tenant = ce.tenant,
+                entity = EntityRef(entity),
+                docUuid = null,
+                transactionDate = null,
+                docSequence = null,
+                instanceId = "canonical-svc-0",
+                correlation = CorrelationId("c-1"),
+                causation = CausationId("c-1"),
+                dataJson = data,
+            )
+        val outcome = ce.inTenant { context.getBean(handler, EventHandler::class.java).handle(event) }
+        assertThat(outcome).isEqualTo(HandleOutcome.APPLIED)
+    }
+
+    private fun RegistryEnv.hold(
+        entity: String,
+        party: String,
+        vararg reasons: String,
+    ): UUID {
+        val doc = UUID.randomUUID()
+        val list = reasons.joinToString(",") { "\"$it\"" }
+        consume(
+            "documentHeldHandler",
+            ConsumedHeldDocumentEvents.DOCUMENT_HELD,
+            entity,
+            """{"docUuid":"$doc","docsequence":1,"holdReasons":[$list],""" +
+                """"entityRef":"$entity","partyRef":"$party"}""",
+        )
+        return doc
+    }
+
+    private fun RegistryEnv.release(
+        entity: String,
+        doc: UUID,
+        reason: String,
+    ) = consume(
+        "documentReleasedHandler",
+        ConsumedHeldDocumentEvents.DOCUMENT_RELEASED,
+        entity,
+        """{"docUuid":"$doc","docsequence":2,"releasedHoldReasons":["$reason"]}""",
+    )
+
+    /** A counterparty with a clean UEN and address, with the given approved scheme items. */
+    private fun RegistryEnv.party(
+        prefix: String,
+        uen: String,
+        schemes: List<ApprovedScheme>? = null,
+    ): String =
+        unique(prefix).also {
+            ce.write(it, ce.request("UEN" to uen, name = "ACME", address = ADDRESS, schemes = schemes))
+        }
+
+    /** The counterparties the report of [entity] lists as SCHEME_STATUS_MISSING. */
+    private fun RegistryEnv.missingScheme(entity: String): List<String> {
+        val answer = run(entity)
+        assertThat(answer.status).isEqualTo(200)
+        return rowsOf(json.readTree(answer.body))
+            .filter { it.second == "SCHEME_STATUS_MISSING" }
+            .map { it.first }
+    }
+
+    @Test
+    @Suppress("MaxLineLength", "ktlint:standard:max-line-length") // the criterion's case name, as the task states it
+    fun `INV-AC-2503 the gap report lists the counterparty without approved scheme status that has a document blocked by RUL-011 and not the other`() =
+        runHeld { env ->
+            val entity = env.entity()
+            val a = env.party("CTP-A", "201912345A")
+            val b = env.party("CTP-B", "201912346B")
+            val elsewhere = env.party("CTP-C", "201912347C")
+            env.hold(entity, a, "RUL-011")
+            env.hold(entity, b, "MDM-001")
+            env.hold(env.entity(), elsewhere, "RUL-011")
+            val answer = env.run(entity)
+            assertThat(answer.status).isEqualTo(200)
+            val pairs = rowsOf(json.readTree(answer.body)).map { it.first to it.second }
+            assertThat(pairs).contains(a to "SCHEME_STATUS_MISSING")
+            assertThat(pairs).doesNotContain(b to "SCHEME_STATUS_MISSING", elsewhere to "SCHEME_STATUS_MISSING")
+        }
+
+    @Test
+    fun `INV-AC-2503 a release of RUL-011 removes the missing scheme status row from the next report`() =
+        runHeld { env ->
+            val entity = env.entity()
+            val a = env.party("CTP-A", "201912345A")
+            val doc = env.hold(entity, a, "RUL-011", "MDM-001")
+            assertThat(env.missingScheme(entity)).containsExactly(a)
+            env.release(entity, doc, "RUL-011")
+            assertThat(env.missingScheme(entity)).isEmpty()
+        }
+
+    @Test
+    fun `INV-AC-2503 a blocked counterparty with a scheme status in force is not listed`() =
+        runHeld { env ->
+            val entity = env.entity()
+            val inForce = listOf(ApprovedScheme("MES", LocalDate.of(2026, 1, 1), null, "E1"))
+            val a = env.party("CTP-A", "201912345A", inForce)
+            val control = env.party("CTP-B", "201912346B")
+            env.hold(entity, a, "RUL-011")
+            env.hold(entity, control, "RUL-011")
+            assertThat(env.missingScheme(entity)).containsExactly(control)
+        }
+
+    @Test
+    fun `INV-AC-2503 the export carries the SCHEME_STATUS_MISSING line of the blocked counterparty`() =
+        runHeld { env ->
+            val entity = env.entity()
+            val a = env.party("CTP-A", "201912345A")
+            val b = env.party("CTP-B", "201912346B")
+            env.hold(entity, a, "RUL-011")
+            env.hold(entity, b, "MDM-001")
+            assertThat(env.run(entity).status).isEqualTo(200)
+            val answer = env.call("GET", "/internal/v1/masterdata/gap-reports/${latestId(env)}/export")
+            assertThat(answer.status).isEqualTo(200)
+            val lines = answer.body.trimEnd().split("\r\n")
+            assertThat(lines.filter { it.split(",")[1] == "SCHEME_STATUS_MISSING" })
+                .containsExactly("$a,SCHEME_STATUS_MISSING,,201912345A,ACME,1 Raffles Place,048616")
         }
 
     private companion object {
