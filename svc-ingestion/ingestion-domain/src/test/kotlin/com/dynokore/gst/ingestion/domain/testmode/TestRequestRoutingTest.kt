@@ -10,49 +10,31 @@ class TestRequestRoutingTest {
     private fun route(
         marked: Boolean,
         workspace: WorkspaceKind,
-        ref: String?,
-    ) = TestRequestRouting.route(marked, workspace, ref)
+    ) = TestRequestRouting.route(marked, workspace)
 
     @Test
-    fun `INV-AC-14108 non-production workspace gives InRequestWorkspace marked or not with or without a reference`() {
-        for (marked in listOf(true, false)) {
-            for (ref in listOf("ws-1", null)) {
-                route(marked, WorkspaceKind.NON_PRODUCTION, ref) shouldBe TestRouting.InRequestWorkspace
-            }
-        }
+    fun `INV-AC-14108 marked non-production request gives InRequestWorkspace`() {
+        route(true, WorkspaceKind.NON_PRODUCTION) shouldBe TestRouting.InRequestWorkspace
     }
 
     @Test
-    fun `INV-AC-14108 unmarked production request gives Live with and without a reference`() {
-        route(false, WorkspaceKind.PRODUCTION, "ws-1") shouldBe TestRouting.Live
-        route(false, WorkspaceKind.PRODUCTION, null) shouldBe TestRouting.Live
+    fun `INV-AC-14108 unmarked non-production request gives InRequestWorkspace`() {
+        route(false, WorkspaceKind.NON_PRODUCTION) shouldBe TestRouting.InRequestWorkspace
     }
 
     @Test
-    fun `INV-AC-14108 marked production request with reference ws-1 goes to the paired workspace`() {
-        route(true, WorkspaceKind.PRODUCTION, "ws-1") shouldBe TestRouting.InPairedWorkspace("ws-1")
+    fun `INV-AC-14108 unmarked production request gives Live`() {
+        route(false, WorkspaceKind.PRODUCTION) shouldBe TestRouting.Live
     }
 
     @Test
-    fun `INV-AC-14108 marked production request with null reference is refused with ING-021 and 422`() {
-        route(true, WorkspaceKind.PRODUCTION, null) shouldBe refused
-    }
-
-    @Test
-    fun `INV-AC-14108 marked production request with an empty reference is refused`() {
-        route(true, WorkspaceKind.PRODUCTION, "") shouldBe refused
-    }
-
-    @Test
-    fun `INV-AC-14108 marked production request with a blank reference is refused`() {
-        route(true, WorkspaceKind.PRODUCTION, "  ") shouldBe refused
+    fun `INV-AC-14108 marked production request is refused with ING-021 and 422`() {
+        route(true, WorkspaceKind.PRODUCTION) shouldBe refused
     }
 
     @Test
     fun `INV-AC-14108 a marked production request never gives Live`() {
-        for (ref in listOf(null, "", " ", "ws-1")) {
-            route(true, WorkspaceKind.PRODUCTION, ref) shouldNotBe TestRouting.Live
-        }
+        route(true, WorkspaceKind.PRODUCTION) shouldNotBe TestRouting.Live
     }
 
     @Test

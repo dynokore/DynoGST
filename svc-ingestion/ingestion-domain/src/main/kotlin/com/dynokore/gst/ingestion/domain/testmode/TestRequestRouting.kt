@@ -7,10 +7,6 @@ sealed interface TestRouting {
 
     data object InRequestWorkspace : TestRouting
 
-    data class InPairedWorkspace(
-        val workspaceRef: String,
-    ) : TestRouting
-
     data class Refused(
         val code: String,
         val httpStatus: Int,
@@ -24,7 +20,6 @@ object TestRequestRouting {
     fun route(
         headerMarked: Boolean,
         requestWorkspace: WorkspaceKind,
-        pairedWorkspaceRef: String?,
     ): TestRouting =
         when (requestWorkspace) {
             WorkspaceKind.NON_PRODUCTION -> {
@@ -34,15 +29,8 @@ object TestRequestRouting {
             WorkspaceKind.PRODUCTION -> {
                 when (headerMarked) {
                     false -> TestRouting.Live
-                    true -> pairedOrRefused(pairedWorkspaceRef)
+                    true -> TestRouting.Refused(ING_021, UNPROCESSABLE)
                 }
             }
-        }
-
-    private fun pairedOrRefused(pairedWorkspaceRef: String?): TestRouting =
-        if (pairedWorkspaceRef != null && !pairedWorkspaceRef.isBlank()) {
-            TestRouting.InPairedWorkspace(pairedWorkspaceRef)
-        } else {
-            TestRouting.Refused(ING_021, UNPROCESSABLE)
         }
 }
