@@ -6,6 +6,7 @@ import com.dynokore.gst.rules.adapters.packs.ReplicaRateSourcePort
 import com.dynokore.gst.rules.adapters.packs.ServiceKeyHolderCopyWriter
 import com.dynokore.gst.rules.adapters.persistence.ArmedPackLookup
 import com.dynokore.gst.rules.adapters.persistence.JooqRateSourceAcceptanceStore
+import com.dynokore.gst.rules.adapters.persistence.jooq.tables.references.RATE_SOURCE_ACCEPTANCE
 import com.dynokore.gst.rules.application.HolderCopyPort
 import com.dynokore.gst.rules.application.HolderCopyRequest
 import com.dynokore.gst.rules.application.HolderCopyResult
@@ -1913,14 +1914,22 @@ open class RateSourceAcceptanceSupport(
         acceptedBy: String,
         acceptedAt: String,
     ) {
-        priorState shouldBe
+        assertSameJson(
+            priorState,
             mapper
                 .createObjectNode()
                 .put("rationale", rationale)
                 .put("expiresOn", expiresOn.toString())
                 .put("acceptedBy", acceptedBy)
-                .put("acceptedAt", acceptedAt)
+                .put("acceptedAt", acceptedAt),
+        )
     }
+
+    /** Node equality, names included; `shouldBe` on a node compares only its child values, as an iterable. */
+    protected fun assertSameJson(
+        actual: JsonNode,
+        expected: JsonNode,
+    ) = io.kotest.assertions.withClue("expected $expected but was $actual") { (actual == expected) shouldBe true }
 
     protected fun instantOf(text: String) =
         java.time.OffsetDateTime
@@ -1985,7 +1994,7 @@ class RateSourceAcceptanceBoundaryTest(
         val first = ok(acceptSource("S1", body(rationale = "first")))
         val firstEntries = auditRows()
         firstEntries.size shouldBe 1
-        assertEntry(firstEntries.single(), "user-c", "first") shouldBe mapper.createObjectNode()
+        assertSameJson(assertEntry(firstEntries.single(), "user-c", "first"), mapper.createObjectNode())
 
         ok(acceptSource("S1", body(rationale = "second", expiresOn = today.plusDays(30)), by = "user-d"))
         val entries = auditRows()
@@ -2076,12 +2085,70 @@ class RateSourceAcceptanceBoundaryTest(
         stored().single()["rationale"] shouldBe "second"
         val entries = auditRows()
         entries.size shouldBe 2
-        assertEntry(entries.first(), "user-c", "first") shouldBe mapper.createObjectNode()
+        assertSameJson(assertEntry(entries.first(), "user-c", "first"), mapper.createObjectNode())
         assertPriorState(
             assertEntry(entries.last(), "user-d", "second"),
             "first",
             today.plusDays(1),
             "user-c",
+            firstAcceptedAt.get(),
+        )
+    }
+
+    /** Takes only the row lock, so a second call's insert does not wait; replaces the row once released. */
+    private fun lockThenReplace(
+        locked: CountDownLatch,
+        release: CountDownLatch,
+        acceptedAt: AtomicReference<String>,
+    ): CompletableFuture<Unit> =
+        CompletableFuture.supplyAsync {
+            inOwnTransaction {
+                db
+                    .selectFrom(RATE_SOURCE_ACCEPTANCE)
+                    .forUpdate()
+                    .fetch()
+                    .size shouldBe 1
+                locked.countDown()
+                check(release.await(WAIT_SECONDS, TimeUnit.SECONDS)) { "the first call was never released" }
+                acceptanceStore.replace(acceptanceOf("first", "user-d"))
+                acceptedAt.set(acceptanceStore.acceptedAt(tenant, "S1").toInstant().toString())
+            }
+        }
+
+    @Test
+    fun `over a stored row the second call waits for the row lock and records the values it replaces`() {
+        scopePack("S1" to "INFERRED")
+        inOwnTransaction { acceptanceStore.replace(acceptanceOf("kept", "user-c")) }
+        val locked = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val firstAcceptedAt = AtomicReference<String>()
+        val first = lockThenReplace(locked, release, firstAcceptedAt)
+        val second: CompletableFuture<Unit>
+        try {
+            if (!locked.await(WAIT_SECONDS, TimeUnit.SECONDS)) {
+                // surfaces the failure of the first call, if it ended with one
+                first.getNow(Unit)
+                error("the first call never locked the row")
+            }
+            second =
+                CompletableFuture.supplyAsync {
+                    inOwnTransaction { acceptanceStore.replace(acceptanceOf("second", "user-e")) }
+                }
+            awaitLockWait(second)
+            second.isDone shouldBe false
+        } finally {
+            release.countDown()
+        }
+        first.get(WAIT_SECONDS, TimeUnit.SECONDS)
+        second.get(WAIT_SECONDS, TimeUnit.SECONDS)
+        stored().single()["rationale"] shouldBe "second"
+        val entries = auditRows()
+        entries.size shouldBe 3
+        assertPriorState(
+            assertEntry(entries.last(), "user-e", "second"),
+            "first",
+            today.plusDays(1),
+            "user-d",
             firstAcceptedAt.get(),
         )
     }
