@@ -5,6 +5,8 @@ import com.dynokore.platform.rulepackkernel.PackType
 /**
  * The pack types of packs.yaml, spelled as the rules contract spells a pack type (upper snake case, `SCOPE` in the
  * contract examples). The kernel keeps [PackType] opaque (ARC-16); the product vocabulary lives here.
+ * The one exception to the upper snake spelling is [BREACH_TERMS]: its wire value is `breach-terms`, as the published
+ * breach terms contents schema spells it, and BREACH_TERMS is only the code name (INV-AC-29341).
  */
 object PackTypes {
     val SCOPE = PackType("SCOPE")
@@ -17,7 +19,7 @@ object PackTypes {
     val MAPPING = PackType("MAPPING")
     val RETURN_MAPPING = PackType("RETURN_MAPPING")
     val ENDPOINT_ACCEPTANCE = PackType("ENDPOINT_ACCEPTANCE")
-    val BREACH_TERMS = PackType("BREACH_TERMS")
+    val BREACH_TERMS = PackType("breach-terms")
 
     /**
      * INV-REQ-770 behaviour 3 (INV-AC-1782): the rate and the code catalogue resolve at the preceding document's date

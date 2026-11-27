@@ -6,10 +6,13 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import org.junit.jupiter.api.Test
 
-/** INV-Q-7444 (A): the eleven pack types in the upper snake case spelling; another spelling is not a pack type. */
+/**
+ * INV-Q-7444 (A): the eleven pack types, upper snake case except `breach-terms` (INV-AC-29341); another spelling is
+ * not a pack type.
+ */
 class PackTypesTest {
     @Test
-    fun `INV-AC-7963 the pack types are exactly the ten upper snake case values`() {
+    fun `INV-AC-7963 the pack types are exactly the listed wire values`() {
         setOf(
             PackTypes.SCOPE,
             PackTypes.CODE_CATALOGUE,
@@ -25,7 +28,7 @@ class PackTypesTest {
         ) shouldBe
             listOf("SCOPE", "CODE_CATALOGUE", "MDE", "SCHEMATRON", "SEVERITY_OVERRIDE")
                 .plus(listOf("SCENARIO", "CALENDAR", "MAPPING", "RETURN_MAPPING"))
-                .plus(listOf("ENDPOINT_ACCEPTANCE", "BREACH_TERMS"))
+                .plus(listOf("ENDPOINT_ACCEPTANCE", "breach-terms"))
                 .map { PackType(it) }
                 .toSet()
     }
