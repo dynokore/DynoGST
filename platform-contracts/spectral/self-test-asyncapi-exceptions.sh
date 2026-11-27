@@ -41,6 +41,50 @@ if grep -v '^#' asyncapi-exceptions.txt | grep -v '^{' | grep -q .; then echo "g
 printf 'not json' > "$work/bad.json"
 expect "input that is not JSON" 1 "$work/bad.json" "$work/empty.txt"
 
+# INV-T-28987: only a forward MINOR or PATCH step of /info/version passes without an exception entry.
+step() { # <name> <expected-code> <json-text>
+  printf '%s' "$3" > "$work/step.json"
+  expect "$1" "$2" "$work/step.json" "$work/empty.txt"
+}
+el() { # <before-json> <after-json> [<path> [<action> [<type>]]]
+  printf '{"action":"%s","path":"%s","before":%s,"after":%s,"type":"%s"}' "${4:-edit}" "${3:-/info/version}" "$1" "$2" "${5:-breaking}"
+}
+step "forward minor step" 0 "[$(el '"1.4.0"' '"1.5.0"')]"
+step "forward patch step" 0 "[$(el '"1.4.0"' '"1.4.1"')]"
+step "forward minor step, compared as integers" 0 "[$(el '"1.9.3"' '"1.10.0"')]"
+step "forward patch step, compared as integers" 0 "[$(el '"1.4.9"' '"1.4.10"')]"
+step "downgrade" 1 "[$(el '"1.5.0"' '"1.4.0"')]"
+step "downgrade, compared as integers" 1 "[$(el '"1.10.0"' '"1.9.0"')]"
+step "patch downgrade" 1 "[$(el '"1.4.1"' '"1.4.0"')]"
+step "equal versions" 1 "[$(el '"1.4.0"' '"1.4.0"')]"
+step "major step" 1 "[$(el '"1.4.0"' '"2.0.0"')]"
+step "major step with greater minor" 1 "[$(el '"1.4.0"' '"2.5.0"')]"
+step "before 1.4" 1 "[$(el '"1.4"' '"1.5.0"')]"
+step "after 1.05.0" 1 "[$(el '"1.4.0"' '"1.05.0"')]"
+step "after 1.5.0-rc.1" 1 "[$(el '"1.4.0"' '"1.5.0-rc.1"')]"
+step "after 1.5.0+build" 1 "[$(el '"1.4.0"' '"1.5.0+build"')]"
+step "after 1.5.0.1" 1 "[$(el '"1.4.0"' '"1.5.0.1"')]"
+step "after with a trailing newline" 1 "[$(el '"1.4.0"' '"1.5.0\n"')]"
+step "after with a non-ASCII digit" 1 "[$(el '"1.4.0"' '"1.\u0665.0"')]"
+step "after a number instead of a string" 1 "[$(el '"1.4.0"' '1.5')]"
+step "before a number instead of a string" 1 "[$(el '1.4' '"1.5.0"')]"
+step "path /info/title" 1 "[$(el '"1.4.0"' '"1.5.0"' /info/title)]"
+step "path /channels/x/info/version" 1 "[$(el '"1.4.0"' '"1.5.0"' /channels/x/info/version)]"
+step "path /info/version/x" 1 "[$(el '"1.4.0"' '"1.5.0"' /info/version/x)]"
+step "action remove on /info/version" 1 "[$(el '"1.4.0"' '"1.5.0"' /info/version remove)]"
+step "action Edit" 1 "[$(el '"1.4.0"' '"1.5.0"' /info/version Edit)]"
+step "type unclassified" 1 "[$(el '"1.4.0"' '"1.5.0"' /info/version edit unclassified)]"
+step "an element with one extra key" 1 '[{"action":"edit","path":"/info/version","before":"1.4.0","after":"1.5.0","type":"breaking","extra":1}]'
+step "an element without type" 1 '[{"action":"edit","path":"/info/version","before":"1.4.0","after":"1.5.0"}]'
+step "an element that is not an object" 1 '["/info/version"]'
+step "an object instead of an array" 1 "$(el '"1.4.0"' '"1.5.0"')"
+step "empty input" 1 ''
+step "forward step with one removal" 1 "[$(el '"1.4.0"' '"1.5.0"'),{\"action\":\"remove\",\"path\":\"/channels/gone\",\"before\":{},\"type\":\"breaking\"}]"
+listed="$(grep 'unlisted breaking AsyncAPI change:' "$work/out.txt")"
+if [ "$listed" != 'gst-ci: unlisted breaking AsyncAPI change: {"action":"remove","before":{},"path":"/channels/gone","type":"breaking"}' ]; then
+  echo "gst-ci: FAIL — forward step with one removal: not only the removal is listed as unlisted"; cat "$work/out.txt"; failed=1
+fi
+
 # Gate: a repository with one service whose channel is removed at head.
 mkdir "$work/bin" "$work/repo"
 printf '#!/bin/sh\ncat "%s/%s/breaking.json"\nexit 1\n' "$PWD" "$F" > "$work/bin/asyncapi"

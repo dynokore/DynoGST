@@ -574,8 +574,11 @@ asyncapi-validate:
   image:
     name: "$ASYNCAPI_CLI_IMAGE"
     entrypoint: [""]
+    docker:
+      user: root   # apk add needs root; the image default user is uid 100
   before_script:
     - !reference [.gst-skip-verified, before_script]
+    - apk add --no-cache python3   # spectral/filter-asyncapi-exceptions.py, run by the gate self-test (INV-T-28987)
   script:
     - |
       failed=0
@@ -583,6 +586,8 @@ asyncapi-validate:
         echo "gst-ci: asyncapi validate $f"
         asyncapi validate "$f" || failed=1
       done
+      echo "gst-ci: self-test of the AsyncAPI breaking-change gate with the real CLI"
+      sh spectral/self-test-asyncapi-gate-cli.sh || failed=1
       exit $failed
 
 oasdiff-breaking-gate:
