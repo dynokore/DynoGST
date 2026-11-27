@@ -31,7 +31,10 @@ interface AccessPointAdapters {
     fun ids(): Set<AdapterId>
 }
 
-/** The attempt log (INV-REQ-538): one attempt row per call of the port, with exactly one egress record. */
+/**
+ * The attempt log (INV-REQ-538): one attempt row per call of the port, with exactly one egress record. A package
+ * leaves one attempt with one egress per member, all of one send, recorded through [PackageLog].
+ */
 interface AttemptLog {
     /** The adapter an earlier attempt of this Doc UUID and version used: versions in flight finish on it. */
     fun adapterInFlight(doc: DocRef): AdapterId?
@@ -42,7 +45,10 @@ interface AttemptLog {
     /** When the AP receipt of the accepted attempt of this Doc UUID and version was recorded. */
     fun acceptedAt(doc: DocRef): Instant?
 
-    /** The recorded outcome of a settled (accepted or rejected) earlier attempt: a repeat returns it. */
+    /**
+     * The recorded outcome of a settled (accepted or rejected) earlier attempt: a repeat returns it. A REJECTED
+     * attempt of a package does not count: its members are sent again one by one.
+     */
     fun settledOutcome(doc: DocRef): TransportOutcome?
 
     /** Records the attempt and its single egress before the AP is called; returns the attempt id. */
