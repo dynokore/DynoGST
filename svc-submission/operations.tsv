@@ -35,4 +35,4 @@ channel	gst.submission.net-derivation-requested.v1	UNASSIGNED
 operation	getExceptionAgeing	INV-T-26746
 operation	getPackActivationHistory	INV-T-26746
 channel	gst.submission.identity-triple-reprocessing-requested.v1	UNASSIGNED
-operation	resolvePriorSolutionHold	UNASSIGNED
+operation	resolvePriorSolutionHold	INV-T-28441
