@@ -30,9 +30,17 @@ import java.util.UUID
  * cached here, so a revocation applies to the next read. A DEGRADED decision is whatever `decide` returns. Other
  * methods pass on: the owning service authorises a write again (behavior 2).
  *
- * A read whose table entry names no entity parameter is decided by [AuthorityReplica.decideTenant] (TENANT-scope
- * grant, INV-Q-11688 A); one that names an entity parameter is decided by [AuthorityReplica.decide] at entity scope
- * with that ref, and refused when the request carries no single value for it. No entity ref is invented.
+ * A read whose table entry names no entity (no entity parameter, no entity path variable) is decided by
+ * [AuthorityReplica.decideTenant] (TENANT-scope grant, INV-Q-11688 A); one that names an entity parameter is decided
+ * by [AuthorityReplica.decide] at entity scope with that ref, and refused when the request carries no single value
+ * for it. No entity ref is invented.
+ *
+ * Only for a read naming no entity that the table marks as an entity list read
+ * ([ReadPermissions.admitsAnyEntityFor]), a caller the tenant decision does not allow is also admitted when `decide`
+ * allows the key of the route on at least one entity of [AuthorityReplica.heldEntities], asked under one deadline for
+ * the whole scan and stopping at the first allow (INV-REQ-871; OWASP API Security API1; NIST SP 800-53 AC-3, AC-6).
+ * No held entity, no allowed entity and a thrown exception are refused. The filter only admits: the read behind it
+ * narrows its rows to the allowed entities.
  */
 class ConsoleReadAuthorisationFilter(
     private val permissions: ReadPermissions,
@@ -85,7 +93,7 @@ class ConsoleReadAuthorisationFilter(
                     if (pathVariable != null) {
                         decidePathEntity(request, tenant, principal, key)
                     } else if (entityParameter == null) {
-                        replica.decideTenant(tenant, principal, key)
+                        decideUnnamed(request, tenant, principal, key)
                     } else {
                         decideEntity(request, tenant, principal, key, entityParameter)
                     }
@@ -98,6 +106,37 @@ class ConsoleReadAuthorisationFilter(
             }
         }
     }
+
+    /** The tenant decision; on a marked route that it does not allow, the first allowing entity decision, if any. */
+    private fun decideUnnamed(
+        request: HttpServletRequest,
+        tenant: TenantId,
+        principal: Principal,
+        key: String,
+    ): AuthorityDecision {
+        val tenantWide = replica.decideTenant(tenant, principal, key)
+        return if (tenantWide.allowed || !permissions.admitsAnyEntityFor("GET", request.requestURI)) {
+            tenantWide
+        } else {
+            firstAllowedEntity(tenant, principal, key) ?: tenantWide
+        }
+    }
+
+    /** Null (the tenant refusal stands) when no held entity is allowed or the scan throws. */
+    private fun firstAllowedEntity(
+        tenant: TenantId,
+        principal: Principal,
+        key: String,
+    ): AuthorityDecision? =
+        runCatching {
+            val deadline = Deadline.after(budget, clock)
+            replica
+                .heldEntities(tenant, principal.id)
+                .asSequence()
+                .map { replica.decide(AuthorizationRequest(tenant, principal, it, key), deadline) }
+                .firstOrNull { it.allowed }
+        }.onFailure { log.warn("console read entity scan failed", it) }
+            .getOrNull()
 
     /** Null (refused) when the route yields no non-blank entity segment; decided at entity scope, never tenant. */
     private fun decidePathEntity(

@@ -231,9 +231,19 @@ class ConsoleReadAuthorisationFilterTest {
     fun `INV-AC-20309 a principal holding only an entity-scope grant of the key is refused on a tenant read`() {
         caughtUp()
         grantEntity(2, "e1")
-        val out = run()
+        val unmarked =
+            CatalogueReadPermissions(
+                entries = CatalogueReadPermissions.ENTRIES.map { it.copy(entityListRead = false) },
+            )
+        val out = run(subject = ConsoleReadAuthorisationFilter(unmarked, replica, clock))
         out.response.status shouldBe 403
         out.called shouldBe false
+    }
+
+    @Test
+    fun `INV-AC-29110 the entity list reads of the production table are exactly this list`() {
+        CatalogueReadPermissions.ENTRIES.filter { it.entityListRead }.map { it.operationId } shouldBe
+            listOf("getExceptions")
     }
 
     @Test

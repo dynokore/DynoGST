@@ -23,7 +23,15 @@ class CatalogueReadPermissions(
         val entityParameter: String? = null,
         /** The `{name}` path variable naming the entity of the read; absent when the entity is not in the path. */
         val entityPathVariable: String? = null,
-    )
+        /** An entity list read: a caller allowed on at least one entity is admitted. Only for a read naming none. */
+        val entityListRead: Boolean = false,
+    ) {
+        init {
+            require(!entityListRead || (entityParameter == null && entityPathVariable == null)) {
+                "an entity list read names no entity: $operationId"
+            }
+        }
+    }
 
     /**
      * One served read whose path template may hold `{name}` segments and whose permission key is chosen by the value
@@ -63,6 +71,11 @@ class CatalogueReadPermissions(
         method: String,
         pathTemplate: String,
     ): String? = entryOf(method, pathTemplate)?.entityPathVariable
+
+    override fun admitsAnyEntityFor(
+        method: String,
+        pathTemplate: String,
+    ): Boolean = entryOf(method, pathTemplate)?.entityListRead == true
 
     override fun entityRefFor(
         method: String,
@@ -132,7 +145,7 @@ class CatalogueReadPermissions(
 
         val ENTRIES: List<Entry> =
             listOf(
-                Entry("GET", "/v1/exceptions", "getExceptions", "exception.view"),
+                Entry("GET", "/v1/exceptions", "getExceptions", "exception.view", entityListRead = true),
                 Entry("GET", "/v1/portfolio", "getPortfolio", "period-readiness.view"),
                 Entry(
                     "GET",

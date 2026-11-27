@@ -49,4 +49,14 @@ fun interface ReadPermissions {
         method: String,
         path: String,
     ): String? = null
+
+    /**
+     * Whether the route is marked as an entity list read: a read naming no entity that also admits a caller allowed
+     * on at least one entity; its rows are narrowed to the allowed entities behind the read. False for every route
+     * not marked, so such a read is decided at tenant scope alone.
+     */
+    fun admitsAnyEntityFor(
+        method: String,
+        pathTemplate: String,
+    ): Boolean = false
 }
