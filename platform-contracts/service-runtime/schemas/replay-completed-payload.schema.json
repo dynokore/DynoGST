@@ -14,6 +14,15 @@
       "type": "integer",
       "minimum": 0,
       "description": "How many events this producer re-emitted for the replay; 0 for an empty scope (INV-Q-3644)."
+    },
+    "sourcedEventTypes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true,
+      "description": "The event types of the pair's replay topic, without ReplayCompleted, for which the producer has a state source; an absent property lists nothing, so the consumer ends every topic of the replay no-source."
     }
   },
   "required": [

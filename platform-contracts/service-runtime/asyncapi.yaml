@@ -1,7 +1,7 @@
 asyncapi: 3.0.0
 info:
   title: service-runtime shared event components
-  version: 1.30.0
+  version: 1.31.0
   description: >-
     Not a service: holds the CloudEvents envelope every other directory's
     asyncapi.yaml references (API-40, ./schemas/cloud-event-envelope.schema.json)
@@ -814,7 +814,13 @@ components:
         subscribed types. The producer writes it last for a replay, in the transaction that commits the
         request's inbox row and its position on the request topic (INV-Q-3676), so log-offset order puts it
         after every event of that replay; an empty scope gives a replay holding only the marker. Payload:
-        replayId (the ReplayRequested it answers) and eventsReplayed (0 or more). The consumer takes it
+        replayId (the ReplayRequested it answers) and eventsReplayed (0 or more). The optional
+        sourcedEventTypes lists the event types of the pair's replay topic, without ReplayCompleted, for
+        which the producer has a state source; an absent property lists nothing, so the consumer ends every
+        topic of the replay no-source. The closing rules that follow apply only to a topic the marker covers
+        (the replay topic carries at least one of its event types and sourcedEventTypes lists every one it
+        carries) and only as INV-REQ-1205 b6 allows, also for a topic with several producers; the incident
+        of a no-source topic stays open. The consumer takes it
         through its inbox on the event id and closes 'rebuild required' when it applies the marker, and only
         then (INV-REQ-1205 b6). On an 'every service' replay topic several services answer one request, each
         with its own marker: the consumer keeps, in its consumption state (not in the read model a full sync

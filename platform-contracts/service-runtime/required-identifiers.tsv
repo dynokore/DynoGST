@@ -187,3 +187,4 @@ periodRef	property	schemas/pack-reprocessing-population-recorded-payload.schema.
 PackReprocessingRequested	asyncapi_message	asyncapi.yaml	INV-REQ-1004
 PackReprocessingPopulationRecorded	asyncapi_message	asyncapi.yaml	INV-REQ-1003
 mayPerform	root_property	schemas/error-envelope.schema.json	INV-REQ-913
+sourcedEventTypes	property	schemas/replay-completed-payload.schema.json	INV-REQ-1205
