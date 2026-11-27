@@ -43,6 +43,17 @@ sealed interface PackEvent {
         val effectiveFrom: LocalDate,
     ) : PackEvent
 
+    /**
+     * A tenant's pack was activated after its grace window expired without review (INV-REQ-952 behaviour 2); a fact for
+     * the next period's readiness output. Tenant-scoped, not a platform event.
+     */
+    data class UnreviewedActivationRecorded(
+        val tenantId: String,
+        val packType: String,
+        val version: String,
+        val effectiveFrom: LocalDate,
+    ) : PackEvent
+
     data class PackCurrencyChanged(
         val depCode: String,
         val raised: Boolean,

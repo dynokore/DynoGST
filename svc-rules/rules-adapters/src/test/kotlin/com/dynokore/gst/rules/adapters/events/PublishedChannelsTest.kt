@@ -139,6 +139,65 @@ class PublishedChannelsTest {
         ContractFiles.platformErrors(schema, cleared.dataJson).shouldBeEmpty()
     }
 
+    private fun unreviewed() =
+        mapper.map(
+            PackEvent.UnreviewedActivationRecorded(
+                "7b0c2f5e-3a1d-4c8e-9f21-6d4a8b2e5c10",
+                "SCOPE",
+                "2026.4",
+                LocalDate.of(2026, 4, 1),
+            ),
+        )
+
+    private val unreviewedSchema = "unreviewed-activation-recorded-payload.schema.json"
+
+    @Test
+    fun `INV-AC-26293 channel rulesUnreviewedActivationRecorded carries the contract type on its channel address`() {
+        val event = unreviewed()
+        event.type shouldBe ContractFiles.message("rulesUnreviewedActivationRecorded").first
+        event.type shouldBe "com.dynokore.gst.rules.UnreviewedActivationRecorded.v1"
+        RulesEventCatalogue.TOPICS.getValue(event.type) shouldBe "gst.rules.unreviewed-activation-recorded.v1"
+        RulesEventCatalogue.TOPICS.getValue(event.type) shouldBe
+            ContractFiles.channelAddresses.getValue("rulesUnreviewedActivationRecorded")
+    }
+
+    @Test
+    fun `INV-AC-26293 the payload validates against the bundle schema`() {
+        ContractFiles.message("rulesUnreviewedActivationRecorded").second shouldBe unreviewedSchema
+        ContractFiles.errors("rulesUnreviewedActivationRecorded", unreviewed().dataJson).shouldBeEmpty()
+        unreviewed().dataJson shouldBe
+            """{"tenantId":"7b0c2f5e-3a1d-4c8e-9f21-6d4a8b2e5c10","packType":"SCOPE",""" +
+            """"packVersion":"2026.4","effectiveFrom":"2026-04-01","reviewed":false}"""
+    }
+
+    @Test
+    fun `INV-AC-26293 the catalogue entry is not retained while resolvable`() {
+        RulesEventCatalogue
+            .entries()
+            .single { it.eventType == "com.dynokore.gst.rules.UnreviewedActivationRecorded.v1" }
+            .retainedWhileResolvable shouldBe false
+    }
+
+    @Test
+    fun `INV-AC-26293 the emission guard accepts the type and refuses the look-alikes`() {
+        val guard = EmissionGuard(RulesEventCatalogue.catalogue(), RulesEventCatalogue.SERVICE)
+        guard.require("com.dynokore.gst.rules.UnreviewedActivationRecorded.v1")
+        shouldThrow<EmissionNotPermitted> {
+            guard.require("com.dynokore.gst.platform.UnreviewedActivationRecorded.v1")
+        }
+        shouldThrow<EmissionNotPermitted> {
+            guard.require("com.dynokore.gst.rules.UnreviewedActivationRecordedX.v1")
+        }
+    }
+
+    @Test
+    fun `INV-AC-26293 a payload without reviewed is reported by the schema check`() {
+        val payload =
+            """{"tenantId":"7b0c2f5e-3a1d-4c8e-9f21-6d4a8b2e5c10","packType":"SCOPE",""" +
+                """"packVersion":"2026.4","effectiveFrom":"2026-04-01"}"""
+        ContractFiles.errors("rulesUnreviewedActivationRecorded", payload).shouldNotBeEmpty()
+    }
+
     @Test
     fun `channel rulesExampleHappened is the contract placeholder, validated on its own schema and never emitted`() {
         ContractFiles.errors("rulesExampleHappened", """{"entityRef":"E-001"}""").shouldBeEmpty()
@@ -160,15 +219,23 @@ class PublishedChannelsTest {
     @Test
     fun `every channel of the document has a test above and every catalogued event is a channel of it`() {
         ContractFiles.channelAddresses.keys.toSet() shouldBe
-            setOf("rulesRulePackStaged", "rulesPackCurrencyChanged", "rulesExampleHappened")
-        // all three catalogued events are platform events (INV-T-4976 option A; INV-T-23126)
+            setOf(
+                "rulesRulePackStaged",
+                "rulesPackCurrencyChanged",
+                "rulesUnreviewedActivationRecorded",
+                "rulesExampleHappened",
+            )
+        // three catalogued events are platform events (INV-T-4976 option A; INV-T-23126); the unreviewed activation
+        // is the one tenant event of the rules namespace (INV-REQ-952)
         val platform =
             setOf(
                 RulesEventCatalogue.RULE_PACK_STAGED,
                 RulesEventCatalogue.RULE_PACK_ACTIVATED,
                 RulesEventCatalogue.PACK_CURRENCY_CHANGED,
             )
-        RulesEventCatalogue.TOPICS.keys shouldBe platform
+        val tenant = setOf(RulesEventCatalogue.UNREVIEWED_ACTIVATION_RECORDED)
+        RulesEventCatalogue.TOPICS.keys shouldBe platform + tenant
+        tenant shouldBe setOf(ContractFiles.message("rulesUnreviewedActivationRecorded").first)
         platform shouldBe
             setOf(
                 ContractFiles.platformType("RulePackStaged"),

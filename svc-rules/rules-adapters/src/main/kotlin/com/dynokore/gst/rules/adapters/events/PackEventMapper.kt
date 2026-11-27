@@ -19,6 +19,7 @@ class PackEventMapper(
             is PackEvent.RulePackStaged -> staged(event)
             is PackEvent.RulePackActivated -> activated(event)
             is PackEvent.PackCurrencyChanged -> currency(event)
+            is PackEvent.UnreviewedActivationRecorded -> unreviewedActivation(event)
         }
 
     private fun staged(event: PackEvent.RulePackStaged): OutboundEvent =
@@ -71,6 +72,20 @@ class PackEventMapper(
                     "packIdentifier" to event.packIdentifier,
                     "version" to event.version,
                     "effectiveFrom" to event.effectiveFrom.toString(),
+                ),
+            ),
+        )
+
+    private fun unreviewedActivation(event: PackEvent.UnreviewedActivationRecorded): OutboundEvent =
+        OutboundEvent(
+            RulesEventCatalogue.UNREVIEWED_ACTIVATION_RECORDED,
+            mapper.writeValueAsString(
+                linkedMapOf(
+                    "tenantId" to event.tenantId,
+                    "packType" to event.packType,
+                    "packVersion" to event.version,
+                    "effectiveFrom" to event.effectiveFrom.toString(),
+                    "reviewed" to false,
                 ),
             ),
         )

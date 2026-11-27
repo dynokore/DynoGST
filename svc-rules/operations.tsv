@@ -28,3 +28,4 @@ channel	gst.rules.example-happened.v1	none
 operation	diffMappingPackBundle	INV-T-26960
 operation	getPackDeltaAcknowledgement	INV-T-27762
 operation	acceptRateSource	INV-T-24951
+channel	gst.rules.unreviewed-activation-recorded.v1	INV-T-26299
