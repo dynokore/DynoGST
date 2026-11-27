@@ -101,8 +101,12 @@ object OperatorAccess {
     const val NO_ELEVATION = "NO_ELEVATION"
     const val NO_INVITATION = "NO_INVITATION"
 
-    /** The one set of permission keys an approved elevation opens (INV-Q-15954 A): invoice content, nothing else. */
-    val OPENED_BY_ELEVATION: Set<Permission> = setOf(Permission("doc.view.content"))
+    /**
+     * The one set of permission keys an approved elevation opens (INV-Q-15954 A; owner ruling of 2026-11-18, option A):
+     * `doc.view.content` (invoice content) and `evidence.view.content` (evidence store content), nothing else.
+     */
+    val OPENED_BY_ELEVATION: Set<Permission> =
+        setOf(Permission("doc.view.content"), Permission("evidence.view.content"))
 
     /**
      * The metadata permissions of an operator session: exactly these two keys, nothing else (INV-Q-16475 A, owner
@@ -160,8 +164,8 @@ object OperatorAccess {
 /**
  * What an operator session may do in its tenant (INV-REQ-862 behaviours 1 to 3, INV-AC-922; INV-Q-16475 A): a key is
  * allowed when it is one of [OperatorAccess.SESSION_METADATA] and the catalogue cell of the session's role is
- * PERMITTED, or when it is `doc.view.content` inside an approved, unexpired elevation of the same operator for that
- * tenant. Every other key is denied. A pure function of its inputs; it compares no role name.
+ * PERMITTED, or when it is one of [OperatorAccess.OPENED_BY_ELEVATION] inside an approved, unexpired elevation of the
+ * same operator for that tenant. Every other key is denied. A pure function of its inputs; it compares no role name.
  */
 object OperatorSessionAccess {
     fun allows(

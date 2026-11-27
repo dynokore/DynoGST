@@ -50,6 +50,9 @@ class ElevationAcceptanceTest {
     private val platform = "ffffffff-ffff-ffff-ffff-ffffffffffff"
     private val run = UUID.randomUUID().toString().take(8)
     private val content = "doc.view.content"
+    private val evidence = "evidence.view.content"
+    private val bothKeys = listOf(content, evidence)
+    private val evidenceLookAlikes = listOf("evidence.view.contents", "Evidence.view.content", "$evidence ")
 
     private fun user(name: String) = "user:$name-$run"
 
@@ -106,6 +109,9 @@ class ElevationAcceptanceTest {
                 )
             }
         }
+
+        /** A second operator whose own platform.support grant is live, so only the elevation can tell the two apart. */
+        fun secondSupport() = user("other-live-support").also { platformRow(it, "platform.support") }
 
         fun removePlatformRows() =
             BoundaryFixture.asSuperuser { c ->
@@ -445,13 +451,16 @@ class ElevationAcceptanceTest {
         }
 
     @Test
-    fun `INV-AC-1930 an approved elevation opens exactly doc view content in its tenant`() =
+    fun `INV-AC-24922 an approved elevation opens exactly doc and evidence view content in its tenant`() =
         run("SAAS") { env ->
             env.decide(env.request().requestRef)
-            assertThat(OperatorAccess.OPENED_BY_ELEVATION).containsExactly(Permission(content))
+            assertThat(OperatorAccess.OPENED_BY_ELEVATION)
+                .isEqualTo(setOf(Permission(content), Permission(evidence)))
             assertThat(env.decision(env.support, content)).isEqualTo(allow)
+            assertThat(env.decision(env.support, evidence)).isEqualTo(allow)
             val others =
-                listOf("audit-pack.export", "doc.view.contents", "Doc.View.Content", "$content ", "audit-log.view")
+                listOf("audit-pack.export", "doc.view.contents", "Doc.View.Content", "$content ", "audit-log.view") +
+                    evidenceLookAlikes
             others.forEach {
                 assertThat(env.decision(env.support, it)).describedAs(it).isEqualTo(deny)
             }
@@ -460,6 +469,65 @@ class ElevationAcceptanceTest {
             assertThat(env.decision(env.support, content, "ENT-B", env.a)).isEqualTo(deny)
             // another identity gets nothing from the elevation
             assertThat(env.decision(user("other-support"), content)).isEqualTo(deny)
+            assertThat(env.decision(env.support, evidence, "ENT-B", env.b)).isEqualTo(deny)
+            assertThat(env.decision(env.support, evidence, "ENT-B", env.a)).isEqualTo(deny)
+            assertThat(env.decision(user("other-support"), evidence)).isEqualTo(deny)
+        }
+
+    @Test
+    fun `INV-AC-24922 an approved elevation denies every other key of the catalogue`() =
+        run("SAAS") { env ->
+            env.decide(env.request().requestRef)
+            val keys =
+                env.context
+                    .getBean(PermissionMatrix::class.java)
+                    .export()
+                    .values
+                    .flatMap { it.keys }
+                    .toSet()
+            assertThat(keys).containsAll(bothKeys)
+            assertThat(keys.filter { env.decision(env.support, it) == allow })
+                .containsExactlyInAnyOrderElementsOf(bothKeys)
+        }
+
+    @Test
+    fun `INV-AC-24922 another operator with a live platform grant gets neither key from the elevation`() =
+        run("SAAS") { env ->
+            val other = env.secondSupport()
+            env.decide(env.request().requestRef)
+            bothKeys.forEach {
+                assertThat(env.decision(env.support, it)).describedAs(it).isEqualTo(allow)
+                assertThat(env.decision(other, it)).describedAs(it).isEqualTo(deny)
+            }
+            // the control: the same operator is allowed both keys by an elevation of its own
+            env.decide(env.request(actor = other, case = "CASE-O").requestRef)
+            bothKeys.forEach { assertThat(env.decision(other, it)).describedAs(it).isEqualTo(allow) }
+        }
+
+    @Test
+    fun `INV-AC-24922 both keys are denied before approval, after refusal and after withdrawal`() =
+        run("SAAS") { env ->
+            fun assertDenied(state: String) =
+                bothKeys.forEach {
+                    assertThat(env.decision(env.support, it)).describedAs("$state $it").isEqualTo(deny)
+                }
+            assertDenied("no elevation")
+            val refused = env.request(case = "CASE-R").requestRef
+            assertDenied("before approval")
+            env.decide(refused, grant = false)
+            assertDenied("after refusal")
+            val withdrawn = env.request(case = "CASE-W").requestRef
+            env.withdrawElevation(withdrawn)
+            assertDenied("after withdrawal")
+        }
+
+    @Test
+    fun `INV-AC-24922 both keys are allowed inside the time box and denied after expiry`() =
+        run("SAAS") { env ->
+            env.decide(env.request().requestRef)
+            bothKeys.forEach { assertThat(env.decision(env.support, it)).describedAs(it).isEqualTo(allow) }
+            env.clock.advance(Duration.ofMinutes(31))
+            bothKeys.forEach { assertThat(env.decision(env.support, it)).describedAs(it).isEqualTo(deny) }
         }
 
     @Test
