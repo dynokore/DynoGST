@@ -8,14 +8,36 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.web.server.LocalServerPort
+import org.springframework.context.ApplicationContextInitializer
+import org.springframework.context.ConfigurableApplicationContext
+import org.springframework.core.env.Environment
+import org.springframework.core.env.MapPropertySource
+import org.springframework.test.context.ContextConfiguration
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 import java.net.InetAddress
+import java.net.URI
 
 private const val DB_PORT = 5432
 private const val CONSOLE = "console-bff"
 private const val INSTALLATION_FACT = """{"distinctTaxApprover":true,"recordedAt":"2026-10-25T08:00:00Z"}"""
 private const val DOC = "0d000000-0000-4000-8000-0000000000a1"
+private const val TELEMETRY_ENDPOINT = "gst.bindings.telemetry-export-otlp-endpoint"
+private const val LOOPBACK_COLLECTOR = "http://127.0.0.1:4318"
+
+/**
+ * The guard admits exactly 127.0.0.1, and `localhost` may resolve to `[::1]`, so the span exporter must not use
+ * the name. A `@DynamicPropertySource` override cannot do this here: the inherited `props` method writes `localhost`
+ * into the same map. A context initializer runs after the dynamic properties and before the refresh, and its
+ * source stands first.
+ */
+private class LoopbackTelemetryEndpoint : ApplicationContextInitializer<ConfigurableApplicationContext> {
+    override fun initialize(applicationContext: ConfigurableApplicationContext) {
+        applicationContext.environment.propertySources.addFirst(
+            MapPropertySource("loopback-telemetry-endpoint", mapOf(TELEMETRY_ENDPOINT to LOOPBACK_COLLECTOR)),
+        )
+    }
+}
 
 /**
  * INV-REQ-1081, INV-AC-22534: in a private deployment (`gst.form=private`) a candidate pack cannot be approved before
@@ -35,11 +57,13 @@ private const val DOC = "0d000000-0000-4000-8000-0000000000a1"
         "service-runtime.workload-identity.callers[0].subject=subject-of-$CONSOLE",
     ],
 )
+@ContextConfiguration(initializers = [LoopbackTelemetryEndpoint::class])
 class PackDeltaEgressBoundaryTest(
     @LocalServerPort port: Int,
     @Autowired private val samples: FixtureHistoricalSamplePort,
     @Autowired private val periods: FixtureLastCompletePeriodPort,
     @Autowired private val evaluation: FixtureEvaluation,
+    @Autowired private val environment: Environment,
 ) : DryRunSupport(port) {
     @BeforeEach
     fun installationFact() {
@@ -53,6 +77,13 @@ class PackDeltaEgressBoundaryTest(
         samples.clear()
         periods.reset()
         evaluation.reset()
+    }
+
+    @Test
+    fun `INV-AC-28999 the egress delta test binds the telemetry collector to the loopback address the guard admits`() {
+        val endpoint = environment.getProperty(TELEMETRY_ENDPOINT)
+        endpoint shouldBe LOOPBACK_COLLECTOR
+        URI(endpoint!!).host shouldBe EgressGuard.LOOPBACK.host
     }
 
     @Test
