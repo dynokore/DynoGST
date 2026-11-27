@@ -113,6 +113,7 @@ class CloseWindowsMissedTest {
     private val withAandC = window("ent-1", "bu-bad", Cadence.WEEKLY, d(3, 30))
     private val withB = window("ent-1", "bu-good", Cadence.WEEKLY, d(3, 22))
     private val w1 = window("ent-unknown", "bu-good", Cadence.DAILY, d(3, 30))
+
     // starts before the tick, so the run reads it, and ends after it
     private val w2 = window("ent-unknown", "bu-good", Cadence.WEEKLY, d(3, 30))
     private val partA = WindowPart(d(3, 29), d(3, 31), "2027-03")
