@@ -1571,3 +1571,19 @@ permissions:
       - {role: auditor, form: PRIVATE, allowance: PERMITTED}
       - {role: agent.operator, form: SAAS, allowance: WITHIN_SCOPE}
       - {role: agent.operator, form: PRIVATE, allowance: WITHIN_SCOPE}
+  - key: evidence.view.content
+    kind: READ
+    row: "Evidence store"
+    cells:
+      - {role: tenant.admin, form: SAAS, allowance: PERMITTED}
+      - {role: tenant.admin, form: PRIVATE, allowance: PERMITTED}
+      - {role: tax.operator, form: SAAS, allowance: PERMITTED}
+      - {role: tax.operator, form: PRIVATE, allowance: PERMITTED}
+      - {role: tax.approver, form: SAAS, allowance: PERMITTED}
+      - {role: tax.approver, form: PRIVATE, allowance: PERMITTED}
+      - {role: finance.viewer, form: SAAS, allowance: PERMITTED}
+      - {role: finance.viewer, form: PRIVATE, allowance: PERMITTED}
+      - {role: auditor, form: SAAS, allowance: PERMITTED}
+      - {role: auditor, form: PRIVATE, allowance: PERMITTED}
+      - {role: agent.operator, form: SAAS, allowance: WITHIN_SCOPE}
+      - {role: agent.operator, form: PRIVATE, allowance: WITHIN_SCOPE}
