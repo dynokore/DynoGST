@@ -123,20 +123,23 @@ class ConsoleReadAuthorisationFilter(
     }
 
     /** Null (the tenant refusal stands) when no held entity is allowed or the scan throws. */
+    @Suppress("TooGenericExceptionCaught") // any exception of heldEntities or of a decide of the scan is a refusal
     private fun firstAllowedEntity(
         tenant: TenantId,
         principal: Principal,
         key: String,
     ): AuthorityDecision? =
-        runCatching {
+        try {
             val deadline = Deadline.after(budget, clock)
             replica
                 .heldEntities(tenant, principal.id)
                 .asSequence()
                 .map { replica.decide(AuthorizationRequest(tenant, principal, it, key), deadline) }
                 .firstOrNull { it.allowed }
-        }.onFailure { log.warn("console read entity scan failed", it) }
-            .getOrNull()
+        } catch (e: RuntimeException) {
+            log.warn("console read entity scan failed", e)
+            null
+        }
 
     /** Null (refused) when the route yields no non-blank entity segment; decided at entity scope, never tenant. */
     private fun decidePathEntity(
