@@ -255,3 +255,4 @@ assertionText	property	schemas/decision-trace-recorded-payload.schema.json	INV-R
 listIngestedDocuments	operation	openapi.yaml	INV-REQ-867
 listIngestedDocuments.200	operation_response	openapi.yaml	INV-REQ-867
 listIngestedDocuments.default	operation_response	openapi.yaml	INV-REQ-867
+packType	property	schemas/canonical-version-created-payload.schema.json	INV-REQ-771

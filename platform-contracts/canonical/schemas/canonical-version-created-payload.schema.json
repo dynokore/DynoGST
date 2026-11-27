@@ -85,6 +85,12 @@
           "version": {
             "type": "string",
             "description": "The rule pack version applied."
+          },
+          "packType": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "The pack type of rules-svc's evaluation result, copied unchanged (for example SCOPE, MAPPING, MDE); never derived from packIdentifier. The vocabulary belongs to rules-svc. Optional because an event published before the producer change does not carry it."
           }
         },
         "required": [
