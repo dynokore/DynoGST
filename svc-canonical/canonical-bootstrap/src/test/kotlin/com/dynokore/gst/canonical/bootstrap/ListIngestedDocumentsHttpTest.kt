@@ -34,7 +34,7 @@ import java.util.function.Supplier
 
 /**
  * INV-AC-28718: `listIngestedDocuments` over HTTP, through the service's filters, controller, reads, database and
- * authority replica. The caller is user-a of tenant-a; every test records under a principal of its own. The role
+ * authority replica. The caller is user-a of tenant-a unless a test names another; every test records under a principal of its own. The role
  * names of [roles] are fixture data: the service only ever asks for the permission key.
  */
 @Suppress("LargeClass") // one fixture shared by the clauses of the one criterion (CS-50)
@@ -105,24 +105,27 @@ class ListIngestedDocumentsHttpTest {
     private fun seedAlternating(): List<Item> =
         (0 until TEN).map { seed(if (it % 2 == 0) OTHER else HELD, from.plusSeconds(it.toLong())) }
 
-    /** The context's own replica, synced, holding for user-a one grant of [role] on each of [entities]. */
+    /** The context's own replica, synced, holding for each of [users] one grant of [role] on each of [entities]. */
     private fun grant(
         service: ServedService,
         role: String,
         vararg entities: String,
+        users: List<String> = listOf("user-a"),
     ) {
         val replica = service.context.getBean(AuthorityReplica::class.java)
         replica.onSnapshotComplete(0)
-        entities.forEachIndexed { index, entityRef ->
-            val held = RoleGrant(role, GrantScope.ENTITY, entityRef, Instant.now().minusSeconds(60))
-            replica.accept(
-                AuthorityChanged(
-                    tenant,
-                    "user-a",
-                    index + 1L,
-                    AuthorityRecord.RoleGrantRecord("grant-$index", RoleGrantState.ACTIVE, held),
-                ),
-            )
+        users.forEach { user ->
+            entities.forEachIndexed { index, entityRef ->
+                val held = RoleGrant(role, GrantScope.ENTITY, entityRef, Instant.now().minusSeconds(60))
+                replica.accept(
+                    AuthorityChanged(
+                        tenant,
+                        user,
+                        index + 1L,
+                        AuthorityRecord.RoleGrantRecord("grant-$user-$index", RoleGrantState.ACTIVE, held),
+                    ),
+                )
+            }
         }
     }
 
@@ -164,8 +167,10 @@ class ListIngestedDocumentsHttpTest {
             cursor?.let { "cursor" to it },
         )
 
-    private fun ServedService.list(query: List<Pair<String, String>>): Answer =
-        get(PATH, query, doubles.tokenOf("console-bff"), EndUserDoubles.USER_A)
+    private fun ServedService.list(
+        query: List<Pair<String, String>>,
+        user: String = EndUserDoubles.USER_A,
+    ): Answer = get(PATH, query, doubles.tokenOf("console-bff"), user)
 
     private fun page(answer: Answer): Pair<List<Item>, String?> {
         assertThat(answer.status).describedAs(answer.body).isEqualTo(200)
@@ -403,6 +408,23 @@ class ListIngestedDocumentsHttpTest {
                 "another layout" to query(cursor = "v2.$payload.$tag"),
                 "a fourth part" to query(cursor = "$cursor.x"),
             ).forEach { (label, sent) -> assertProblem(service.list(sent), 400, "SRT-001", label) }
+        }
+    }
+
+    @Test
+    fun `INV-AC-28718 a cursor serves only the user it was issued to`() {
+        val first = seed(HELD, from)
+        val second = seed(HELD, from.plusSeconds(1))
+        served { service ->
+            grant(service, VIEWER, HELD, users = listOf("user-a", "user-b"))
+            val issuedToA = checkNotNull(page(service.list(query(limit = "1"))).second)
+            val asB = service.list(query(limit = "1", cursor = issuedToA), EndUserDoubles.USER_B)
+            assertProblem(asB, 400, "SRT-001", "user-a's cursor sent by user-b")
+            // control: user-b is permitted and pages with a cursor of their own
+            val (items, issuedToB) = page(service.list(query(limit = "1"), EndUserDoubles.USER_B))
+            assertThat(items).containsExactly(first)
+            val own = query(limit = "1", cursor = checkNotNull(issuedToB))
+            assertThat(page(service.list(own, EndUserDoubles.USER_B))).isEqualTo(listOf(second) to null)
         }
     }
 

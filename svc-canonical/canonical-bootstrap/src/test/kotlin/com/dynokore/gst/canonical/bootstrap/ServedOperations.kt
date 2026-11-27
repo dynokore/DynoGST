@@ -129,17 +129,20 @@ class ReachConfiguration(
     }
 }
 
-/** The tokens of the doubles: `Bearer T-A` is user-a of tenant-a; every other token is refused. */
+/** The tokens of the doubles: `Bearer T-A` is user-a and `Bearer T-B` user-b of tenant-a; all others are refused. */
 object EndUserDoubles {
     val tenantA = TenantId(UUID.nameUUIDFromBytes("tenant-a".toByteArray()))
     const val USER_A = "Bearer T-A"
+    const val USER_B = "Bearer T-B"
     const val REFUSED = "Bearer T-REFUSED"
     val calls = AtomicInteger()
+
+    private val users = mapOf(USER_A to "user-a", USER_B to "user-b")
 
     val resolver =
         EndUserPrincipalResolver { header ->
             calls.incrementAndGet()
-            if (header == USER_A) EndUserPrincipal("user-a", tenantA, setOf(EntityRef("E-001"))) else null
+            users[header]?.let { EndUserPrincipal(it, tenantA, setOf(EntityRef("E-001"))) }
         }
 }
 
