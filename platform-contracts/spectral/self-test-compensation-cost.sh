@@ -24,7 +24,8 @@ PY
 S=$(($(wc -l < "$SRC/$TSV") - 1))
 TEXT="Correctable by a superseding pack, but both activations remain in the audit trail."
 
-fresh() { rm -rf "$TMP/t"; mkdir -p "$TMP/t/spectral"; for f in "$SRC"/*/openapi.yaml; do d=$(basename "$(dirname "$f")"); mkdir "$TMP/t/$d"; cp "$f" "$TMP/t/$d/"; done; cp "$SRC/$TSV" "$TMP/t/$TSV"; cp "$SRC/rules/spec-facts.tsv" "$TMP/t/rules/"; }
+# fresh copies every file spec-facts.tsv names (column 1, relative to rules/), so a new spec-facts row on a non-openapi file does not break the pin cases
+fresh() { rm -rf "$TMP/t"; mkdir -p "$TMP/t/spectral"; for f in "$SRC"/*/openapi.yaml; do d=$(basename "$(dirname "$f")"); mkdir "$TMP/t/$d"; cp "$f" "$TMP/t/$d/"; done; cp "$SRC/$TSV" "$TMP/t/$TSV"; cp "$SRC/rules/spec-facts.tsv" "$TMP/t/rules/"; for g in $(sed 1d "$SRC/rules/spec-facts.tsv" | cut -f1 | sort -u); do [ -e "$TMP/t/rules/$g" ] || { mkdir -p "$TMP/t/rules/$(dirname "$g")"; cp "$SRC/rules/$g" "$TMP/t/rules/$g"; }; done; }
 # addop <dir> <operationId> <statement|-> : append an extra COMPENSABLE operation (with the statement unless -)
 addop() { python3 -I - "$TMP/t" "$@" <<'PY'
 import sys
