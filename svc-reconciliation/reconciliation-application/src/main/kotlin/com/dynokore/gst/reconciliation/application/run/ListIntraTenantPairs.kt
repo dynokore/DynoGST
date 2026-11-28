@@ -4,6 +4,8 @@ import com.dynokore.gst.reconciliation.domain.boxes.BoxAggregator
 import com.dynokore.gst.reconciliation.domain.boxes.Direction
 import com.dynokore.gst.reconciliation.domain.boxes.VersionState
 import java.math.BigDecimal
+import java.nio.ByteBuffer
+import java.security.MessageDigest
 import java.util.Base64
 
 /** One stored line; the members the store allows to be null stay nullable, so the use case can refuse them. */
@@ -92,7 +94,8 @@ data class IntraTenantPairsView(
  * The informational intra-tenant pairing view of one entity and period (INV-REQ-740, INV-AC-28554). A SALE record and
  * a PURCHASE record of two different entities are a pair only when the Doc UUID, the seller UEN and the buyer UEN are
  * equal and both UENs are present, each taken from the latest effective version. Figures are never compared. Every
- * other record of the requested entity is listed as unpaired. One keyset cursor covers both lists (API-18); a limit
+ * other record of the requested entity is listed as unpaired. One keyset cursor covers both lists and is bound to the
+ * tenant, entity and period that produced it; any other cursor is refused before any read (API-18). A limit
  * outside 1..500 is refused, never clamped. A stored line without tax code or amount fails the whole read.
  */
 class ListIntraTenantPairs(
@@ -107,7 +110,8 @@ class ListIntraTenantPairs(
     ): IntraTenantPairsView {
         val size = limit ?: DEFAULT_LIMIT
         require(size in 1..MAX_LIMIT) { "limit must be between 1 and $MAX_LIMIT" }
-        val after = cursor?.let(::decode)
+        val binding = bindingOf(tenant, entityRef, periodRef)
+        val after = cursor?.let { decode(it, binding) }
         // Every document yields at least one entry. The cursor's own document may have none left, and one entry
         // beyond the page shows that a next page exists: two documents more than the page size always suffice.
         val documents = reader.documents(tenant, entityRef, periodRef, after?.docUuid, size + 2)
@@ -123,7 +127,7 @@ class ListIntraTenantPairs(
         return IntraTenantPairsView(
             items = page.mapNotNull { (it as? Entry.Paired)?.pair },
             unpaired = page.mapNotNull { (it as? Entry.Single)?.unpaired },
-            nextCursor = if (rows.size > size) encode(page.last().position) else null,
+            nextCursor = if (rows.size > size) encode(binding, page.last().position) else null,
         )
     }
 
@@ -218,21 +222,40 @@ class ListIntraTenantPairs(
         )
     }
 
-    private fun encode(position: Position): String =
-        listOf(position.docUuid, position.supplyEntity, position.purchaseEntity).joinToString(SEPARATOR) {
+    /** SHA-256 over the cursor's filters, each prefixed with its length so that no two sets of values run together. */
+    private fun bindingOf(vararg filters: String): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        filters.map { it.toByteArray(Charsets.UTF_8) }.forEach {
+            digest.update(ByteBuffer.allocate(Int.SIZE_BYTES).putInt(it.size).array())
+            digest.update(it)
+        }
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(digest.digest())
+    }
+
+    private fun encode(
+        binding: String,
+        position: Position,
+    ): String =
+        listOf(binding, position.docUuid, position.supplyEntity, position.purchaseEntity).joinToString(SEPARATOR) {
             Base64.getUrlEncoder().withoutPadding().encodeToString(it.toByteArray(Charsets.UTF_8))
         }
 
-    private fun decode(cursor: String): Position {
+    private fun decode(
+        cursor: String,
+        binding: String,
+    ): Position {
         val parts =
             try {
                 cursor.split(SEPARATOR).map { String(Base64.getUrlDecoder().decode(it), Charsets.UTF_8) }
             } catch (e: IllegalArgumentException) {
                 throw IllegalArgumentException("unreadable cursor", e)
             }
-        require(parts.size == CURSOR_PARTS && DOC_UUID.matches(parts[0])) { "unreadable cursor" }
-        require(parts[1].isNotEmpty() || parts[2].isNotEmpty()) { "unreadable cursor" }
-        return Position(parts[0], parts[1], parts[2])
+        require(parts.size == CURSOR_PARTS) { "unreadable cursor" }
+        require(parts.first() == binding) { "the cursor belongs to other filters" }
+        val (docUuid, supplyEntity, purchaseEntity) = parts.drop(1)
+        require(DOC_UUID.matches(docUuid)) { "unreadable cursor" }
+        require(supplyEntity.isNotEmpty() || purchaseEntity.isNotEmpty()) { "unreadable cursor" }
+        return Position(docUuid, supplyEntity, purchaseEntity)
     }
 
     /** The keyset position of one entry: unique over both lists; an unpaired entry leaves the other entity empty. */
@@ -270,7 +293,7 @@ class ListIntraTenantPairs(
         const val DEFAULT_LIMIT = 100
         const val MAX_LIMIT = 500
         const val SEPARATOR = "."
-        const val CURSOR_PARTS = 3
+        const val CURSOR_PARTS = 4
         val DOC_UUID = Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
     }
 }
