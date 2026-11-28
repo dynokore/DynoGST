@@ -1,9 +1,7 @@
 package com.dynokore.gst.evidence.adapters.http
 
 import com.dynokore.gst.evidence.application.lookup.AcknowledgementChainLookup
-import com.dynokore.gst.evidence.application.lookup.ChainCursor
 import com.dynokore.gst.evidence.application.lookup.ChainItem
-import com.dynokore.gst.evidence.application.lookup.ChainItemKind
 import com.dynokore.gst.evidence.application.lookup.ChainLookupResult
 import com.dynokore.gst.evidence.application.lookup.DecisionEntry
 import com.dynokore.gst.evidence.application.lookup.DecisionTraceLookup
@@ -44,8 +42,7 @@ import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.bind.annotation.RestControllerAdvice
-import java.nio.charset.StandardCharsets
-import java.time.Instant
+import java.time.Clock
 import java.time.LocalDate
 import java.time.ZoneOffset
 import java.util.Base64
@@ -78,7 +75,8 @@ class LookupRefusalAdvice {
  *
  * `getAcknowledgementChain` (INV-T-20577; INV-REQ-691): the permission is decided inside [AcknowledgementChainLookup]
  * through `AuthorityReplica.decideTenant`; this class reads no role name. Order: the caller's verified tenant (401),
- * the request against the contract (400, no store read), then the use case: Found 200, NotFound 404, Forbidden 403,
+ * the request against the contract (400, no store read; a cursor that [ChainPageCursor] refuses is part of it), then
+ * the use case: Found 200, NotFound 404, Forbidden 403,
  * Incomplete 500 (never an empty 200).
  */
 @RestController
@@ -89,6 +87,8 @@ open class LookupController(
     private val decisionTrace: DecisionTraceLookup,
     private val transmittedVersion: TransmittedVersionLookup,
     private val requests: ObjectProvider<HttpServletRequest>,
+    private val chainCursors: ChainPageCursor,
+    private val clock: Clock,
 ) : LookupApi {
     override fun getAcknowledgementChain(
         ackId: String,
@@ -99,7 +99,11 @@ open class LookupController(
             requests.getObject().getAttribute(EndUserPrincipalBindingFilter.PRINCIPAL_ATTRIBUTE) as? EndUserPrincipal
         val tenant = caller?.tenant ?: throw LookupRefusal(ClosedErrorCode.UNAUTHENTICATED)
         requireContract(ackId, limit)
-        val after = cursor?.let { PageCursor.decode(it, ackId) }
+        val after =
+            cursor?.let {
+                chainCursors.open(it, tenant, caller.actor, ackId, clock.instant())
+                    ?: throw LookupRefusal(ClosedErrorCode.CONTRACT_VIOLATION)
+            }
         val context =
             EventContext(
                 tenant,
@@ -122,7 +126,7 @@ open class LookupController(
                     context,
                 )
         ) {
-            is ChainLookupResult.Found -> ResponseEntity.ok(chain(result))
+            is ChainLookupResult.Found -> ResponseEntity.ok(chain(result, tenant, caller.actor))
             ChainLookupResult.NotFound -> refuse(ClosedErrorCode.NOT_FOUND)
             ChainLookupResult.Forbidden -> refuse(ClosedErrorCode.ACCESS_DENIED)
             ChainLookupResult.Incomplete -> refuse(ClosedErrorCode.INTERNAL_ERROR)
@@ -312,16 +316,20 @@ open class LookupController(
 
     private fun correlation(): String = CorrelationContext.currentCorrelationId()?.value ?: UUID.randomUUID().toString()
 
-    private fun chain(found: ChainLookupResult.Found) =
-        EvidenceChain(
-            ackId = found.ackId,
-            docUuid = found.docUuid,
-            version = found.version,
-            imported = false,
-            integrityStatus = IntegrityResult.valueOf(found.integrityStatus.name),
-            items = found.items.map(::item),
-            nextCursor = found.nextCursor?.let { PageCursor.encode(found.ackId, it) },
-        )
+    private fun chain(
+        found: ChainLookupResult.Found,
+        tenant: TenantId,
+        userId: String,
+    ) = EvidenceChain(
+        ackId = found.ackId,
+        docUuid = found.docUuid,
+        version = found.version,
+        imported = false,
+        integrityStatus = IntegrityResult.valueOf(found.integrityStatus.name),
+        items = found.items.map(::item),
+        nextCursor =
+            found.nextCursor?.let { chainCursors.issue(tenant, userId, found.ackId, it, clock.instant()) },
+    )
 
     private fun item(item: ChainItem) =
         EvidenceChainItem(
@@ -333,43 +341,5 @@ open class LookupController(
 
     private companion object {
         const val MAX_ACK_ID = 100
-    }
-}
-
-/** An opaque cursor: the Acknowledgement ID it was made for and the order key of the last item of the page. */
-private object PageCursor {
-    private const val SEPARATOR = '\u0000'
-    private const val FIELDS = 4
-
-    fun encode(
-        ackId: String,
-        key: ChainCursor,
-    ): String =
-        Base64
-            .getUrlEncoder()
-            .withoutPadding()
-            .encodeToString(
-                listOf(ackId, key.appliedAt.toString(), key.kind.name, key.seq.toString())
-                    .joinToString(SEPARATOR.toString())
-                    .toByteArray(StandardCharsets.UTF_8),
-            )
-
-    /** A cursor that does not decode, or was made for another Acknowledgement ID, is SRT-001. */
-    fun decode(
-        cursor: String,
-        ackId: String,
-    ): ChainCursor {
-        val parts =
-            runCatching { String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8).split(SEPARATOR) }
-                .getOrNull()
-        val decoded =
-            if (parts == null || parts.size != FIELDS || parts[0] != ackId) {
-                null
-            } else {
-                runCatching {
-                    ChainCursor(Instant.parse(parts[1]), ChainItemKind.valueOf(parts[2]), parts[3].toLong())
-                }.getOrNull()
-            }
-        return decoded ?: throw LookupRefusal(ClosedErrorCode.CONTRACT_VIOLATION)
     }
 }

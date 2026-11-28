@@ -1,5 +1,6 @@
 package com.dynokore.gst.evidence.bootstrap
 
+import com.dynokore.gst.evidence.adapters.http.ChainPageCursor
 import com.dynokore.gst.evidence.adapters.http.LookupController
 import com.dynokore.gst.evidence.application.integrity.IntegrityStatusQueryHandler
 import com.dynokore.gst.evidence.application.integrity.IntegrityStore
@@ -7,6 +8,7 @@ import com.dynokore.gst.evidence.application.lookup.DOC_VIEW_CONTENT
 import com.dynokore.platform.auditlog.AuditEntry
 import com.dynokore.platform.auditlog.AuditedOperations
 import com.dynokore.platform.outboxandqueue.EventContext
+import com.dynokore.platform.serviceruntime.binding.MountedFileSecretStore
 import com.dynokore.platform.serviceruntime.identity.EndUserPrincipal
 import com.dynokore.platform.serviceruntime.identity.EndUserPrincipalBindingFilter
 import com.dynokore.platform.serviceruntime.replica.AuthorityChanged
@@ -34,6 +36,7 @@ import org.jooq.tools.jdbc.MockResult
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.ObjectProvider
 import java.lang.reflect.Proxy
+import java.nio.file.Path
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
@@ -130,6 +133,8 @@ class DecisionTraceWiringTest {
                 object : ObjectProvider<HttpServletRequest> {
                     override fun getObject(): HttpServletRequest = request
                 },
+                ChainPageCursor(MountedFileSecretStore(Path.of("not-used"))),
+                clock,
             )
         // the mock store holds no trace: NotFound, the 404 refusal, after one read of the trace table
         assertThatThrownBy { controller.getDecisionTrace(UUID.randomUUID(), 1) }

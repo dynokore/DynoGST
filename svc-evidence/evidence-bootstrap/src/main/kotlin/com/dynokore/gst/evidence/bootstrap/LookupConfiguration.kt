@@ -1,5 +1,6 @@
 package com.dynokore.gst.evidence.bootstrap
 
+import com.dynokore.gst.evidence.adapters.http.ChainPageCursor
 import com.dynokore.gst.evidence.adapters.http.SampleCheckCursor
 import com.dynokore.gst.evidence.adapters.persistence.ChainWiring
 import com.dynokore.gst.evidence.adapters.persistence.JooqAcknowledgementLocatorStore
@@ -86,6 +87,10 @@ class LookupConfiguration {
             },
         )
     }
+
+    /** The signed page cursor of `getAcknowledgementChain` (INV-AC-29278); its key is read at every use. */
+    @Bean
+    fun chainPageCursor(secrets: SecretStore): ChainPageCursor = ChainPageCursor(secrets)
 
     @Bean
     fun sampleCheckCursors(secrets: SecretStore): SampleCheckCursors = SampleCheckCursor(secrets)

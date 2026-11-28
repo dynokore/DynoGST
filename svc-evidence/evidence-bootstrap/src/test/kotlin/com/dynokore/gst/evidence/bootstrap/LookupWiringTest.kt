@@ -10,12 +10,19 @@ import com.dynokore.gst.evidence.application.integrity.IntegrityRunRow
 import com.dynokore.gst.evidence.application.integrity.IntegrityStatusQueryHandler
 import com.dynokore.gst.evidence.application.integrity.IntegrityStore
 import com.dynokore.gst.evidence.application.lookup.AcknowledgementChainLookup
+import com.dynokore.gst.evidence.application.lookup.ChainCursor
+import com.dynokore.gst.evidence.application.lookup.ChainItemKind
 import com.dynokore.gst.evidence.application.lookup.ChainLookupResult
 import com.dynokore.gst.evidence.application.lookup.ENQUIRY_LOOKUP_BY_ACKNOWLEDGEMENT
 import com.dynokore.platform.auditlog.AuditEntry
 import com.dynokore.platform.auditlog.AuditedOperations
 import com.dynokore.platform.outboxandqueue.EntityRef
 import com.dynokore.platform.outboxandqueue.EventContext
+import com.dynokore.platform.serviceruntime.binding.MountedFileSecretStore
+import com.dynokore.platform.serviceruntime.binding.Secret
+import com.dynokore.platform.serviceruntime.binding.SecretNotFound
+import com.dynokore.platform.serviceruntime.binding.SecretRef
+import com.dynokore.platform.serviceruntime.binding.SecretStore
 import com.dynokore.platform.serviceruntime.identity.EndUserPrincipal
 import com.dynokore.platform.serviceruntime.identity.EndUserPrincipalBindingFilter
 import com.dynokore.platform.serviceruntime.replica.AuthorityChanged
@@ -45,6 +52,7 @@ import org.jooq.tools.jdbc.MockResult
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.ObjectProvider
 import java.lang.reflect.Proxy
+import java.nio.file.Path
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
@@ -236,6 +244,8 @@ class LookupWiringTest {
                 object : ObjectProvider<HttpServletRequest> {
                     override fun getObject(): HttpServletRequest = request
                 },
+                configuration.chainPageCursor(MountedFileSecretStore(Path.of("not-used"))),
+                clock,
             )
         // the locator is found and the reader finds no record: Incomplete, the 500 refusal, never an empty 200
         assertThatThrownBy {
@@ -246,5 +256,33 @@ class LookupWiringTest {
             )
         }.isInstanceOf(LookupRefusal::class.java)
         assertThat(recorded.sql).hasSizeGreaterThan(1)
+    }
+
+    /** A store that holds exactly one secret, under [name], and records every name it is asked for. */
+    private class OneSecret(
+        private val name: String,
+    ) : SecretStore {
+        val read = mutableListOf<String>()
+
+        override fun read(ref: SecretRef): Secret {
+            read += ref.path
+            return if (ref.path == name) Secret("k".repeat(32)) else throw SecretNotFound(ref)
+        }
+    }
+
+    @Test
+    fun `INV-AC-29278 the cursor bean reads evidence chain-cursor-key and the sample check key makes no cursor`() {
+        val position = ChainCursor(clock.instant(), ChainItemKind.PAYLOAD, 0)
+        val own = OneSecret("evidence.chain-cursor-key")
+        val cursors = configuration.chainPageCursor(own)
+        val token = cursors.issue(tenant, "user-42", "A1", position, clock.instant())
+        assertThat(own.read).containsExactly("evidence.chain-cursor-key")
+        assertThat(cursors.open(token, tenant, "user-42", "A1", clock.instant())).isEqualTo(position)
+
+        val lookAlike = OneSecret("evidence.sample-check-cursor-key")
+        assertThatThrownBy {
+            configuration.chainPageCursor(lookAlike).issue(tenant, "user-42", "A1", position, clock.instant())
+        }.isInstanceOf(IllegalStateException::class.java)
+        assertThat(lookAlike.read).containsExactly("evidence.chain-cursor-key")
     }
 }

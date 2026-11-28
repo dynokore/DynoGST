@@ -1,6 +1,7 @@
 package com.dynokore.gst.evidence.bootstrap
 
 import com.dynokore.gst.evidence.adapters.RetentionPartitionFixture
+import com.dynokore.gst.evidence.adapters.http.ChainPageCursor
 import com.dynokore.gst.evidence.adapters.http.LookupController
 import com.dynokore.gst.evidence.adapters.http.LookupRefusal
 import com.dynokore.gst.evidence.adapters.persistence.JooqLocatorStore
@@ -21,6 +22,7 @@ import com.dynokore.platform.outboxandqueue.JdbcInboxConsumer
 import com.dynokore.platform.outboxandqueue.LogRecord
 import com.dynokore.platform.outboxandqueue.RebuildRequiredSink
 import com.dynokore.platform.outboxandqueue.TenantScope
+import com.dynokore.platform.serviceruntime.binding.MountedFileSecretStore
 import com.dynokore.platform.serviceruntime.http.ClosedErrorCode
 import com.dynokore.platform.serviceruntime.identity.EndUserPrincipal
 import com.dynokore.platform.serviceruntime.identity.EndUserPrincipalBindingFilter
@@ -142,6 +144,8 @@ class DecisionTraceAssertionTextBootstrapDbTest {
                 object : ObjectProvider<HttpServletRequest> {
                     override fun getObject(): HttpServletRequest = request
                 },
+                ChainPageCursor(MountedFileSecretStore(Path.of("not-used"))),
+                Clock.systemUTC(),
             )
 
         private fun replica(): AuthorityReplica {

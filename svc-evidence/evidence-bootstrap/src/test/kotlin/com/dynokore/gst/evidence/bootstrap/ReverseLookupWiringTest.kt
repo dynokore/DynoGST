@@ -1,5 +1,6 @@
 package com.dynokore.gst.evidence.bootstrap
 
+import com.dynokore.gst.evidence.adapters.http.ChainPageCursor
 import com.dynokore.gst.evidence.adapters.http.LookupController
 import com.dynokore.gst.evidence.adapters.http.LookupRefusal
 import com.dynokore.gst.evidence.adapters.http.LookupRefusalAdvice
@@ -9,6 +10,7 @@ import com.dynokore.gst.evidence.application.lookup.ENQUIRY_LOOKUP_REVERSE
 import com.dynokore.platform.auditlog.AuditEntry
 import com.dynokore.platform.auditlog.AuditedOperations
 import com.dynokore.platform.outboxandqueue.EventContext
+import com.dynokore.platform.serviceruntime.binding.MountedFileSecretStore
 import com.dynokore.platform.serviceruntime.http.ClosedErrorCode
 import com.dynokore.platform.serviceruntime.identity.EndUserPrincipal
 import com.dynokore.platform.serviceruntime.identity.EndUserPrincipalBindingFilter
@@ -36,6 +38,7 @@ import org.jooq.tools.jdbc.MockResult
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.ObjectProvider
 import java.lang.reflect.Proxy
+import java.nio.file.Path
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
@@ -140,6 +143,8 @@ class ReverseLookupWiringTest {
             object : ObjectProvider<HttpServletRequest> {
                 override fun getObject(): HttpServletRequest = request
             },
+            ChainPageCursor(MountedFileSecretStore(Path.of("not-used"))),
+            clock,
         )
     }
 

@@ -1,5 +1,6 @@
 package com.dynokore.gst.evidence.adapters
 
+import com.dynokore.gst.evidence.adapters.http.ChainPageCursor
 import com.dynokore.gst.evidence.adapters.http.LookupController
 import com.dynokore.gst.evidence.adapters.http.LookupRefusal
 import com.dynokore.gst.evidence.adapters.http.LookupRefusalAdvice
@@ -30,6 +31,7 @@ import com.dynokore.platform.auditlog.AuditEntry
 import com.dynokore.platform.auditlog.AuditedOperations
 import com.dynokore.platform.outboxandqueue.EntityRef
 import com.dynokore.platform.outboxandqueue.EventContext
+import com.dynokore.platform.serviceruntime.binding.MountedFileSecretStore
 import com.dynokore.platform.serviceruntime.identity.EndUserPrincipal
 import com.dynokore.platform.serviceruntime.identity.EndUserPrincipalBindingFilter
 import com.dynokore.platform.serviceruntime.replica.AuthorityChanged
@@ -45,14 +47,22 @@ import com.dynokore.platform.serviceruntime.replica.ReplicaFallback
 import com.dynokore.platform.serviceruntime.replica.RoleGrant
 import com.dynokore.platform.serviceruntime.replica.RoleGrantState
 import com.dynokore.platform.tenancykernel.TenantId
+import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.assertions.withClue
 import io.kotest.matchers.shouldBe
 import jakarta.servlet.http.HttpServletRequest
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 import org.springframework.beans.factory.ObjectProvider
 import java.lang.reflect.Proxy
+import java.nio.file.Files
+import java.nio.file.Path
 import java.time.Clock
+import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
+import java.util.Base64
 import java.util.UUID
 
 class LookupControllerTest {
@@ -72,6 +82,23 @@ class LookupControllerTest {
 
     private val payload = item(ChainItemKind.PAYLOAD, "payload/$doc/v2/0", 1)
     private val ack = item(ChainItemKind.ACKNOWLEDGEMENT, "A1", 2)
+
+    @TempDir
+    lateinit var mount: Path
+
+    private val k1 = "k".repeat(32)
+    private val k2 = "o".repeat(32)
+    private val otherTenant = TenantId(UUID.fromString("00000000-0000-0000-0000-000000000002"))
+
+    private fun putKey(
+        value: String,
+        name: String = ChainPageCursor.CURRENT_SECRET,
+    ) {
+        Files.writeString(mount.resolve(name), value)
+    }
+
+    @BeforeEach
+    fun currentCursorKey() = putKey(k1)
 
     private inner class Locators : AcknowledgementLocatorStore {
         override fun insert(
@@ -200,6 +227,7 @@ class LookupControllerTest {
         records: ChainRecords = ChainRecords.Complete(listOf(ack, payload), chainEntity, chainPeriod),
         granted: Boolean = true,
         state: IntegrityState = IntegrityState.VERIFIED,
+        cursorClock: Clock = clock,
     ): LookupController {
         val request =
             Proxy.newProxyInstance(javaClass.classLoader, arrayOf(HttpServletRequest::class.java)) { _, method, args ->
@@ -227,12 +255,17 @@ class LookupControllerTest {
             object : ObjectProvider<HttpServletRequest> {
                 override fun getObject(): HttpServletRequest = request
             },
+            ChainPageCursor(MountedFileSecretStore(mount)),
+            cursorClock,
         )
     }
 
     private val unusedIndex = SubmissionIndexReader { _, _, _, _, _ -> error("not used") }
 
-    private fun user(tenant: TenantId? = this.tenant) = EndUserPrincipal("user-42", tenant, emptySet())
+    private fun user(
+        tenant: TenantId? = this.tenant,
+        actor: String = "user-42",
+    ) = EndUserPrincipal(actor, tenant, emptySet())
 
     private fun refusal(block: () -> Unit): Triple<Int, String, String> {
         val thrown = runCatching(block).exceptionOrNull()
@@ -344,5 +377,156 @@ class LookupControllerTest {
         }
         calls shouldBe emptyList()
         c.getAcknowledgementChain("A1", 500, null).statusCode.value() shouldBe 200
+    }
+
+    // INV-AC-29278: U1 is user-42, who holds the key of the lookup; U2 is user-43.
+
+    private fun at(afterIssue: Duration) = Clock.offset(clock, afterIssue)
+
+    /** The next cursor of U1's lookup of A1 issued at the fixed clock; the use case calls are then forgotten. */
+    private fun nextCursor(): String {
+        val next = controller(user()).getAcknowledgementChain("A1", 1, null).body!!.nextCursor!!
+        calls.clear()
+        return next
+    }
+
+    private fun assertCursorRefused(
+        cursor: String,
+        caller: EndUserPrincipal = user(),
+        ackId: String = "A1",
+        cursorClock: Clock = clock,
+    ) {
+        val (status, code) =
+            refused(controller(caller, cursorClock = cursorClock), ackId = ackId, limit = 1, cursor = cursor)
+        status shouldBe 400
+        code shouldBe "SRT-001"
+        calls shouldBe emptyList()
+    }
+
+    private fun assertSecondPage(
+        cursor: String,
+        cursorClock: Clock = clock,
+    ) {
+        val page =
+            controller(user(), cursorClock = cursorClock).getAcknowledgementChain("A1", 1, cursor).body!!
+        page.items.map { it.sequence } shouldBe listOf(2)
+        page.items.map { it.kind.value } shouldBe listOf("ACKNOWLEDGEMENT")
+        page.nextCursor shouldBe null
+        calls shouldBe listOf("find", "read")
+        calls.clear()
+    }
+
+    @Test
+    fun `INV-AC-29278 the unchanged cursor within 24 hours, the 24th hour included, starts after its position`() {
+        val cursor = nextCursor()
+        listOf(Duration.ZERO, Duration.ofHours(1), Duration.ofHours(24)).forEach { assertSecondPage(cursor, at(it)) }
+    }
+
+    @Test
+    fun `INV-AC-29278 a cursor after the 24th hour is 400 SRT-001 with no store read`() {
+        val cursor = nextCursor()
+        listOf(Duration.ofHours(24).plusMillis(1), Duration.ofDays(2)).forEach {
+            assertCursorRefused(cursor, cursorClock = at(it))
+        }
+    }
+
+    @Test
+    fun `INV-AC-29278 an altered cursor is 400 SRT-001 with no store read`() {
+        val cursor = nextCursor()
+        val (layout, payload, tag) = cursor.split('.')
+        val fields = String(Base64.getUrlDecoder().decode(payload), Charsets.UTF_8).split('\n')
+
+        fun withField(
+            index: Int,
+            value: String,
+        ): String {
+            val body = fields.toMutableList().also { it[index] = value }.joinToString("\n")
+            return "$layout.${Base64.getUrlEncoder().withoutPadding().encodeToString(body.toByteArray())}.$tag"
+        }
+        val flipped = (if (tag[0] == 'A') "B" else "A") + tag.drop(1)
+        listOf(
+            "$layout.$payload.$flipped",
+            cursor.dropLast(1),
+            "$cursor.x",
+            "",
+            withField(0, at.toString()),
+            withField(1, "DECISION_TRACE"),
+            withField(2, "9"),
+        ).forEach { withClue(it) { assertCursorRefused(it) } }
+    }
+
+    @Test
+    fun `INV-AC-29278 an expired cursor with a rewritten issue time is 400 SRT-001 with no store read`() {
+        val (layout, payload, tag) = nextCursor().split('.')
+        val later = at(Duration.ofHours(30))
+        val fields = String(Base64.getUrlDecoder().decode(payload), Charsets.UTF_8).split('\n')
+        val body = (fields.dropLast(1) + later.instant().toEpochMilli().toString()).joinToString("\n")
+        val renewed = Base64.getUrlEncoder().withoutPadding().encodeToString(body.toByteArray())
+        assertCursorRefused("$layout.$renewed.$tag", cursorClock = later)
+    }
+
+    @Test
+    fun `INV-AC-29278 a cursor of another user is 400 SRT-001 with no store read`() {
+        assertCursorRefused(nextCursor(), caller = user(actor = "user-43"))
+    }
+
+    @Test
+    fun `INV-AC-29278 a cursor of another tenant is 400 SRT-001 with no store read`() {
+        assertCursorRefused(nextCursor(), caller = user(tenant = otherTenant))
+    }
+
+    @Test
+    fun `INV-AC-29278 a cursor of another Acknowledgement ID is 400 SRT-001 with no store read`() {
+        assertCursorRefused(nextCursor(), ackId = "A2")
+    }
+
+    @Test
+    fun `INV-AC-29278 the former unsigned form is 400 SRT-001 with no store read`() {
+        val former =
+            Base64
+                .getUrlEncoder()
+                .withoutPadding()
+                .encodeToString("A1\u0000${payload.key.appliedAt}\u0000PAYLOAD\u00000".toByteArray())
+        assertCursorRefused(former)
+    }
+
+    @Test
+    fun `INV-AC-29278 a K1 cursor is accepted while K1 is the previous key and refused once it is neither`() {
+        val cursor = nextCursor()
+        putKey(k2)
+        putKey(k1, ChainPageCursor.PREVIOUS_SECRET)
+        assertSecondPage(cursor)
+        Files.delete(mount.resolve(ChainPageCursor.PREVIOUS_SECRET))
+        assertCursorRefused(cursor)
+    }
+
+    @Test
+    fun `INV-AC-29278 after the key moved to K2 a new cursor is signed with K2, not with the previous K1`() {
+        putKey(k2)
+        putKey(k1, ChainPageCursor.PREVIOUS_SECRET)
+        val cursor = nextCursor()
+        Files.delete(mount.resolve(ChainPageCursor.PREVIOUS_SECRET))
+        assertSecondPage(cursor)
+    }
+
+    @Test
+    fun `INV-AC-29278 with no usable current key a request that must issue or open a cursor fails, no cursor sent`() {
+        val cursor = nextCursor()
+        putKey(k1, ChainPageCursor.PREVIOUS_SECRET)
+        listOf(null, "", " ".repeat(40), "k".repeat(31)).forEach { bad ->
+            val key = mount.resolve(ChainPageCursor.CURRENT_SECRET)
+            if (bad == null) Files.delete(key) else putKey(bad)
+            withClue("current key '$bad'") {
+                // not a LookupRefusal: the exception leaves the controller with no body and Spring answers 500
+                shouldThrow<IllegalStateException> { controller(user()).getAcknowledgementChain("A1", 1, null) }
+                calls.clear()
+                shouldThrow<IllegalStateException> { controller(user()).getAcknowledgementChain("A1", 1, cursor) }
+                calls shouldBe emptyList()
+                // a whole chain on one page neither issues nor opens a cursor
+                val whole = controller(user()).getAcknowledgementChain("A1", 100, null).body!!
+                whole.nextCursor shouldBe null
+                calls.clear()
+            }
+        }
     }
 }
