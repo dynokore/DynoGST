@@ -30,12 +30,20 @@ class ReadinessReplaySourceDbTest {
     private val connection =
         SubmissionDb.connect(SubmissionDb.RUNTIME, SubmissionDb.RUNTIME_PASSWORD).also { it.autoCommit = false }
     private val source =
-        ReadinessReplaySource(JooqReadinessReplayReader(DSL.using(connection, SQLDialect.POSTGRES)), jacksonObjectMapper())
+        ReadinessReplaySource(
+            JooqReadinessReplayReader(DSL.using(connection, SQLDialect.POSTGRES)),
+            jacksonObjectMapper(),
+        )
     private val a = UUID.randomUUID()
     private val b = UUID.randomUUID()
     private val snapshots =
         mapOf(
-            "E1/P1" to ReadinessSnapshot(CheckVerdict.NOT_READY, 2, mapOf(LifecycleState.BLOCKED to 1, LifecycleState.QUEUED to 1)),
+            "E1/P1" to
+                ReadinessSnapshot(
+                    CheckVerdict.NOT_READY,
+                    2,
+                    mapOf(LifecycleState.BLOCKED to 1, LifecycleState.QUEUED to 1),
+                ),
             "E1/P2" to ReadinessSnapshot(CheckVerdict.READY, 0, emptyMap<LifecycleState, Int>()),
             "E2/P1" to ReadinessSnapshot(CheckVerdict.NOT_READY, 1, mapOf(LifecycleState.HELD to 1)),
             "E10/P1" to ReadinessSnapshot(CheckVerdict.READY, 0, mapOf(LifecycleState.SENT to 3)),
@@ -45,7 +53,8 @@ class ReadinessReplaySourceDbTest {
     fun cleanUp() {
         connection.close()
         SubmissionDb.superuser().use { c ->
-            c.createStatement().use { it.execute("delete from submission.readiness_signal where tenant_id in ('$a', '$b')") }
+            val sql = "delete from submission.readiness_signal where tenant_id in ('$a', '$b')"
+            c.createStatement().use { it.execute(sql) }
         }
     }
 
@@ -58,18 +67,30 @@ class ReadinessReplaySourceDbTest {
         }
     }
 
-    private fun insert(c: Connection, tenant: UUID, key: String, s: ReadinessSnapshot, hour: Int, minute: Int) {
+    private fun insert(
+        c: Connection,
+        tenant: UUID,
+        key: String,
+        s: ReadinessSnapshot,
+        hour: Int,
+        minute: Int,
+    ) {
         val (entity, period) = key.split('/')
         val counts = s.countsByState.entries.joinToString(",", "{", "}") { "\"${it.key.name}\":${it.value}" }
         c.createStatement().use {
             it.execute(
-                "insert into submission.readiness_signal values ('$tenant', '$entity', '$period', '${s.verdict.name}', " +
-                    "${s.blockedCount}, '$counts'::jsonb, timestamptz '2026-11-21 %02d:%02d:00+00')".format(hour, minute),
+                "insert into submission.readiness_signal values " +
+                    "('$tenant', '$entity', '$period', '${s.verdict.name}', " +
+                    "${s.blockedCount}, '$counts'::jsonb, " +
+                    "timestamptz '2026-11-21 %02d:%02d:00+00')".format(hour, minute),
             )
         }
     }
 
-    private fun <T> inTx(tenant: UUID, block: () -> T): T {
+    private fun <T> inTx(
+        tenant: UUID,
+        block: () -> T,
+    ): T {
         SignedBindings.bind(connection, tenant)
         return try {
             block()
@@ -78,7 +99,11 @@ class ReadinessReplaySourceDbTest {
         }
     }
 
-    private fun all(tenant: UUID, scope: ReplayScope?, limit: Int): List<ReplayedState> =
+    private fun all(
+        tenant: UUID,
+        scope: ReplayScope?,
+        limit: Int,
+    ): List<ReplayedState> =
         inTx(tenant) {
             val out = mutableListOf<ReplayedState>()
             var cursor: String? = null
@@ -94,14 +119,19 @@ class ReadinessReplaySourceDbTest {
         val (entity, period) = key.split('/')
         return ReplayedState(
             ReadinessChangedPublication.EVENT_TYPE,
-            ReadinessChangedPublication.data(ReadinessChangedFacts(entity, period, snapshots.getValue(key), "live")),
+            ReadinessChangedPublication.data(
+                ReadinessChangedFacts(entity, period, snapshots.getValue(key), "live"),
+            ),
             EntityRef(entity),
             key,
             null,
         )
     }
 
-    private fun at(hour: Int, minute: Int = 0) = Instant.parse("2026-11-21T%02d:%02d:00Z".format(hour, minute))
+    private fun at(
+        hour: Int,
+        minute: Int = 0,
+    ) = Instant.parse("2026-11-21T%02d:%02d:00Z".format(hour, minute))
 
     @Test
     fun `INV-AC-29140 the full scope returns each stored signal once with the live data, page by page`() {
@@ -124,14 +154,17 @@ class ReadinessReplaySourceDbTest {
     @Test
     fun `INV-AC-29140 the entity scope returns the signals of that entity only`() {
         seed()
-        all(a, ReplayScope.Entity(TenantId(a), EntityRef("E1")), 1).map { it.aggregateKey } shouldBe listOf("E1/P1", "E1/P2")
+        all(a, ReplayScope.Entity(TenantId(a), EntityRef("E1")), 1).map { it.aggregateKey } shouldBe
+            listOf("E1/P1", "E1/P2")
     }
 
     @Test
     fun `INV-AC-29140 the period scope is half open on signalled_at`() {
         seed()
-        all(a, ReplayScope.Period(at(9), at(11), null), 5).map { it.aggregateKey } shouldBe listOf("E1/P2", "E2/P1")
-        all(a, ReplayScope.Period(at(9), at(11), TenantId(a)), 5).map { it.aggregateKey } shouldBe listOf("E1/P2", "E2/P1")
+        all(a, ReplayScope.Period(at(9), at(11), null), 5).map { it.aggregateKey } shouldBe
+            listOf("E1/P2", "E2/P1")
+        all(a, ReplayScope.Period(at(9), at(11), TenantId(a)), 5).map { it.aggregateKey } shouldBe
+            listOf("E1/P2", "E2/P1")
     }
 
     @Test
@@ -147,7 +180,8 @@ class ReadinessReplaySourceDbTest {
         seed()
         SignedBindings.bind(connection, a)
         source.page(null, null, 10).items.size shouldBe 4
-        val other = SubmissionDb.connect(SubmissionDb.RUNTIME, SubmissionDb.RUNTIME_PASSWORD).also { it.autoCommit = false }
+        val other =
+            SubmissionDb.connect(SubmissionDb.RUNTIME, SubmissionDb.RUNTIME_PASSWORD).also { it.autoCommit = false }
         val pool = Executors.newSingleThreadExecutor()
         try {
             val change =
@@ -188,17 +222,19 @@ class ReadinessReplaySourceDbTest {
     fun `INV-AC-29140 the tenant function is executable by the runtime role only and returns tenant ids`() {
         SubmissionDb.superuser().use { c ->
             c.createStatement().use { st ->
-                st.executeQuery(
-                    "select has_function_privilege('submission_runtime', p.oid, 'execute') || '|' || " +
-                        "has_function_privilege('public', p.oid, 'execute') || '|' || p.prosecdef || '|' || " +
-                        "pg_get_userbyid(p.proowner) || '|' || array_to_string(p.proconfig, ',') || '|' || " +
-                        "pg_get_function_result(p.oid) from pg_proc p join pg_namespace n on n.oid = p.pronamespace " +
-                        "where n.nspname = 'submission' and p.proname = 'readiness_replay_tenants'",
-                ).use { rs ->
-                    rs.next() shouldBe true
-                    rs.getString(1) shouldBe
-                        "true|false|true|submission_sys|search_path=pg_catalog, submission, pg_temp|TABLE(replay_tenant uuid)"
-                }
+                st
+                    .executeQuery(
+                        "select has_function_privilege('submission_runtime', p.oid, 'execute') || '|' || " +
+                            "has_function_privilege('public', p.oid, 'execute') || '|' || p.prosecdef || '|' || " +
+                            "pg_get_userbyid(p.proowner) || '|' || array_to_string(p.proconfig, ',') || '|' || " +
+                            "pg_get_function_result(p.oid) from pg_proc p " +
+                            "join pg_namespace n on n.oid = p.pronamespace " +
+                            "where n.nspname = 'submission' and p.proname = 'readiness_replay_tenants'",
+                    ).use { rs ->
+                        rs.next() shouldBe true
+                        rs.getString(1) shouldBe
+                            listOf("true", "false", "true", "submission_sys", PINNED_PATH, RESULT).joinToString("|")
+                    }
             }
         }
     }
@@ -206,10 +242,17 @@ class ReadinessReplaySourceDbTest {
     private fun count(): String =
         SubmissionDb.superuser().use { c ->
             c.createStatement().use { st ->
-                st.executeQuery("select count(*) || '|' || coalesce(sum(blocked_count), 0) from submission.readiness_signal where tenant_id in ('$a', '$b')").use {
-                    it.next()
-                    it.getString(1)
-                }
+                st
+                    .executeQuery(
+                        "select count(*) || '|' || coalesce(sum(blocked_count), 0) from submission.readiness_signal " +
+                            "where tenant_id in ('$a', '$b')",
+                    ).use {
+                        it.next()
+                        it.getString(1)
+                    }
             }
         }
 }
+
+private const val PINNED_PATH = "search_path=pg_catalog, submission, pg_temp"
+private const val RESULT = "TABLE(replay_tenant uuid)"

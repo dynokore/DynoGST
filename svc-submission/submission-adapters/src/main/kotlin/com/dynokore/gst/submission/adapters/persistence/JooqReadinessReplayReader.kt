@@ -78,13 +78,23 @@ class JooqReadinessReplayReader(
         scope: ReplayScope?,
     ): Condition =
         when (scope) {
-            null -> DSL.noCondition()
-            is ReplayScope.Tenant -> t.TENANT_ID.eq(scope.tenant.value)
-            is ReplayScope.Entity -> t.TENANT_ID.eq(scope.tenant.value).and(t.ENTITY_REF.eq(scope.entity.value))
-            is ReplayScope.Period ->
+            null -> {
+                DSL.noCondition()
+            }
+
+            is ReplayScope.Tenant -> {
+                t.TENANT_ID.eq(scope.tenant.value)
+            }
+
+            is ReplayScope.Entity -> {
+                t.TENANT_ID.eq(scope.tenant.value).and(t.ENTITY_REF.eq(scope.entity.value))
+            }
+
+            is ReplayScope.Period -> {
                 t.SIGNALLED_AT
                     .ge(scope.from.atOffset(ZoneOffset.UTC))
                     .and(t.SIGNALLED_AT.lt(scope.to.atOffset(ZoneOffset.UTC)))
                     .and(scope.tenant?.let { t.TENANT_ID.eq(it.value) } ?: DSL.noCondition())
+            }
         }
 }
