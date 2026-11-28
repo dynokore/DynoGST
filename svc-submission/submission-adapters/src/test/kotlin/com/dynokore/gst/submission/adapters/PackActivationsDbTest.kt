@@ -194,13 +194,13 @@ class PackActivationsDbTest {
             dsl.fetch("select raw from submission.event_dead_letter where tenant_id = ?", tenant).size
         }
 
+    /** The stored row of [event]; [recorded] is who activated the pack and when. */
     private fun row(
         event: Envelope,
         label: String,
         from: String,
         to: String?,
-        by: String,
-        at: String,
+        recorded: Pair<String, String>,
     ) = listOf(
         event.id.value,
         "E-001",
@@ -208,8 +208,8 @@ class PackActivationsDbTest {
         label,
         LocalDate.parse(from),
         to?.let(LocalDate::parse),
-        by,
-        Instant.parse(at),
+        recorded.first,
+        Instant.parse(recorded.second),
     )
 
     @Test
@@ -221,8 +221,8 @@ class PackActivationsDbTest {
         deliver(second).duplicates shouldBe 1
         rows(tenantA) shouldBe
             listOf(
-                row(first, "v1", "2026-01-01", "2026-10-31", "user-1", "2025-12-20T01:02:03Z"),
-                row(second, "v2", "2026-11-01", null, "user-2", "2026-10-30T09:15:00Z"),
+                row(first, "v1", "2026-01-01", "2026-10-31", "user-1" to "2025-12-20T01:02:03Z"),
+                row(second, "v2", "2026-11-01", null, "user-2" to "2026-10-30T09:15:00Z"),
             )
     }
 
@@ -232,7 +232,7 @@ class PackActivationsDbTest {
         asTenant(tenantA) { handler.handle(first) }
         val altered = first.copy(dataJson = data("v9", "2027-01-01", null, "user-9", "2026-12-20T01:02:03Z"))
         asTenant(tenantA) { handler.handle(altered) }
-        rows(tenantA) shouldBe listOf(row(first, "v1", "2026-01-01", null, "user-1", "2025-12-20T01:02:03Z"))
+        rows(tenantA) shouldBe listOf(row(first, "v1", "2026-01-01", null, "user-1" to "2025-12-20T01:02:03Z"))
     }
 
     @Test
