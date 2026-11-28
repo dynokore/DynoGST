@@ -49,7 +49,9 @@ class RecordSourceEvent(
 ) {
     /**
      * A repeat of the same four-part key returns the result stored at the first record and does not call [onNew]
-     * (INV-REQ-789 behavior 3). A stored row without a result is an error, never an invented answer.
+     * (INV-REQ-789 behavior 3). The first record answers with the same stored text, read back in its transaction, not
+     * with the text [onNew] built, so a replay answers the same bytes (INV-REQ-806). A stored row without a result is
+     * an error, never an invented answer.
      */
     fun record(
         key: SourceKey,
@@ -57,23 +59,24 @@ class RecordSourceEvent(
     ): RecordedResult =
         transaction.inTransaction {
             store.lockSourceKey(key) // first statement, before any read of source_event
-            store.docUuidOf(key)?.let { return@inTransaction stored(key, it) }
+            store.docUuidOf(key)?.let { return@inTransaction stored(key, it, inserted = false) }
             val docUuid = store.boundDocUuid(key) ?: newDocUuid()
             val result = onNew(docUuid)
             if (store.insert(key, docUuid, result)) {
-                RecordedResult(docUuid, inserted = true, result)
+                stored(key, docUuid, inserted = true)
             } else {
-                stored(key, checkNotNull(store.docUuidOf(key)) { "source_event row vanished" })
+                stored(key, checkNotNull(store.docUuidOf(key)) { "source_event row vanished" }, inserted = false)
             }
         }
 
     private fun stored(
         key: SourceKey,
         docUuid: UUID,
+        inserted: Boolean,
     ): RecordedResult =
         RecordedResult(
             docUuid,
-            inserted = false,
+            inserted,
             checkNotNull(store.resultOf(key)) { "source_event row has no result" },
         )
 }
