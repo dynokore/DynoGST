@@ -216,12 +216,15 @@ class StructureStartUpIT {
             EntityRef(ref),
         )
 
-        private fun replayCompleted(
+        fun replayCompleted(
             replayId: UUID,
             replayed: Int,
         ) = envelope(
             ReplayProtocol.REPLAY_COMPLETED,
-            """{"replayId":"$replayId","eventsReplayed":$replayed}""",
+            """{"replayId":"$replayId","eventsReplayed":$replayed,
+            |"sourcedEventTypes":["${ProductEventTypes.ENTITY_PROFILE_CHANGED}",
+            |"${ProductEventTypes.ORGANISATION_STRUCTURE_CHANGED}"]}
+            """.trimMargin(),
             EntityRef.PLATFORM,
             tenant = TenantId.PLATFORM,
             subject = "replay/$replayId",
@@ -277,6 +280,18 @@ class StructureStartUpIT {
                 h.structure.isSynced() shouldBe synced
                 listOf("N-1", "N-2", "N-3", "E-1", "E-2").count { h.present(it) } shouldBe present
             }
+        }
+    }
+
+    @Test
+    fun `INV-AC-29183 the built replay marker states the sourced event types of the structure replay, sorted`() {
+        Harness().use { h ->
+            val data = ObjectMapper().readTree(h.replayCompleted(UUID.randomUUID(), 5).dataJson)
+            data.get("sourcedEventTypes").values().map { it.asString() } shouldBe
+                listOf(
+                    "com.dynokore.gst.tenancy.EntityProfileChanged.v1",
+                    "com.dynokore.gst.tenancy.OrganisationStructureChanged.v1",
+                )
         }
     }
 

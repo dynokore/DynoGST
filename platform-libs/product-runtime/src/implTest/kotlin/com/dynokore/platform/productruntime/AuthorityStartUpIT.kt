@@ -235,12 +235,14 @@ class AuthorityStartUpIT {
                 """.trimMargin(),
             )
 
-        private fun replayCompleted(
+        fun replayCompleted(
             replayId: UUID,
             replayed: Int,
         ) = envelope(
             ReplayProtocol.REPLAY_COMPLETED,
-            """{"replayId":"$replayId","eventsReplayed":$replayed}""",
+            """{"replayId":"$replayId","eventsReplayed":$replayed,
+            |"sourcedEventTypes":["${PlatformEventCatalogue.AUTHORITY_CHANGED.eventType}"]}
+            """.trimMargin(),
             tenant = TenantId.PLATFORM,
             entity = EntityRef.PLATFORM,
             subject = "replay/$replayId",
@@ -284,6 +286,15 @@ class AuthorityStartUpIT {
         production.forEach { (name, factory) ->
             val definition: BeanDefinition = context.beanFactory.getBeanDefinition(name)
             context.getType(checkNotNull(definition.factoryBeanName))?.name shouldBe factory
+        }
+    }
+
+    @Test
+    fun `INV-AC-29183 the built replay marker states the sourced event types of the authority replay`() {
+        Harness().use { h ->
+            val data = ObjectMapper().readTree(h.replayCompleted(UUID.randomUUID(), 3).dataJson)
+            data.get("sourcedEventTypes").values().map { it.asString() } shouldBe
+                listOf("com.dynokore.gst.platform.AuthorityChanged.v1")
         }
     }
 
