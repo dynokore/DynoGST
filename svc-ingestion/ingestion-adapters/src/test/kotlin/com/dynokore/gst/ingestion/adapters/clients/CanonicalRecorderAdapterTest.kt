@@ -5,6 +5,8 @@ import com.dynokore.gst.ingestion.application.recording.CanonicalRecorder
 import com.dynokore.gst.ingestion.application.recording.RecordDocumentCommand
 import com.dynokore.gst.ingestion.application.recording.RecordTransaction
 import com.dynokore.gst.ingestion.domain.recording.CanonicalAnswer
+import com.dynokore.gst.ingestion.domain.recording.ReasonItem
+import com.dynokore.gst.ingestion.domain.recording.RecordedResult
 import com.dynokore.gst.ingestion.domain.recording.RecordingOutcome
 import com.dynokore.platform.serviceruntime.client.InternalRestClientAutoConfiguration
 import com.dynokore.platform.serviceruntime.identity.WorkloadToken
@@ -30,6 +32,7 @@ import tools.jackson.databind.json.JsonMapper
 import java.net.ServerSocket
 import java.time.Clock
 import java.time.Duration
+import java.time.LocalDate
 import java.util.UUID
 
 /**
@@ -105,6 +108,16 @@ class CanonicalRecorderAdapterTest {
         return result as T
     }
 
+    /**
+     * One answered call under the default timeout, so that class loading of a cold JVM is not spent inside the short
+     * timeout of the case that follows: without it that call can time out before the request reaches the stub.
+     */
+    private fun warmUp() {
+        stub.reply = replyJson(201)
+        withAdapter { it.record(command) }
+        stub.seen.clear()
+    }
+
     private fun replyJson(
         status: Int,
         reasons: String = "",
@@ -114,11 +127,14 @@ class CanonicalRecorderAdapterTest {
            "prescribedPeriodRef":"2026Q3"$reasons}""",
     )
 
+    private fun recorded(items: List<ReasonItem> = emptyList()) =
+        RecordedResult(2, "SUBMITTABLE", LocalDate.of(2026, 10, 1), "2026Q3", items)
+
     @Test
     fun `INV-AC-2178 a replay answered 200 returns REPLAY with the docUuid of canonical-svc, one request`() {
         stub.reply = replyJson(200)
         val outcome = withAdapter { RecordTransaction(it).execute(command) }
-        outcome shouldBe RecordingOutcome.Replay(docUuid)
+        outcome shouldBe RecordingOutcome.Replay(docUuid, recorded())
         stub.seen.size shouldBe 1
     }
 
@@ -138,15 +154,21 @@ class CanonicalRecorderAdapterTest {
     @Test
     fun `201 gives Created, 200 gives Replay and 202 gives Held with the reasons in the stub order`() {
         stub.reply = replyJson(201)
-        withAdapter { it.record(command) } shouldBe CanonicalAnswer.Created(docUuid, 2)
+        withAdapter { it.record(command) } shouldBe CanonicalAnswer.Created(docUuid, 2, recorded())
         stub.reply = replyJson(200)
-        withAdapter { it.record(command) } shouldBe CanonicalAnswer.Replay(docUuid, 2)
+        withAdapter { it.record(command) } shouldBe CanonicalAnswer.Replay(docUuid, 2, recorded())
         stub.reply =
             replyJson(
                 202,
                 ""","reasons":[{"code":"B-2","message":"b"},{"code":"A-1","field":"lines","message":"a"}]""",
             )
-        withAdapter { it.record(command) } shouldBe CanonicalAnswer.Held(docUuid, 2, listOf("B-2", "A-1"))
+        withAdapter { it.record(command) } shouldBe
+            CanonicalAnswer.Held(
+                docUuid,
+                2,
+                listOf("B-2", "A-1"),
+                recorded(listOf(ReasonItem("B-2", "b", null), ReasonItem("A-1", "a", "lines"))),
+            )
     }
 
     @Test
@@ -167,8 +189,10 @@ class CanonicalRecorderAdapterTest {
 
     @Test
     fun `INV-AC-14090 an answer after the read timeout is Unavailable, one request when the edge has no retry`() {
-        stub.reply = CanonicalStub.Reply(201, delayMillis = 1500)
-        val answer = withAdapter(registry(timeout = Duration.ofMillis(300))) { it.record(command) }
+        warmUp()
+        // the timeout leaves a slow runner room to deliver the request; the answer still comes well after it
+        stub.reply = CanonicalStub.Reply(201, delayMillis = 3000)
+        val answer = withAdapter(registry(timeout = Duration.ofMillis(1000))) { it.record(command) }
         answer.shouldBeInstanceOf<CanonicalAnswer.Unavailable>().reason.let {
             it shouldContain "ingestion-svc->canonical-svc"
             it shouldContain "timed out"
@@ -260,7 +284,88 @@ class CanonicalRecorderAdapterTest {
         stub.reply = CanonicalStub.Reply(202, "")
         withAdapter { it.record(command) } shouldBe CanonicalAnswer.Rejected(null, 202)
         stub.reply = replyJson(201)
-        withAdapter { it.record(command) } shouldBe CanonicalAnswer.Created(docUuid, 2)
+        withAdapter { it.record(command) } shouldBe CanonicalAnswer.Created(docUuid, 2, recorded())
+    }
+
+    private val reasonsJson =
+        ""","reasons":[{"code":"B-2","message":"b"},{"code":"A-1","field":"lines","message":"a"}]"""
+
+    private val items = listOf(ReasonItem("B-2", "b", null), ReasonItem("A-1", "a", "lines"))
+
+    @Test
+    fun `INV-AC-28751 a 201 body is carried member by member`() {
+        stub.reply = replyJson(201, reasonsJson)
+        val answer = withAdapter { it.record(command) }.shouldBeInstanceOf<CanonicalAnswer.Created>()
+        answer.docUuid shouldBe docUuid
+        answer.version shouldBe 2L
+        answer.result shouldBe recorded(items)
+    }
+
+    @Test
+    fun `INV-AC-28751 a 200 body is carried member by member`() {
+        stub.reply = replyJson(200, reasonsJson)
+        val answer = withAdapter { it.record(command) }.shouldBeInstanceOf<CanonicalAnswer.Replay>()
+        answer.docUuid shouldBe docUuid
+        answer.version shouldBe 2L
+        answer.result shouldBe recorded(items)
+    }
+
+    @Test
+    fun `INV-AC-28751 a 202 body is carried member by member`() {
+        stub.reply = replyJson(202, reasonsJson)
+        val answer = withAdapter { it.record(command) }.shouldBeInstanceOf<CanonicalAnswer.Held>()
+        answer.docUuid shouldBe docUuid
+        answer.version shouldBe 2L
+        answer.reasons shouldBe listOf("B-2", "A-1")
+        answer.result shouldBe recorded(items)
+    }
+
+    @Test
+    fun `INV-AC-28751 the outcomes carry the stub result, a NOT_SUBMITTABLE verdict as received`() {
+        stub.reply =
+            CanonicalStub.Reply(
+                201,
+                """{"docUuid":"$docUuid","version":1,"scopeVerdict":"NOT_SUBMITTABLE","transactionDate":"2026-10-01",
+               "prescribedPeriodRef":"2026Q3"}""",
+            )
+        val outcome = withAdapter { RecordTransaction(it).execute(command) }.shouldBeInstanceOf<RecordingOutcome.New>()
+        outcome.result.scopeVerdict shouldBe "NOT_SUBMITTABLE"
+        stub.reply = replyJson(201, reasonsJson)
+        withAdapter { RecordTransaction(it).execute(command) } shouldBe
+            RecordingOutcome.Amend(docUuid, 2, recorded(items))
+        stub.reply = replyJson(202, reasonsJson)
+        withAdapter { RecordTransaction(it).execute(command) } shouldBe
+            RecordingOutcome.Held(docUuid, 2, listOf("B-2", "A-1"), recorded(items))
+    }
+
+    @Test
+    fun `INV-AC-28751 a 201 body lacking a required member gives Failed, one case per member`() {
+        for (member in listOf("docUuid", "version", "scopeVerdict", "transactionDate", "prescribedPeriodRef")) {
+            val tree = mapper.readTree(replyJson(201).body) as tools.jackson.databind.node.ObjectNode
+            tree.remove(member)
+            stub.reply = CanonicalStub.Reply(201, tree.toString())
+            withAdapter { it.record(command) } shouldBe CanonicalAnswer.Rejected(null, 201)
+            withAdapter { RecordTransaction(it).execute(command) } shouldBe RecordingOutcome.Failed
+        }
+    }
+
+    @Test
+    fun `INV-AC-28751 a scopeVerdict outside the generated enum is carried as the received string`() {
+        for (verdict in listOf("FUTURE_VALUE", "submittable", "NOT_SUBMITTABLE ", "unknown_default_open_api")) {
+            stub.reply =
+                replyJson(201).let { CanonicalStub.Reply(201, it.body.replace("\"SUBMITTABLE\"", "\"$verdict\"")) }
+            val answer = withAdapter { it.record(command) }.shouldBeInstanceOf<CanonicalAnswer.Created>()
+            answer.result.scopeVerdict shouldBe verdict
+        }
+    }
+
+    @Test
+    fun `INV-AC-28751 a scopeVerdict that is not a string gives Failed`() {
+        for (value in listOf("null", "0", "true", "[\"SUBMITTABLE\"]", "{}")) {
+            stub.reply = CanonicalStub.Reply(201, replyJson(201).body.replace("\"SUBMITTABLE\"", value))
+            withAdapter { it.record(command) } shouldBe CanonicalAnswer.Rejected(null, 201)
+            withAdapter { RecordTransaction(it).execute(command) } shouldBe RecordingOutcome.Failed
+        }
     }
 
     private fun compactBody(function: String) =
@@ -300,7 +405,7 @@ class CanonicalRecorderAdapterTest {
     fun `INV-AC-13667 a body with documentFunction PROFORMA is passed on unchanged and the stub answer decides`() {
         stub.reply = replyJson(201)
         val sent = compactBody("PROFORMA")
-        withAdapter { it.record(command.copy(body = sent)) } shouldBe CanonicalAnswer.Created(docUuid, 2)
+        withAdapter { it.record(command.copy(body = sent)) } shouldBe CanonicalAnswer.Created(docUuid, 2, recorded())
         stub.seen.single().body shouldBe sent
     }
 

@@ -4,16 +4,20 @@ import com.dynokore.gst.ingestion.domain.issuance.IssuanceDecision.ApiUnavailabl
 import com.dynokore.gst.ingestion.domain.issuance.IssuanceDecision.HandOff
 import com.dynokore.gst.ingestion.domain.issuance.IssuanceDecision.NotRecorded
 import com.dynokore.gst.ingestion.domain.issuance.IssuanceDecision.Refused
+import com.dynokore.gst.ingestion.domain.recording.RecordedResult
 import com.dynokore.gst.ingestion.domain.recording.RecordingOutcome
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.types.shouldNotBeInstanceOf
 import org.junit.jupiter.api.Test
+import java.time.LocalDate
 import java.util.UUID
 
 class RelayIssuanceDecisionTest {
     private val doc = UUID.fromString("00000000-0000-0000-0000-0000000000d1")
+    private val sample =
+        RecordedResult(1, "SUBMITTABLE", LocalDate.of(2026, 10, 1), "2026Q3", emptyList())
     private val warn = ValidationAnswer.Warn(listOf("REGISTER_UNAVAILABLE"))
     private val blocked = ValidationAnswer.Blocked(listOf("PAY-011"))
 
@@ -29,9 +33,9 @@ class RelayIssuanceDecisionTest {
     fun `INV-AC-13326 table of 3 recorded kinds by 5 validation answers`() {
         val kinds =
             mapOf(
-                "New" to RecordingOutcome.New(doc),
-                "Amend" to RecordingOutcome.Amend(doc, 2),
-                "Replay" to RecordingOutcome.Replay(doc),
+                "New" to RecordingOutcome.New(doc, sample),
+                "Amend" to RecordingOutcome.Amend(doc, 2, sample),
+                "Replay" to RecordingOutcome.Replay(doc, sample),
             )
         val answers: Map<String, ValidationAnswer?> =
             mapOf(
@@ -63,40 +67,41 @@ class RelayIssuanceDecisionTest {
 
     @Test
     fun `INV-AC-1619 New with Pass gives HandOff`() {
-        decide(RecordingOutcome.New(doc), ValidationAnswer.Pass) shouldBe HandOff(doc, emptyList())
+        decide(RecordingOutcome.New(doc, sample), ValidationAnswer.Pass) shouldBe HandOff(doc, emptyList())
     }
 
     @Test
     fun `INV-AC-1620 New with Blocked PAY-004 gives Refused with that reason and never HandOff`() {
-        val result = decide(RecordingOutcome.New(doc), ValidationAnswer.Blocked(listOf("PAY-004")))
+        val result = decide(RecordingOutcome.New(doc, sample), ValidationAnswer.Blocked(listOf("PAY-004")))
         result shouldBe Refused(doc, listOf("PAY-004"), RefusalSource.VALIDATION)
         result.shouldNotBeInstanceOf<HandOff>()
     }
 
     @Test
     fun `INV-AC-525 New with Blocked PAY-011 gives Refused from VALIDATION`() {
-        val result = decide(RecordingOutcome.New(doc), blocked) as Refused
+        val result = decide(RecordingOutcome.New(doc, sample), blocked) as Refused
         result.source shouldBe RefusalSource.VALIDATION
         result.reasons shouldContainExactly listOf("PAY-011")
     }
 
     @Test
     fun `INV-AC-2785 Amend with Pass after an earlier Refused keeps the Doc UUID`() {
-        val first = decide(RecordingOutcome.New(doc), blocked) as Refused
-        decide(RecordingOutcome.Amend(first.docUuid, 2), ValidationAnswer.Pass) shouldBe HandOff(doc, emptyList())
+        val first = decide(RecordingOutcome.New(doc, sample), blocked) as Refused
+        decide(RecordingOutcome.Amend(first.docUuid, 2, sample), ValidationAnswer.Pass) shouldBe
+            HandOff(doc, emptyList())
     }
 
     @Test
     fun `INV-AC-13326 Blocked with an empty list is still Refused and reasons keep order`() {
-        decide(RecordingOutcome.New(doc), ValidationAnswer.Blocked(emptyList())) shouldBe
+        decide(RecordingOutcome.New(doc, sample), ValidationAnswer.Blocked(emptyList())) shouldBe
             Refused(doc, emptyList(), RefusalSource.VALIDATION)
-        (decide(RecordingOutcome.New(doc), ValidationAnswer.Blocked(listOf("B", "A"))) as Refused)
+        (decide(RecordingOutcome.New(doc, sample), ValidationAnswer.Blocked(listOf("B", "A"))) as Refused)
             .reasons shouldContainExactly listOf("B", "A")
     }
 
     @Test
     fun `INV-AC-13326 Warn keeps its flags in order`() {
-        decide(RecordingOutcome.New(doc), ValidationAnswer.Warn(listOf("Z", "A"))) shouldBe
+        decide(RecordingOutcome.New(doc, sample), ValidationAnswer.Warn(listOf("Z", "A"))) shouldBe
             HandOff(doc, listOf("Z", "A"))
     }
 
@@ -110,7 +115,7 @@ class RelayIssuanceDecisionTest {
             listOf("ing-016"),
             listOf("ING-016 "),
         )) {
-            val result = decide(RecordingOutcome.Held(doc, 1, reasons), ValidationAnswer.Pass)
+            val result = decide(RecordingOutcome.Held(doc, 1, reasons, sample), ValidationAnswer.Pass)
             result shouldBe Refused(doc, reasons, RefusalSource.DERIVATION_HOLD)
             result.shouldNotBeInstanceOf<HandOff>()
         }
@@ -118,8 +123,9 @@ class RelayIssuanceDecisionTest {
 
     @Test
     fun `INV-AC-13326 a hold with ING-016 is ApiUnavailable`() {
-        decide(RecordingOutcome.Held(doc, 1, listOf("ING-016")), ValidationAnswer.Pass) shouldBe dependency
-        decide(RecordingOutcome.Held(doc, 1, listOf("MDM-001", "ING-016")), ValidationAnswer.Pass) shouldBe dependency
+        decide(RecordingOutcome.Held(doc, 1, listOf("ING-016"), sample), ValidationAnswer.Pass) shouldBe dependency
+        decide(RecordingOutcome.Held(doc, 1, listOf("MDM-001", "ING-016"), sample), ValidationAnswer.Pass) shouldBe
+            dependency
     }
 
     @Test

@@ -1,6 +1,26 @@
 package com.dynokore.gst.ingestion.domain.recording
 
+import java.time.LocalDate
 import java.util.UUID
+
+/** One reason item of canonical's `RecordDocumentResponse.reasons` (`ReasonItem`); [field] is optional there. */
+data class ReasonItem(
+    val code: String,
+    val message: String,
+    val field: String?,
+)
+
+/**
+ * The members of canonical's success body that the public `TransactionResult` requires, as received (no value is
+ * defaulted or derived): [scopeVerdict] is the received string, [reasonItems] keep canonical's order.
+ */
+data class RecordedResult(
+    val version: Long,
+    val scopeVerdict: String,
+    val transactionDate: LocalDate,
+    val prescribedPeriodRef: String,
+    val reasonItems: List<ReasonItem>,
+)
 
 /**
  * What canonical-svc answered to its `recordDocument` operation, reduced to the facts the mapping reads
@@ -11,11 +31,13 @@ sealed interface CanonicalAnswer {
     data class Created(
         val docUuid: UUID,
         val version: Long,
+        val result: RecordedResult,
     ) : CanonicalAnswer
 
     data class Replay(
         val docUuid: UUID,
         val version: Long,
+        val result: RecordedResult,
     ) : CanonicalAnswer
 
     /** Canonical `202`: recorded and held or blocked; [reasons] keep canonical's order. */
@@ -23,6 +45,7 @@ sealed interface CanonicalAnswer {
         val docUuid: UUID,
         val version: Long,
         val reasons: List<String>,
+        val result: RecordedResult,
     ) : CanonicalAnswer
 
     data class Rejected(
@@ -47,6 +70,7 @@ sealed interface RecordingOutcome {
     /** A new document: canonical `201` with `version` 1. */
     data class New(
         val docUuid: UUID,
+        val result: RecordedResult,
     ) : RecordingOutcome {
         override val httpStatus: Int = HTTP_CREATED
     }
@@ -54,6 +78,7 @@ sealed interface RecordingOutcome {
     /** The same pair again: canonical `200`, the original result and the original Doc UUID. */
     data class Replay(
         val docUuid: UUID,
+        val result: RecordedResult,
     ) : RecordingOutcome {
         override val httpStatus: Int = HTTP_OK
     }
@@ -62,6 +87,7 @@ sealed interface RecordingOutcome {
     data class Amend(
         val docUuid: UUID,
         val version: Long,
+        val result: RecordedResult,
     ) : RecordingOutcome {
         override val httpStatus: Int = HTTP_CREATED
     }
@@ -77,6 +103,7 @@ sealed interface RecordingOutcome {
         val docUuid: UUID,
         val version: Long,
         val reasons: List<String>,
+        val result: RecordedResult,
     ) : RecordingOutcome {
         override val httpStatus: Int = HTTP_ACCEPTED
     }
@@ -119,19 +146,19 @@ object RecordingMapping {
     fun map(answer: CanonicalAnswer): RecordingOutcome =
         when (answer) {
             is CanonicalAnswer.Replay -> {
-                RecordingOutcome.Replay(answer.docUuid)
+                RecordingOutcome.Replay(answer.docUuid, answer.result)
             }
 
             is CanonicalAnswer.Created -> {
                 if (answer.version > FIRST_VERSION) {
-                    RecordingOutcome.Amend(answer.docUuid, answer.version)
+                    RecordingOutcome.Amend(answer.docUuid, answer.version, answer.result)
                 } else {
-                    RecordingOutcome.New(answer.docUuid)
+                    RecordingOutcome.New(answer.docUuid, answer.result)
                 }
             }
 
             is CanonicalAnswer.Held -> {
-                RecordingOutcome.Held(answer.docUuid, answer.version, answer.reasons)
+                RecordingOutcome.Held(answer.docUuid, answer.version, answer.reasons, answer.result)
             }
 
             is CanonicalAnswer.Rejected -> {

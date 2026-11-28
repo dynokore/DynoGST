@@ -1,10 +1,12 @@
 package com.dynokore.gst.ingestion.application.recording
 
 import com.dynokore.gst.ingestion.domain.recording.CanonicalAnswer
+import com.dynokore.gst.ingestion.domain.recording.RecordedResult
 import com.dynokore.gst.ingestion.domain.recording.RecordingOutcome
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
+import java.time.LocalDate
 import java.util.UUID
 
 /**
@@ -13,6 +15,10 @@ import java.util.UUID
  * for a lower revision), keeping the state canonical-svc owns. ingestion-svc itself keeps none.
  */
 class RecordTransactionTest {
+    private companion object {
+        val sample = RecordedResult(1, "SUBMITTABLE", LocalDate.of(2026, 10, 1), "2026Q3", emptyList())
+    }
+
     private class CanonicalStub : CanonicalRecorder {
         private class Known(
             val docUuid: UUID,
@@ -31,17 +37,17 @@ class RecordTransactionTest {
                 recorded == null -> {
                     val created = Known(UUID.randomUUID(), command.sourceRevision, 1)
                     known[key] = created
-                    CanonicalAnswer.Created(created.docUuid, created.version)
+                    CanonicalAnswer.Created(created.docUuid, created.version, sample)
                 }
 
                 command.sourceRevision == recorded.revision -> {
-                    CanonicalAnswer.Replay(recorded.docUuid, recorded.version)
+                    CanonicalAnswer.Replay(recorded.docUuid, recorded.version, sample)
                 }
 
                 command.sourceRevision > recorded.revision -> {
                     recorded.revision = command.sourceRevision
                     recorded.version += 1
-                    CanonicalAnswer.Created(recorded.docUuid, recorded.version)
+                    CanonicalAnswer.Created(recorded.docUuid, recorded.version, sample)
                 }
 
                 else -> {
@@ -66,7 +72,7 @@ class RecordTransactionTest {
         val first = service.execute(command("K", 2)) as RecordingOutcome.New
         first.httpStatus shouldBe 201
         val replay = service.execute(command("K", 2))
-        replay shouldBe RecordingOutcome.Replay(first.docUuid)
+        replay shouldBe RecordingOutcome.Replay(first.docUuid, sample)
         replay.httpStatus shouldBe 200
         val amend = service.execute(command("K", 3)) as RecordingOutcome.Amend
         amend.docUuid shouldBe first.docUuid
@@ -83,7 +89,7 @@ class RecordTransactionTest {
         val canonical = CanonicalStub()
         val service = RecordTransaction(canonical)
         val first = service.execute(command("K", 1)) as RecordingOutcome.New
-        service.execute(command("K", 1)) shouldBe RecordingOutcome.Replay(first.docUuid)
+        service.execute(command("K", 1)) shouldBe RecordingOutcome.Replay(first.docUuid, sample)
         val amended = service.execute(command("K", 2, body = """{"changed":true}""")) as RecordingOutcome.Amend
         amended.docUuid shouldBe first.docUuid
         (amended.version > 1) shouldBe true
@@ -104,7 +110,7 @@ class RecordTransactionTest {
         val first = service.execute(command("K", 1)) as RecordingOutcome.New
         first.httpStatus shouldBe 201
         val replay = service.execute(command("K", 1))
-        replay shouldBe RecordingOutcome.Replay(first.docUuid)
+        replay shouldBe RecordingOutcome.Replay(first.docUuid, sample)
         replay.httpStatus shouldBe 200
         val reversal = service.execute(command("K-reversal", 1)) as RecordingOutcome.New
         val repost = service.execute(command("K-repost", 1)) as RecordingOutcome.New
@@ -112,7 +118,7 @@ class RecordTransactionTest {
         repost.httpStatus shouldBe 201
         setOf(first.docUuid, reversal.docUuid, repost.docUuid).size shouldBe 3
         // Look-alike: a replay of the reversal answers the reversal's own Doc UUID, not the first or the repost's.
-        service.execute(command("K-reversal", 1)) shouldBe RecordingOutcome.Replay(reversal.docUuid)
+        service.execute(command("K-reversal", 1)) shouldBe RecordingOutcome.Replay(reversal.docUuid, sample)
     }
 
     @Test
@@ -131,7 +137,7 @@ class RecordTransactionTest {
         handed.body shouldBe body2
         handed.sourceRevision shouldBe 2
         handed.sourceKey shouldBe "K"
-        outcome shouldBe RecordingOutcome.Amend(first.docUuid, 2)
+        outcome shouldBe RecordingOutcome.Amend(first.docUuid, 2, sample)
         outcome.httpStatus shouldBe 201
         // Exhaustive without else: a new RecordingOutcome member breaks compilation here.
         val isAmendOnly =
@@ -154,7 +160,7 @@ class RecordTransactionTest {
         val service = RecordTransaction(CanonicalStub())
         val first = service.execute(command("K", 1)) as RecordingOutcome.New
         val amend = service.execute(command("K", 2))
-        amend shouldBe RecordingOutcome.Amend(first.docUuid, 2)
+        amend shouldBe RecordingOutcome.Amend(first.docUuid, 2, sample)
         amend.httpStatus shouldBe 201
     }
 
@@ -164,7 +170,7 @@ class RecordTransactionTest {
         val first = service.execute(command("K", 1)) as RecordingOutcome.New
         service.execute(command("K", 2))
         val replay = service.execute(command("K", 2))
-        replay shouldBe RecordingOutcome.Replay(first.docUuid)
+        replay shouldBe RecordingOutcome.Replay(first.docUuid, sample)
         replay.httpStatus shouldBe 200
         val stale = service.execute(command("K", 1))
         stale shouldBe RecordingOutcome.Stale
@@ -175,25 +181,25 @@ class RecordTransactionTest {
     @Test
     fun `a replay returns the Doc UUID the canonical stub returned`() {
         val docUuid = UUID.randomUUID()
-        val service = RecordTransaction { CanonicalAnswer.Replay(docUuid, 1) }
-        service.execute(command("K", 1)) shouldBe RecordingOutcome.Replay(docUuid)
+        val service = RecordTransaction { CanonicalAnswer.Replay(docUuid, 1, sample) }
+        service.execute(command("K", 1)) shouldBe RecordingOutcome.Replay(docUuid, sample)
     }
 
     @Test
     fun `canonical 201 with version 1 is a new document and with a higher version is an amendment`() {
         val docUuid = UUID.randomUUID()
-        RecordTransaction { CanonicalAnswer.Created(docUuid, 1) }.execute(command("K", 1)) shouldBe
-            RecordingOutcome.New(docUuid)
-        RecordTransaction { CanonicalAnswer.Created(docUuid, 2) }.execute(command("K", 2)) shouldBe
-            RecordingOutcome.Amend(docUuid, 2)
+        RecordTransaction { CanonicalAnswer.Created(docUuid, 1, sample) }.execute(command("K", 1)) shouldBe
+            RecordingOutcome.New(docUuid, sample)
+        RecordTransaction { CanonicalAnswer.Created(docUuid, 2, sample) }.execute(command("K", 2)) shouldBe
+            RecordingOutcome.Amend(docUuid, 2, sample)
     }
 
     @Test
     fun `INV-AC-1862 a document held on MDM-001 is answered 202 with the Doc UUID, version and reason`() {
         val docUuid = UUID.randomUUID()
         val outcome =
-            RecordTransaction { CanonicalAnswer.Held(docUuid, 1, listOf("MDM-001")) }.execute(command("K", 1))
-        outcome shouldBe RecordingOutcome.Held(docUuid, 1, listOf("MDM-001"))
+            RecordTransaction { CanonicalAnswer.Held(docUuid, 1, listOf("MDM-001"), sample) }.execute(command("K", 1))
+        outcome shouldBe RecordingOutcome.Held(docUuid, 1, listOf("MDM-001"), sample)
         outcome.httpStatus shouldBe 202
     }
 
@@ -201,8 +207,8 @@ class RecordTransactionTest {
     fun `INV-AC-2519 a blocked document is answered 202 with the block reason RUL-001`() {
         val docUuid = UUID.randomUUID()
         val outcome =
-            RecordTransaction { CanonicalAnswer.Held(docUuid, 1, listOf("RUL-001")) }.execute(command("K", 1))
-        outcome shouldBe RecordingOutcome.Held(docUuid, 1, listOf("RUL-001"))
+            RecordTransaction { CanonicalAnswer.Held(docUuid, 1, listOf("RUL-001"), sample) }.execute(command("K", 1))
+        outcome shouldBe RecordingOutcome.Held(docUuid, 1, listOf("RUL-001"), sample)
         outcome.httpStatus shouldBe 202
     }
 }

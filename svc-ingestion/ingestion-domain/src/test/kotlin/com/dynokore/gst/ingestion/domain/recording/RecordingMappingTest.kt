@@ -2,10 +2,13 @@ package com.dynokore.gst.ingestion.domain.recording
 
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
+import java.time.LocalDate
 import java.util.UUID
 
 class RecordingMappingTest {
     private val docUuid = UUID.randomUUID()
+    private val sample =
+        RecordedResult(1, "SUBMITTABLE", LocalDate.of(2026, 10, 1), "2026Q3", emptyList())
 
     private fun rejected(
         code: String?,
@@ -21,8 +24,8 @@ class RecordingMappingTest {
     @Test
     fun `a held answer keeps the Doc UUID, version and reasons in order and answers 202`() {
         val reasons = listOf("MDM-001", "ING-016", "RUL-001")
-        val outcome = RecordingMapping.map(CanonicalAnswer.Held(docUuid, 4, reasons))
-        outcome shouldBe RecordingOutcome.Held(docUuid, 4, reasons)
+        val outcome = RecordingMapping.map(CanonicalAnswer.Held(docUuid, 4, reasons, sample))
+        outcome shouldBe RecordingOutcome.Held(docUuid, 4, reasons, sample)
         outcome.httpStatus shouldBe 202
         (outcome as RecordingOutcome.Held).reasons shouldBe reasons
     }
@@ -54,14 +57,15 @@ class RecordingMappingTest {
 
     @Test
     fun `version 1 is new and every higher version is an amendment`() {
-        RecordingMapping.map(CanonicalAnswer.Created(docUuid, 1)) shouldBe RecordingOutcome.New(docUuid)
-        RecordingMapping.map(CanonicalAnswer.Created(docUuid, 2)) shouldBe RecordingOutcome.Amend(docUuid, 2)
+        RecordingMapping.map(CanonicalAnswer.Created(docUuid, 1, sample)) shouldBe RecordingOutcome.New(docUuid, sample)
+        RecordingMapping.map(CanonicalAnswer.Created(docUuid, 2, sample)) shouldBe
+            RecordingOutcome.Amend(docUuid, 2, sample)
     }
 
     @Test
     fun `a replay keeps the Doc UUID and answers 200`() {
-        val outcome = RecordingMapping.map(CanonicalAnswer.Replay(docUuid, 3))
-        outcome shouldBe RecordingOutcome.Replay(docUuid)
+        val outcome = RecordingMapping.map(CanonicalAnswer.Replay(docUuid, 3, sample))
+        outcome shouldBe RecordingOutcome.Replay(docUuid, sample)
         outcome.httpStatus shouldBe 200
     }
 

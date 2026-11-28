@@ -6,6 +6,7 @@ import com.dynokore.gst.ingestion.application.recording.RecordTransaction
 import com.dynokore.gst.ingestion.domain.backfill.BackfillRefusal
 import com.dynokore.gst.ingestion.domain.backfill.DatePeriod
 import com.dynokore.gst.ingestion.domain.recording.CanonicalAnswer
+import com.dynokore.gst.ingestion.domain.recording.RecordedResult
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
@@ -30,7 +31,11 @@ class ScopeBackfillTest {
 
         override fun record(command: RecordDocumentCommand): CanonicalAnswer {
             calls++
-            return CanonicalAnswer.Created(UUID.randomUUID(), 1)
+            return CanonicalAnswer.Created(
+                UUID.randomUUID(),
+                1,
+                RecordedResult(1, "SUBMITTABLE", LocalDate.of(2026, 10, 1), "2026Q3", emptyList()),
+            )
         }
     }
 

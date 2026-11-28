@@ -11,6 +11,7 @@ import com.dynokore.gst.ingestion.application.recording.RecordTransaction
 import com.dynokore.gst.ingestion.domain.backfill.BackfillRefusal
 import com.dynokore.gst.ingestion.domain.backfill.DatePeriod
 import com.dynokore.gst.ingestion.domain.recording.CanonicalAnswer
+import com.dynokore.gst.ingestion.domain.recording.RecordedResult
 import com.dynokore.gst.ingestion.domain.recording.RecordingOutcome
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
@@ -18,6 +19,8 @@ import java.time.LocalDate
 import java.util.UUID
 
 class SubmitTransactionTest {
+    private val sample = RecordedResult(1, "SUBMITTABLE", LocalDate.of(2026, 10, 1), "2026Q3", emptyList())
+
     /** Both fakes write here, so the order of their calls can be asserted. */
     private val order = mutableListOf<String>()
 
@@ -58,7 +61,8 @@ class SubmitTransactionTest {
 
     private fun source(answer: SubmissionScopeRead = answered) = FakeSource(answer, order)
 
-    private fun canonical(answer: CanonicalAnswer = CanonicalAnswer.Created(docUuid, 1)) = FakeCanonical(answer, order)
+    private fun canonical(answer: CanonicalAnswer = CanonicalAnswer.Created(docUuid, 1, sample)) =
+        FakeCanonical(answer, order)
 
     private fun useCase(
         source: FakeSource,
@@ -75,7 +79,7 @@ class SubmitTransactionTest {
         val source = source(SubmissionScopeRead.Unavailable("timeout"))
         val canonical = canonical()
         val result = useCase(source, canonical).execute(command(LocalDate.of(2020, 1, 1), null))
-        result shouldBe SubmitTransactionResult.Recorded(RecordingOutcome.New(docUuid))
+        result shouldBe SubmitTransactionResult.Recorded(RecordingOutcome.New(docUuid, sample))
         canonical.calls shouldBe 1
         canonical.recorded shouldBe listOf(document)
         source.calls shouldBe 0
@@ -86,7 +90,7 @@ class SubmitTransactionTest {
         val source = source()
         val canonical = canonical()
         val result = useCase(source, canonical).execute(command(activation, earlyAdoption))
-        result shouldBe SubmitTransactionResult.Recorded(RecordingOutcome.New(docUuid))
+        result shouldBe SubmitTransactionResult.Recorded(RecordingOutcome.New(docUuid, sample))
         canonical.calls shouldBe 1
         canonical.recorded shouldBe listOf(document)
         source.calls shouldBe 1
@@ -122,9 +126,9 @@ class SubmitTransactionTest {
 
     @Test
     fun `INV-AC-27059 a replay answer of the recorder is carried unchanged in Recorded`() {
-        val canonical = canonical(CanonicalAnswer.Replay(docUuid, 1))
+        val canonical = canonical(CanonicalAnswer.Replay(docUuid, 1, sample))
         val result = useCase(source(), canonical).execute(command(activation, null))
-        result shouldBe SubmitTransactionResult.Recorded(RecordingOutcome.Replay(docUuid))
+        result shouldBe SubmitTransactionResult.Recorded(RecordingOutcome.Replay(docUuid, sample))
         canonical.calls shouldBe 1
     }
 
