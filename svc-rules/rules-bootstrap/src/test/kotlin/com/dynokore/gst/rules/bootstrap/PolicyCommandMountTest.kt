@@ -62,7 +62,7 @@ class PolicyCommandMountTest {
                 "service-runtime.pool.profile=minimal",
                 "gst.bindings.secret-store.mount-root=$secrets",
                 "gst.bindings.telemetry-export=bundled-otel",
-                "gst.bindings.telemetry-export-otlp-endpoint=http://localhost:4318",
+                "gst.bindings.telemetry-export-otlp-endpoint=http://127.0.0.1:4318",
                 *extra,
             )
 
