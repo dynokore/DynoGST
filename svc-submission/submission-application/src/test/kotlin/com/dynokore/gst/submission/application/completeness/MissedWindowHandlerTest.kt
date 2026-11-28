@@ -27,12 +27,16 @@ class MissedWindowHandlerTest {
 
     @Test
     fun `INV-AC-27723 a MISSED event is recorded as MISSED under its period with its stateVersion`() {
-        deliver(AggregateWindowChangedData("E1", "P1", from, to, WindowChangeState.MISSED, 3)) shouldBe
+        deliver(
+            AggregateWindowChangedData("E1", "P1", from, to, WindowChangeState.MISSED, 3, WindowIdentity.NONE),
+        ) shouldBe
             HandleOutcome.APPLIED
         memory.windowRows.keys.single() shouldBe listOf(tenant, "E1", "P1", from, to)
         memory.windowRows.values.single() shouldBe
             InMemoryCompleteness.Stored(StoredRow("window:P1", StoredState.MISSED), 3)
-        deliver(AggregateWindowChangedData("E1", "P1", from, to, WindowChangeState.MISSED, 3)) shouldBe
+        deliver(
+            AggregateWindowChangedData("E1", "P1", from, to, WindowChangeState.MISSED, 3, WindowIdentity.NONE),
+        ) shouldBe
             HandleOutcome.IGNORED
     }
 
@@ -46,6 +50,7 @@ class MissedWindowHandlerTest {
                 to,
                 WindowChangeState.MISSED,
                 1,
+                WindowIdentity.NONE,
                 spanKnown = false,
             )
         deliver(event) shouldBe HandleOutcome.APPLIED

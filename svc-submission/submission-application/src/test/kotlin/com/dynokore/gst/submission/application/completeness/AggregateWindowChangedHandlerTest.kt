@@ -25,7 +25,7 @@ class AggregateWindowChangedHandlerTest {
         version: Long,
         t: TenantId = tenant,
     ): HandleOutcome {
-        next = { AggregateWindowChangedData("E", "P", from, to, state, version) }
+        next = { AggregateWindowChangedData("E", "P", from, to, state, version, WindowIdentity.NONE) }
         return AggregateWindowChangedHandler(fixedTenants(t), { next() }, memory).handle(testEnvelope(t))
     }
 
@@ -68,6 +68,42 @@ class AggregateWindowChangedHandlerTest {
         memory.record(tenant, "F1", "E", "P", "COUNT", true, 2)
         deliver(WindowChangeState.LATE, 1)
         derived() shouldBe CompletenessState.Failed(listOf("feed:F1/COUNT", "feed:F1/VALUE", "window:P"))
+    }
+
+    @Test
+    fun `INV-AC-29421 each business unit and category has its own row and version guard`() {
+        val x = WindowIdentity("BU-01", "POS")
+        val y = WindowIdentity("BU-02", "POS")
+        val z = WindowIdentity("BU-01", "STI")
+
+        fun apply(
+            identity: WindowIdentity,
+            state: WindowChangeState,
+            version: Long,
+        ): HandleOutcome {
+            next = { AggregateWindowChangedData("E", "P", from, to, state, version, identity) }
+            return AggregateWindowChangedHandler(fixedTenants(tenant), { next() }, memory).handle(testEnvelope(tenant))
+        }
+
+        fun states() = memory.windowRows.values.map { it.row.state }
+        val failed = CompletenessState.Failed(listOf("window:P"))
+
+        apply(x, WindowChangeState.LATE, 1) shouldBe HandleOutcome.APPLIED
+        derived() shouldBe failed
+        apply(y, WindowChangeState.CLOSED, 2) shouldBe HandleOutcome.APPLIED
+        derived() shouldBe failed
+        apply(z, WindowChangeState.MISSED, 3) shouldBe HandleOutcome.APPLIED
+        derived() shouldBe failed
+        states() shouldBe listOf(StoredState.FAILING, StoredState.NOT_FAILING, StoredState.MISSED)
+
+        apply(x, WindowChangeState.CLOSED, 1) shouldBe HandleOutcome.IGNORED
+        apply(x, WindowChangeState.CLOSED, 0) shouldBe HandleOutcome.IGNORED
+        states() shouldBe listOf(StoredState.FAILING, StoredState.NOT_FAILING, StoredState.MISSED)
+
+        val before = memory.windowRows.toMap()
+        apply(WindowIdentity.NONE, WindowChangeState.CLOSED, 9) shouldBe HandleOutcome.APPLIED
+        memory.windowRows.size shouldBe 4
+        before.forEach { (key, row) -> memory.windowRows[key] shouldBe row }
     }
 
     @Test

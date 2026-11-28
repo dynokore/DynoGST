@@ -4,6 +4,7 @@ import com.dynokore.gst.submission.application.completeness.AggregateWindowChang
 import com.dynokore.gst.submission.application.completeness.AggregateWindowChangedDataReader
 import com.dynokore.gst.submission.application.completeness.SPAN_UNKNOWN_PERIOD
 import com.dynokore.gst.submission.application.completeness.WindowChangeState
+import com.dynokore.gst.submission.application.completeness.WindowIdentity
 import com.dynokore.platform.outboxandqueue.ContractViolation
 import tools.jackson.core.JacksonException
 import tools.jackson.databind.JsonNode
@@ -15,8 +16,9 @@ import java.time.format.DateTimeParseException
  * [AggregateWindowChangedDataReader] over Jackson. Reads `entityRef`, `prescribedPeriod`, `window.from`, `window.to`,
  * `state` by exact member name, the optional `stateVersion` (an integer of at least 1; 0 when absent) and the optional
  * `spanKnown` (a boolean; true when absent; false only for state MISSED with `prescribedPeriod`
- * [SPAN_UNKNOWN_PERIOD]). A missing or malformed member is a [ContractViolation] whose message names the member, never
- * its value.
+ * [SPAN_UNKNOWN_PERIOD]). Reads the optional pair `businessUnitRef` (a non-blank string of at most 40 characters) and
+ * `aggregateType` (exactly POS, STI or PCP): both present, or both absent for [WindowIdentity.NONE]. A missing or
+ * malformed member is a [ContractViolation] whose message names the member, never its value.
  */
 class JacksonAggregateWindowChangedDataReader : AggregateWindowChangedDataReader {
     private val mapper = ObjectMapper()
@@ -40,10 +42,28 @@ class JacksonAggregateWindowChangedDataReader : AggregateWindowChangedDataReader
                 to = dateOf(window.text("to", "window.to")),
                 state = stateOf(data.text("state", "state")),
                 stateVersion = versionOf(data),
+                identity = identityOf(data),
                 spanKnown = spanKnownOf(data),
             )
         requireUnknownSpanShape(read)
         return read
+    }
+
+    private fun identityOf(data: JsonNode): WindowIdentity {
+        val hasUnit = data.has("businessUnitRef")
+        if (hasUnit != data.has("aggregateType")) {
+            throw ContractViolation("AggregateWindowChanged businessUnitRef and aggregateType must come together")
+        }
+        if (!hasUnit) return WindowIdentity.NONE
+        val unit = data.text("businessUnitRef", "businessUnitRef")
+        if (unit.isBlank() || unit.codePointCount(0, unit.length) > MAX_BUSINESS_UNIT_LENGTH) {
+            throw ContractViolation("AggregateWindowChanged businessUnitRef is blank or too long")
+        }
+        val type = data.text("aggregateType", "aggregateType")
+        if (type !in AGGREGATE_TYPES) {
+            throw ContractViolation("AggregateWindowChanged aggregateType is not a known aggregate type")
+        }
+        return WindowIdentity(unit, type)
     }
 
     private fun spanKnownOf(data: JsonNode): Boolean {
@@ -97,5 +117,10 @@ class JacksonAggregateWindowChangedDataReader : AggregateWindowChangedDataReader
             throw ContractViolation("AggregateWindowChanged stateVersion is not an integer of at least 1")
         }
         return node.asLong()
+    }
+
+    private companion object {
+        const val MAX_BUSINESS_UNIT_LENGTH = 40
+        val AGGREGATE_TYPES = setOf("POS", "STI", "PCP")
     }
 }

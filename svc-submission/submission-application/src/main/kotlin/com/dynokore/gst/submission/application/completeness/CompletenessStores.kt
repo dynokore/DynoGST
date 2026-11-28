@@ -37,7 +37,7 @@ interface FeedControlStates {
     ): Boolean
 }
 
-/** Aggregate window rows, keyed by tenant, entity, period and window; same version guard. */
+/** Aggregate window rows, keyed by tenant, entity, period, window part and [WindowIdentity]; same version guard. */
 interface WindowPartStates {
     /** @return true when the stored row changed; a versionless event ([stateVersion] 0) changes no existing row. */
     @Suppress("LongParameterList") // the port shape is ruled (INV-T-22205 design)
@@ -47,6 +47,7 @@ interface WindowPartStates {
         period: String,
         from: LocalDate,
         to: LocalDate,
+        identity: WindowIdentity,
         state: StoredState,
         stateVersion: Long,
     ): Boolean

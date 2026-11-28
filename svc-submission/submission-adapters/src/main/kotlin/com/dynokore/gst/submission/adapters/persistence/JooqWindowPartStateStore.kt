@@ -2,6 +2,7 @@ package com.dynokore.gst.submission.adapters.persistence
 
 import com.dynokore.gst.submission.adapters.persistence.jooq.tables.WindowPartState
 import com.dynokore.gst.submission.application.completeness.StoredState
+import com.dynokore.gst.submission.application.completeness.WindowIdentity
 import com.dynokore.gst.submission.application.completeness.WindowPartStates
 import com.dynokore.platform.tenancykernel.TenantId
 import com.dynokore.platform.tenancykernel.TransactionRunner
@@ -13,7 +14,8 @@ import java.time.OffsetDateTime
 /**
  * [WindowPartStates] over `submission.window_part_state`: one statement, `insert ... on conflict do update ... where
  * stored state_version < new`, in one transaction of the bound tenant (INV-REQ-792, ruled case 4). FAILING is stored
- * as LATE, NOT_FAILING as CLOSED, OPEN as OPEN, MISSED as MISSED. `missed_at` is the transaction instant of the write
+ * as LATE, NOT_FAILING as CLOSED, OPEN as OPEN, MISSED as MISSED. The row key includes the business unit and category,
+ * so the event of one window never changes the row of another (INV-REQ-413). `missed_at` is the transaction instant of the write
  * that made the row MISSED: a later MISSED keeps it and any other state clears it (INV-REQ-413). Values are never
  * logged.
  */
@@ -30,6 +32,7 @@ class JooqWindowPartStateStore(
         period: String,
         from: LocalDate,
         to: LocalDate,
+        identity: WindowIdentity,
         state: StoredState,
         stateVersion: Long,
     ): Boolean {
@@ -53,11 +56,20 @@ class JooqWindowPartStateStore(
                 .set(w.PERIOD_REF, period)
                 .set(w.PART_FROM, from)
                 .set(w.PART_TO, to)
+                .set(w.BUSINESS_UNIT_REF, identity.businessUnitRef)
+                .set(w.AGGREGATE_TYPE, identity.aggregateType)
                 .set(w.STATE, column)
                 .set(w.STATE_VERSION, stateVersion)
                 .set(w.MISSED_AT, if (missed) now else noInstant)
-                .onConflict(w.TENANT_ID, w.ENTITY_REF, w.PERIOD_REF, w.PART_FROM, w.PART_TO)
-                .doUpdate()
+                .onConflict(
+                    w.TENANT_ID,
+                    w.ENTITY_REF,
+                    w.PERIOD_REF,
+                    w.PART_FROM,
+                    w.PART_TO,
+                    w.BUSINESS_UNIT_REF,
+                    w.AGGREGATE_TYPE,
+                ).doUpdate()
                 .set(w.STATE, column)
                 .set(w.STATE_VERSION, stateVersion)
                 .set(w.MISSED_AT, if (missed) keptOrNow else noInstant)

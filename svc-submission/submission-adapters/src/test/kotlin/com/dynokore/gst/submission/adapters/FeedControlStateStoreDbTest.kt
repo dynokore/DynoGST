@@ -5,6 +5,7 @@ import com.dynokore.gst.submission.adapters.persistence.JooqFeedControlStateStor
 import com.dynokore.gst.submission.adapters.persistence.JooqWindowPartStateStore
 import com.dynokore.gst.submission.application.completeness.StoredRow
 import com.dynokore.gst.submission.application.completeness.StoredState
+import com.dynokore.gst.submission.application.completeness.WindowIdentity
 import com.dynokore.platform.tenancykernel.TenantId
 import com.dynokore.platform.tenancykernel.TransactionRunner
 import io.kotest.matchers.collections.shouldBeEmpty
@@ -93,7 +94,9 @@ class FeedControlStateStoreDbTest {
         val t1 = UUID.randomUUID()
         val t2 = UUID.randomUUID()
         record(t1, failing = false, version = 3)
-        asTenant(t1) { windows.record(TenantId(t1), "E", "P", D1, D2, StoredState.NOT_FAILING, 2) } shouldBe true
+        asTenant(t1) {
+            windows.record(TenantId(t1), "E", "P", D1, D2, WindowIdentity.NONE, StoredState.NOT_FAILING, 2)
+        } shouldBe true
         record(t1, failing = true, version = 1, entity = "E2")
         record(t1, failing = true, version = 1, period = "P2")
         rows(t1) shouldContainExactlyInAnyOrder

@@ -70,12 +70,15 @@ internal class InMemoryCompleteness :
         period: String,
         from: LocalDate,
         to: LocalDate,
+        identity: WindowIdentity,
         state: StoredState,
         stateVersion: Long,
     ): Boolean =
         put(
             windowRows,
-            listOf(tenant, entityRef, period, from, to),
+            // the empty identity adds no key element
+            listOf(tenant, entityRef, period, from, to) +
+                if (identity == WindowIdentity.NONE) emptyList() else listOf(identity),
             StoredRow(ControlIds.window(period), state),
             stateVersion,
         )
@@ -207,6 +210,7 @@ class FeedHealthChangedHandlerTest {
             "P",
             LocalDate.of(2026, 4, 1),
             LocalDate.of(2026, 6, 30),
+            WindowIdentity.NONE,
             StoredState.NOT_FAILING,
             1,
         ) shouldBe

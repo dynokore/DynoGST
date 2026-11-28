@@ -4,6 +4,7 @@ import com.dynokore.gst.submission.adapters.persistence.JooqCompletenessRows
 import com.dynokore.gst.submission.adapters.persistence.JooqWindowPartStateStore
 import com.dynokore.gst.submission.application.completeness.StoredRow
 import com.dynokore.gst.submission.application.completeness.StoredState
+import com.dynokore.gst.submission.application.completeness.WindowIdentity
 import com.dynokore.platform.tenancykernel.TenantId
 import com.dynokore.platform.tenancykernel.TransactionRunner
 import io.kotest.matchers.collections.shouldBeEmpty
@@ -53,7 +54,7 @@ class WindowPartStateStoreDbTest {
         state: StoredState,
         version: Long,
         to: LocalDate = D2,
-    ) = asTenant(tenant) { store.record(TenantId(tenant), "E", "P", D1, to, state, version) }
+    ) = asTenant(tenant) { store.record(TenantId(tenant), "E", "P", D1, to, WindowIdentity.NONE, state, version) }
 
     private fun rows(tenant: UUID) = asTenant(tenant) { reader.rows(TenantId(tenant), "E", "P") }
 

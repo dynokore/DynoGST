@@ -10,6 +10,19 @@ import java.time.LocalDate
 /** The `state` of an `AggregateWindowChanged` event. */
 enum class WindowChangeState { OPEN, CLOSED, LATE, MISSED }
 
+/**
+ * The business unit and category of the window an event is about. Part dates do not name a window by themselves, so
+ * both are part of the row key (INV-REQ-413). Both are the empty string for an event that carries neither member.
+ */
+data class WindowIdentity(
+    val businessUnitRef: String,
+    val aggregateType: String,
+) {
+    companion object {
+        val NONE = WindowIdentity("", "")
+    }
+}
+
 /** The members of an `AggregateWindowChanged` event the consumer reads; [stateVersion] is 0 when absent. */
 data class AggregateWindowChangedData(
     val entityRef: String,
@@ -18,6 +31,7 @@ data class AggregateWindowChangedData(
     val to: LocalDate,
     val state: WindowChangeState,
     val stateVersion: Long,
+    val identity: WindowIdentity,
     /** False only for a MISSED window whose period span is unknown; [prescribedPeriod] is then not a real period. */
     val spanKnown: Boolean = true,
 )
@@ -31,8 +45,9 @@ fun interface AggregateWindowChangedDataReader {
 /**
  * Keeps the aggregate window rows from `AggregateWindowChanged` (INV-REQ-792, ruled cases 4 and 5; INV-REQ-413): LATE
  * stores the part as failing, CLOSED as not failing, OPEN as open, MISSED as missed; a MISSED window of unknown span is
- * kept under [SPAN_UNKNOWN_PERIOD]. A row changes only for a higher stateVersion. A malformed event is a
- * [ContractViolation] and writes nothing. No message carries a field value.
+ * kept under [SPAN_UNKNOWN_PERIOD]. Each business unit and category ([WindowIdentity]) has its own row, which changes
+ * only for a higher stateVersion. A malformed event is a [ContractViolation] and writes nothing. No message carries a
+ * field value.
  */
 class AggregateWindowChangedHandler(
     private val tenants: TenantContext,
@@ -56,6 +71,7 @@ class AggregateWindowChangedHandler(
                 period,
                 data.from,
                 data.to,
+                data.identity,
                 stored,
                 data.stateVersion,
             )
