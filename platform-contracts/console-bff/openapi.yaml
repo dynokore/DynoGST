@@ -424,8 +424,10 @@ paths:
         The requesting user's authority is the permission key of the owning
         service's override operation together with the decision of
         `AuthorityReplica.decide` for it, never a role name. The texts
-        `willTransmit` and `residualRisk` are supplied by the owning service
-        in the routed read, and console-bff relays them unchanged.
+        `willTransmit` and `residualRisk` are supplied by the error-code
+        catalogue, the members of the code's catalogue row, and console-bff
+        reads them from its generated `ErrorCode`; no owning service supplies
+        them.
 
 
         Timeout class (INV-REQ-1204 b7, INV-Q-3476): `console-web ->
