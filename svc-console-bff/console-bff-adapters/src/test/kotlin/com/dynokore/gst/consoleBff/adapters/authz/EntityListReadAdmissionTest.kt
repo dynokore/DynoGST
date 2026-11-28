@@ -371,8 +371,8 @@ class EntityListReadAdmissionTest {
         val table = CatalogueReadPermissions()
         table.admitsAnyEntityFor("GET", PATH) shouldBe true
         table.admitsAnyEntityFor("POST", PATH) shouldBe false
+        table.admitsAnyEntityFor("GET", "/v1/portfolio") shouldBe true
         for (path in listOf(
-            "/v1/portfolio",
             "/bff/entities/E1/rendition-evidence",
             "/bff/configuration-bundles/b1/promotion-diff",
             "/v1/exceptions/",

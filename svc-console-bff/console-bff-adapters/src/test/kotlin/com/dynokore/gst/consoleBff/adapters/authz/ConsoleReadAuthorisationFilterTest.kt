@@ -243,7 +243,7 @@ class ConsoleReadAuthorisationFilterTest {
     @Test
     fun `INV-AC-29110 the entity list reads of the production table are exactly this list`() {
         CatalogueReadPermissions.ENTRIES.filter { it.entityListRead }.map { it.operationId } shouldBe
-            listOf("getExceptions")
+            listOf("getExceptions", "getPortfolio")
     }
 
     @Test

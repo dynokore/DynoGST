@@ -146,7 +146,7 @@ class CatalogueReadPermissions(
         val ENTRIES: List<Entry> =
             listOf(
                 Entry("GET", "/v1/exceptions", "getExceptions", "exception.view", entityListRead = true),
-                Entry("GET", "/v1/portfolio", "getPortfolio", "period-readiness.view"),
+                Entry("GET", "/v1/portfolio", "getPortfolio", "period-readiness.view", entityListRead = true),
                 Entry(
                     "GET",
                     "/bff/entities/{entityRef}/rendition-evidence",
