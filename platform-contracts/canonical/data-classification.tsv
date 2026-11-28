@@ -156,3 +156,16 @@ openapi.yaml	IngestedDocument.docUuid	NONE
 openapi.yaml	IngestedDocument.version	NONE
 openapi.yaml	IngestedDocument.entityRef	NONE
 openapi.yaml	IngestedDocument.recordedAt	NONE
+openapi.yaml	Party.partyRef	IDENTIFYING
+openapi.yaml	Party.providedBy	NONE
+openapi.yaml	Party.evidenceRef	NONE
+openapi.yaml	Party.approvedSchemes	NONE
+openapi.yaml	Party.arcsGstChargeAgreed	NONE
+openapi.yaml	Line.glAccount	NONE
+openapi.yaml	Line.businessUnitRef	NONE
+openapi.yaml	Line.inputTaxClaimed	NONE
+openapi.yaml	Line.apportionmentBasis	NONE
+openapi.yaml	Line.mixedUse	NONE
+openapi.yaml	RecordDocumentRequest.documentKind	NONE
+openapi.yaml	RecordDocumentRequest.replacesReceiptNumber	NONE
+openapi.yaml	RecordDocumentRequest.attachmentRefs	NONE

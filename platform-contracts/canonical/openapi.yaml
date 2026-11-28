@@ -115,7 +115,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/FlowContext'
       x-error-codes: [ING-002, ING-005, ING-011, ING-012, ING-016, ING-019, ING-013, ING-017, PER-009, PER-011, ING-024, SUB-007, PER-012, ING-028]
-      x-requirements: [INV-REQ-957, INV-REQ-1010, INV-REQ-547, INV-REQ-806, INV-REQ-327, INV-REQ-430, INV-REQ-431, INV-REQ-793, INV-REQ-1192, INV-REQ-714, INV-REQ-432, INV-REQ-67, INV-REQ-68, INV-REQ-696, INV-REQ-987, INV-REQ-1315]
+      x-requirements: [INV-REQ-957, INV-REQ-1010, INV-REQ-547, INV-REQ-806, INV-REQ-327, INV-REQ-430, INV-REQ-431, INV-REQ-793, INV-REQ-1192, INV-REQ-714, INV-REQ-432, INV-REQ-67, INV-REQ-68, INV-REQ-696, INV-REQ-987, INV-REQ-1315, INV-REQ-808, INV-REQ-2445, INV-REQ-2446, INV-REQ-809, INV-REQ-805, INV-REQ-440, INV-REQ-649]
       x-operation:
         role: ingest
         scope: entity
@@ -592,6 +592,10 @@ components:
   schemas:
     Party:
       type: object
+      description: >-
+        A party carries `partyRef`, or both `identifierScheme` and `identifierValue`. This schema does not
+        enforce this; canonical-svc does, and refuses a party with neither with `400` and SRT-001, recording
+        nothing. A party with only `partyRef` is resolved by masterdata-svc (INV-REQ-808).
       properties:
         identifierScheme:
           type: string
@@ -623,7 +627,48 @@ components:
             countryCode:
               type: string
               maxLength: 2
-      required: [identifierScheme, identifierValue]
+        partyRef:
+          type: string
+          maxLength: 64
+          description: The caller's reference to the party, resolved by masterdata-svc (INV-REQ-808). Forwarded unchanged by ingestion-svc.
+        providedBy:
+          type: string
+          enum: [COUNTERPARTY, INTERNAL]
+          description: >-
+            Who provided the counterparty detail. MIGRATED is set only by an import and is not a value a caller
+            sends (INV-REQ-808). Forwarded unchanged by ingestion-svc.
+        evidenceRef:
+          type: string
+          maxLength: 256
+          description: Reference to the evidence for the counterparty detail (INV-REQ-808). Forwarded unchanged by ingestion-svc.
+        approvedSchemes:
+          type: array
+          maxItems: 50
+          items:
+            type: object
+            properties:
+              scheme:
+                type: string
+                maxLength: 20
+              effectiveFrom:
+                type: string
+                format: date
+              effectiveTo:
+                type: string
+                format: date
+              evidenceRef:
+                type: string
+                maxLength: 256
+            required: [scheme, effectiveFrom]
+          description: >-
+            The counterparty's approved scheme status items (INV-REQ-2445), effective-dated; canonical-svc
+            passes them to masterdata-svc, which stores them with provenance. Never inferred from the
+            document. Forwarded unchanged by ingestion-svc.
+        arcsGstChargeAgreed:
+          type: boolean
+          description: >-
+            Whether the counterparty agreed to the GST charge under the Approved Refund Collection Scheme
+            (INV-REQ-2446). Forwarded unchanged by ingestion-svc.
     Line:
       type: object
       properties:
@@ -647,7 +692,7 @@ components:
           description: Money as a decimal string, decimal(19,2) (API-12).
         taxCode:
           type: string
-          maxLength: 10
+          maxLength: 32
         unitCode:
           type: string
           maxLength: 16
@@ -657,6 +702,29 @@ components:
           format: decimal
           pattern: '^-?\d{1,17}(\.\d{1,2})?$'
           description: Money as a decimal string, decimal(19,2) (API-12).
+        glAccount:
+          type: string
+          maxLength: 32
+          description: The general ledger account of the line (INV-REQ-809). Forwarded unchanged by ingestion-svc.
+        businessUnitRef:
+          type: string
+          maxLength: 64
+          description: The business unit of the line (INV-REQ-809). Forwarded unchanged by ingestion-svc.
+        inputTaxClaimed:
+          type: string
+          format: decimal
+          pattern: '^-?\d{1,17}(\.\d{1,2})?$'
+          description: >-
+            Input tax the business intends to claim, decimal(19,2) (INV-REQ-809). Forwarded unchanged by
+            ingestion-svc.
+        apportionmentBasis:
+          type: string
+          maxLength: 64
+          description: The apportionment basis of the line (INV-REQ-809). Forwarded unchanged by ingestion-svc.
+        mixedUse:
+          type: string
+          enum: [CLAIMABLE_PORTION, ENTIRE_INVOICE]
+          description: The mixed-use treatment of the line (INV-REQ-809). Forwarded unchanged by ingestion-svc.
       required: [lineNumber, lineAmount]
     Totals:
       type: object
@@ -903,6 +971,29 @@ components:
           maxLength: 512
           description: >-
             Reference to the source document in the tenant's document store (INV-REQ-646, INV-REQ-1319). The System holds the reference, not the content, and never transmits it to the network or to IRAS. Required for Types 2 and 3 once the entity is live, a condition the receiving service enforces, not this schema (INV-Q-16005).
+        documentKind:
+          type: string
+          minLength: 1
+          maxLength: 32
+          description: >-
+            The upstream system's own name for the document, the middle key of the classification table
+            (INV-REQ-805, INV-REQ-658). Forwarded unchanged by ingestion-svc.
+        replacesReceiptNumber:
+          type: string
+          maxLength: 64
+          description: >-
+            The receipt number of the simplified tax invoice that this full invoice replaces (INV-REQ-440).
+            Forwarded unchanged by ingestion-svc.
+        attachmentRefs:
+          type: array
+          maxItems: 50
+          items:
+            type: string
+            minLength: 1
+            maxLength: 512
+          description: >-
+            Pointers to supporting documents, never content: neither transmitted nor embedded (INV-REQ-649).
+            Forwarded unchanged by ingestion-svc.
       required:
         [tenantId, entityRef, sourceSystem, sourceKey, sourceRevision, documentFunction, transactionDate, currency, lines, documentNumber]
       allOf:

@@ -256,3 +256,24 @@ listIngestedDocuments	operation	openapi.yaml	INV-REQ-867
 listIngestedDocuments.200	operation_response	openapi.yaml	INV-REQ-867
 listIngestedDocuments.default	operation_response	openapi.yaml	INV-REQ-867
 packType	property	schemas/canonical-version-created-payload.schema.json	INV-REQ-771
+# INV-T-29602 (INV-AC-29601): the record request members that ingestion-svc forwards (INV-REQ-808, 2445, 2446, 809, 805, 440, 649).
+Party.partyRef	schema_property	openapi.yaml	INV-REQ-808
+Party.providedBy	schema_property	openapi.yaml	INV-REQ-808
+Party.providedBy.COUNTERPARTY	schema_enum_value	openapi.yaml	INV-REQ-808
+Party.providedBy.INTERNAL	schema_enum_value	openapi.yaml	INV-REQ-808
+Party.evidenceRef	schema_property	openapi.yaml	INV-REQ-808
+Party.approvedSchemes	schema_property	openapi.yaml	INV-REQ-2445
+Party.arcsGstChargeAgreed	schema_property	openapi.yaml	INV-REQ-2446
+scheme	property	openapi.yaml	INV-REQ-2445
+effectiveFrom	property	openapi.yaml	INV-REQ-2445
+effectiveTo	property	openapi.yaml	INV-REQ-2445
+Line.glAccount	schema_property	openapi.yaml	INV-REQ-809
+Line.businessUnitRef	schema_property	openapi.yaml	INV-REQ-809
+Line.inputTaxClaimed	schema_property	openapi.yaml	INV-REQ-809
+Line.apportionmentBasis	schema_property	openapi.yaml	INV-REQ-809
+Line.mixedUse	schema_property	openapi.yaml	INV-REQ-809
+Line.mixedUse.CLAIMABLE_PORTION	schema_enum_value	openapi.yaml	INV-REQ-809
+Line.mixedUse.ENTIRE_INVOICE	schema_enum_value	openapi.yaml	INV-REQ-809
+RecordDocumentRequest.documentKind	schema_property	openapi.yaml	INV-REQ-805
+RecordDocumentRequest.replacesReceiptNumber	schema_property	openapi.yaml	INV-REQ-440
+RecordDocumentRequest.attachmentRefs	schema_property	openapi.yaml	INV-REQ-649
