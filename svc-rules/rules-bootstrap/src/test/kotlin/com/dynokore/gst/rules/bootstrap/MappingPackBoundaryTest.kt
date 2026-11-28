@@ -57,6 +57,7 @@ import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.ApplicationContext
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
+import org.springframework.test.annotation.DirtiesContext
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 import tools.jackson.databind.JsonNode
@@ -1965,8 +1966,10 @@ open class RateSourceAcceptanceSupport(
 
 /**
  * `acceptRateSource` through the wired service on real PostgreSQL, and its effect on the rate-source block of
- * `approvePack` (INV-T-24951; INV-REQ-504, INV-AC-24949).
+ * `approvePack` (INV-T-24951; INV-REQ-504, INV-AC-24949). Its context is closed after the class: a cached context
+ * keeps its connection pool open on the PostgreSQL the test JVM shares, which has a fixed number of connection slots.
  */
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(
     classes = [RateSourceAcceptanceDoubles::class, VersionedBuild::class, RulesApplication::class],
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
