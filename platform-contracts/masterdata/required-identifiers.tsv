@@ -152,6 +152,7 @@ CounterpartyImportRow.uen	schema_property	openapi.yaml	INV-REQ-830
 CounterpartyImportRow.legalName	schema_property	openapi.yaml	INV-REQ-830
 CounterpartyImportRow.addressLine1	schema_property	openapi.yaml	INV-REQ-830
 CounterpartyImportRow.postalCode	schema_property	openapi.yaml	INV-REQ-830
+CounterpartyImportRow.approvedSchemes	schema_property	openapi.yaml	INV-REQ-2445
 ImportCounterpartiesRequest.providedBy	schema_property	openapi.yaml	INV-REQ-830
 ImportCounterpartiesRequest.providedBy.MIGRATED	schema_enum_value	openapi.yaml	INV-REQ-830
 ImportCounterpartiesRequest.providedBy.INTERNAL	schema_enum_value	openapi.yaml	INV-REQ-830

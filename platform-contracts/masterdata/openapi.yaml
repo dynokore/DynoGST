@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: masterdata API
-  version: 1.29.1
+  version: 1.30.0
   description: >-
     Contract-first source of truth for masterdata (API-01, STK-44). The
     `masterdata-contract` module generates its server interfaces and DTOs
@@ -2688,6 +2688,30 @@ components:
         legalName: { type: string, maxLength: 200 }
         addressLine1: { type: string, maxLength: 200 }
         postalCode: { type: string, maxLength: 20 }
+        approvedSchemes:
+          type: array
+          maxItems: 10
+          description: >-
+            The counterparty's approved scheme status items (INV-REQ-2445). An
+            absent property keeps the held items; a present array, the empty
+            one included, replaces them (the rule of the domain write that the
+            other write paths use). An item without `evidenceRef` takes the
+            `importId`. More than 10 items, or an item whose `effectiveTo` is
+            before its `effectiveFrom` or whose `scheme` is blank, is refused
+            `400` SRT-001 on `dryRunCounterpartyImport` and nothing is stored.
+            In the dry-run preview a differing list is one `preview.changes`
+            entry with `field` equal to `approvedSchemes`, counted in
+            `updateCount` for a held counterparty. The list differs when the
+            sets of (scheme, effectiveFrom, effectiveTo) differ, or a supplied
+            `evidenceRef` differs from the held one of the same item.
+            `newValue` and `oldValue` render each item as
+            `scheme:effectiveFrom/effectiveTo` (nothing after the slash without
+            an end date), sorted by effectiveFrom, then scheme, then
+            effectiveTo, joined by `;`, without `evidenceRef`; `oldValue` is
+            absent when no item is held. A value longer than 500 characters is
+            cut to its first 497 followed by `...`.
+          items:
+            $ref: '#/components/schemas/ApprovedScheme'
     CounterpartyDryRunRequest:
       type: object
       description: The dry run's input, as ImportCounterpartiesRequest names it (INV-Q-3466 A).

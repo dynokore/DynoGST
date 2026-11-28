@@ -1,0 +1,64 @@
+{
+  "counterpartyRef": "CP-1001",
+  "uen": "201954321B",
+  "legalName": "Example Trading Pte Ltd",
+  "addressLine1": "1 Example Road",
+  "postalCode": "048581",
+  "approvedSchemes": [
+    {
+      "scheme": "MES",
+      "effectiveFrom": "2016-01-01",
+      "effectiveTo": "2016-12-31"
+    },
+    {
+      "scheme": "MES",
+      "effectiveFrom": "2017-01-01",
+      "effectiveTo": "2017-12-31"
+    },
+    {
+      "scheme": "MES",
+      "effectiveFrom": "2018-01-01",
+      "effectiveTo": "2018-12-31"
+    },
+    {
+      "scheme": "MES",
+      "effectiveFrom": "2019-01-01",
+      "effectiveTo": "2019-12-31"
+    },
+    {
+      "scheme": "MES",
+      "effectiveFrom": "2020-01-01",
+      "effectiveTo": "2020-12-31"
+    },
+    {
+      "scheme": "MES",
+      "effectiveFrom": "2021-01-01",
+      "effectiveTo": "2021-12-31"
+    },
+    {
+      "scheme": "MES",
+      "effectiveFrom": "2022-01-01",
+      "effectiveTo": "2022-12-31"
+    },
+    {
+      "scheme": "MES",
+      "effectiveFrom": "2023-01-01",
+      "effectiveTo": "2023-12-31"
+    },
+    {
+      "scheme": "MES",
+      "effectiveFrom": "2024-01-01",
+      "effectiveTo": "2024-12-31"
+    },
+    {
+      "scheme": "MES",
+      "effectiveFrom": "2025-01-01",
+      "effectiveTo": "2025-12-31"
+    },
+    {
+      "scheme": "MES",
+      "effectiveFrom": "2026-01-01",
+      "effectiveTo": "2026-12-31"
+    }
+  ]
+}

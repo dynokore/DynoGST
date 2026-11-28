@@ -1,0 +1,19 @@
+{
+  "counterpartyRef": "CP-1001",
+  "uen": "201954321B",
+  "legalName": "Example Trading Pte Ltd",
+  "addressLine1": "1 Example Road",
+  "postalCode": "048581",
+  "approvedSchemes": [
+    {
+      "scheme": "MES",
+      "effectiveFrom": "2026-01-01",
+      "effectiveTo": "2026-12-31",
+      "evidenceRef": "EVD-2201"
+    },
+    {
+      "scheme": "A3PL",
+      "effectiveFrom": "2027-01-01"
+    }
+  ]
+}
