@@ -20,6 +20,7 @@ import com.dynokore.gst.canonical.domain.inbound.UuidKey
 import com.dynokore.gst.canonical.domain.netting.Derived
 import com.dynokore.gst.canonical.domain.netting.DocumentFunction
 import com.dynokore.platform.serviceruntime.persistence.UpdateOutcome
+import io.kotest.assertions.withClue
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -365,6 +366,26 @@ class RowWritingResultBuilderTest {
         r.counterpartyOnNetwork shouldBe null
         r.debitNote shouldBe null
         r.selfBillingAssignment shouldBe null
+    }
+
+    @Test
+    fun `INV-AC-29286 a recorded debit note is announced with debitNote true`() {
+        rowWriter.write(command().copy(documentFunction = DocumentFunction.DEBIT_NOTE), d1, 1, facts())
+        staged.single().routingFacts shouldBe
+            RoutingFactsData(RoutingDirection.SALE, RoutingNetworkPath.NOT_ON_NETWORK, debitNote = true)
+    }
+
+    @Test
+    fun `INV-AC-29286 every other document function is announced with no debitNote`() {
+        val others = DocumentFunction.entries - DocumentFunction.DEBIT_NOTE
+        others.forEach { rowWriter.write(command().copy(documentFunction = it), d1, 1, facts()) }
+        staged.size shouldBe others.size
+        others.zip(staged).forEach { (function, announced) ->
+            withClue(function) {
+                announced.routingFacts shouldBe
+                    RoutingFactsData(RoutingDirection.SALE, RoutingNetworkPath.NOT_ON_NETWORK)
+            }
+        }
     }
 
     @Test

@@ -7,6 +7,7 @@ import com.dynokore.gst.canonical.domain.document.Direction
 import com.dynokore.gst.canonical.domain.document.NewDocument
 import com.dynokore.gst.canonical.domain.inbound.InboundEvent
 import com.dynokore.gst.canonical.domain.inbound.InboundKind
+import com.dynokore.gst.canonical.domain.netting.DocumentFunction
 import com.dynokore.gst.canonical.domain.source.SourceKey
 import com.dynokore.platform.serviceruntime.persistence.UpdateOutcome
 import java.util.UUID
@@ -137,5 +138,6 @@ class DocumentRowWriter(
         RoutingFactsData(
             direction = RoutingDirection.valueOf(checkNotNull(command.direction) { "direction is absent" }.name),
             networkPath = command.networkPath,
+            debitNote = true.takeIf { command.documentFunction == DocumentFunction.DEBIT_NOTE },
         )
 }
