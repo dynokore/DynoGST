@@ -183,6 +183,11 @@ class LookupWiringTest {
             override fun <T> inTransaction(block: () -> T): T = block()
         }
 
+    private fun provider(request: HttpServletRequest) =
+        object : ObjectProvider<HttpServletRequest> {
+            override fun getObject(): HttpServletRequest = request
+        }
+
     @Test
     fun `INV-AC-20576 the use case bean behaves as the one built by hand and reads through chainRecordReader`() {
         val replica = replica()
@@ -241,9 +246,7 @@ class LookupWiringTest {
                 ),
                 configuration.decisionTraceLookup(replica(), dsl(recorded)),
                 configuration.transmittedVersionLookup(replica(), dsl(recorded), noTransaction),
-                object : ObjectProvider<HttpServletRequest> {
-                    override fun getObject(): HttpServletRequest = request
-                },
+                provider(request),
                 configuration.chainPageCursor(MountedFileSecretStore(Path.of("not-used"))),
                 clock,
             )
@@ -265,8 +268,8 @@ class LookupWiringTest {
         val read = mutableListOf<String>()
 
         override fun read(ref: SecretRef): Secret {
-            read += ref.path
-            return if (ref.path == name) Secret("k".repeat(32)) else throw SecretNotFound(ref)
+            read += ref.value
+            return if (ref.value == name) Secret("k".repeat(32)) else throw SecretNotFound(ref)
         }
     }
 

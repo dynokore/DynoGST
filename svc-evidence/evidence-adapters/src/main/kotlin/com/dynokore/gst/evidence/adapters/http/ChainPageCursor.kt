@@ -74,8 +74,10 @@ class ChainPageCursor(
     /** The payload must be the exact bytes [payloadOf] writes: no second spelling of a signed value is accepted. */
     private fun parse(payload: ByteArray): Pair<ChainCursor, Long>? =
         runCatching {
-            val (appliedAt, kind, seq, issued) = String(payload, Charsets.UTF_8).split('\n')
-            ChainCursor(Instant.parse(appliedAt), ChainItemKind.valueOf(kind), seq.toLong()) to issued.toLong()
+            val fields = String(payload, Charsets.UTF_8).split('\n')
+            val position =
+                ChainCursor(Instant.parse(fields[0]), ChainItemKind.valueOf(fields[1]), fields[2].toLong())
+            position to fields[ISSUED].toLong()
         }.getOrNull()?.takeIf { payloadOf(it.first, it.second).contentEquals(payload) }
 
     private fun currentKey(): MacKey =
@@ -128,6 +130,7 @@ class ChainPageCursor(
         const val LAYOUT = "chain-v1"
         val MAX_AGE: Duration = Duration.ofHours(24)
         private const val PARTS = 3
+        private const val ISSUED = 3
         private val ENCODER = Base64.getUrlEncoder().withoutPadding()
         private val DECODER = Base64.getUrlDecoder()
         private val LOG: Logger = LoggerFactory.getLogger(ChainPageCursor::class.java)

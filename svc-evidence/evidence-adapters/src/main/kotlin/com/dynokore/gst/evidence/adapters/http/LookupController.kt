@@ -76,11 +76,11 @@ class LookupRefusalAdvice {
  * `getAcknowledgementChain` (INV-T-20577; INV-REQ-691): the permission is decided inside [AcknowledgementChainLookup]
  * through `AuthorityReplica.decideTenant`; this class reads no role name. Order: the caller's verified tenant (401),
  * the request against the contract (400, no store read; a cursor that [ChainPageCursor] refuses is part of it), then
- * the use case: Found 200, NotFound 404, Forbidden 403,
- * Incomplete 500 (never an empty 200).
+ * the use case: Found 200, NotFound 404, Forbidden 403, Incomplete 500 (never an empty 200).
  */
 @RestController
-@Suppress("TooManyFunctions") // one method per operation of the generated LookupApi
+// one method per operation of the generated LookupApi; injected: its use cases, the request, the cursor and its clock
+@Suppress("TooManyFunctions", "LongParameterList")
 open class LookupController(
     private val acknowledgementChain: AcknowledgementChainLookup,
     private val reverseLookup: ReverseLookup,
@@ -99,11 +99,7 @@ open class LookupController(
             requests.getObject().getAttribute(EndUserPrincipalBindingFilter.PRINCIPAL_ATTRIBUTE) as? EndUserPrincipal
         val tenant = caller?.tenant ?: throw LookupRefusal(ClosedErrorCode.UNAUTHENTICATED)
         requireContract(ackId, limit)
-        val after =
-            cursor?.let {
-                chainCursors.open(it, tenant, caller.actor, ackId, clock.instant())
-                    ?: throw LookupRefusal(ClosedErrorCode.CONTRACT_VIOLATION)
-            }
+        val after = cursor?.let { positionOf(it, tenant, caller, ackId) }
         val context =
             EventContext(
                 tenant,
@@ -126,7 +122,7 @@ open class LookupController(
                     context,
                 )
         ) {
-            is ChainLookupResult.Found -> ResponseEntity.ok(chain(result, tenant, caller.actor))
+            is ChainLookupResult.Found -> ResponseEntity.ok(chain(result, tenant, caller))
             ChainLookupResult.NotFound -> refuse(ClosedErrorCode.NOT_FOUND)
             ChainLookupResult.Forbidden -> refuse(ClosedErrorCode.ACCESS_DENIED)
             ChainLookupResult.Incomplete -> refuse(ClosedErrorCode.INTERNAL_ERROR)
@@ -314,12 +310,21 @@ open class LookupController(
         if (limit !in 1..AcknowledgementChainLookup.MAX_LIMIT) throw LookupRefusal(ClosedErrorCode.CONTRACT_VIOLATION)
     }
 
+    /** The signed position of [cursor]; one that [ChainPageCursor] refuses breaks the contract (SRT-001). */
+    private fun positionOf(
+        cursor: String,
+        tenant: TenantId,
+        caller: EndUserPrincipal,
+        ackId: String,
+    ) = chainCursors.open(cursor, tenant, caller.actor, ackId, clock.instant())
+        ?: throw LookupRefusal(ClosedErrorCode.CONTRACT_VIOLATION)
+
     private fun correlation(): String = CorrelationContext.currentCorrelationId()?.value ?: UUID.randomUUID().toString()
 
     private fun chain(
         found: ChainLookupResult.Found,
         tenant: TenantId,
-        userId: String,
+        caller: EndUserPrincipal,
     ) = EvidenceChain(
         ackId = found.ackId,
         docUuid = found.docUuid,
@@ -328,7 +333,7 @@ open class LookupController(
         integrityStatus = IntegrityResult.valueOf(found.integrityStatus.name),
         items = found.items.map(::item),
         nextCursor =
-            found.nextCursor?.let { chainCursors.issue(tenant, userId, found.ackId, it, clock.instant()) },
+            found.nextCursor?.let { chainCursors.issue(tenant, caller.actor, found.ackId, it, clock.instant()) },
     )
 
     private fun item(item: ChainItem) =

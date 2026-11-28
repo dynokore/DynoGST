@@ -150,13 +150,16 @@ class DecisionTraceControllerTest {
                 },
             ),
             TransmittedVersionLookup(replica(granted), TransmittedVersionReader { _, _, _ -> error("not used") }),
-            object : ObjectProvider<HttpServletRequest> {
-                override fun getObject(): HttpServletRequest = request
-            },
+            provider(request),
             ChainPageCursor(MountedFileSecretStore(Path.of("not-used"))),
             clock,
         )
     }
+
+    private fun provider(request: HttpServletRequest) =
+        object : ObjectProvider<HttpServletRequest> {
+            override fun getObject(): HttpServletRequest = request
+        }
 
     private fun user(tenant: TenantId? = this.tenant) = EndUserPrincipal("user-42", tenant, emptySet())
 

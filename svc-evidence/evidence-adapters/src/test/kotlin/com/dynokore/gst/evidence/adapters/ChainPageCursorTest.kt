@@ -91,7 +91,9 @@ class ChainPageCursorTest {
     fun `INV-AC-29278 every altered token and every second spelling of a signed value is refused`() {
         val token = issued()
         val (version, payload, tag) = token.split('.')
-        val (appliedAt, kind, seq, issuedAt) = payloadFields(token)
+        val fields = payloadFields(token)
+        val (appliedAt, kind, seq) = fields
+        val issuedAt = fields.last()
         val flipped = (if (tag[0] == 'A') "B" else "A") + tag.drop(1)
         val altered =
             mapOf(
