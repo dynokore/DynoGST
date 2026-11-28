@@ -7,14 +7,13 @@ import com.dynokore.gst.transport.domain.AdapterId
 import com.dynokore.gst.transport.domain.AttemptCounts
 import com.dynokore.gst.transport.domain.DocRef
 import com.dynokore.gst.transport.domain.EntityRef
-import com.dynokore.gst.transport.domain.FailureReason
 import com.dynokore.gst.transport.domain.OutcomeKind
 import com.dynokore.gst.transport.domain.TransportOutcome
 import com.dynokore.platform.tenancykernel.PlatformTenantBinding
 import com.dynokore.platform.tenancykernel.TenantContext
 import com.dynokore.platform.tenancykernel.TransactionRunner
 import org.jooq.DSLContext
-import tools.jackson.databind.json.JsonMapper
+import org.jooq.impl.DSL
 import java.time.Instant
 import java.time.ZoneOffset
 import java.util.UUID
@@ -31,8 +30,6 @@ class JooqAttemptLog(
     private val platform: PlatformTenantBinding,
     private val workloadPrincipal: String,
 ) : AttemptLog {
-    private val mapper = JsonMapper.builder().build()
-
     override fun adapterInFlight(doc: DocRef): AdapterId? =
         runner.inTransaction {
             dsl
@@ -80,13 +77,19 @@ class JooqAttemptLog(
                     .where(
                         SUBMISSION_ATTEMPT.DOC_UUID.eq(doc.docUuid),
                         SUBMISSION_ATTEMPT.VERSION.eq(doc.version),
-                        SUBMISSION_ATTEMPT.OUTCOME.`in`(OutcomeKind.ACCEPTED.name, OutcomeKind.REJECTED.name),
+                        DSL.or(
+                            SUBMISSION_ATTEMPT.OUTCOME.eq(OutcomeKind.ACCEPTED.name),
+                            DSL.and(
+                                SUBMISSION_ATTEMPT.OUTCOME.eq(OutcomeKind.REJECTED.name),
+                                SUBMISSION_ATTEMPT.PACKAGE_REF.isNull,
+                            ),
+                        ),
                     ).orderBy(SUBMISSION_ATTEMPT.STARTED_AT.asc())
                     .limit(1)
                     .fetchOne()
             when (row?.outcome) {
                 OutcomeKind.ACCEPTED.name -> TransportOutcome.Accepted(checkNotNull(row.acknowledgementId))
-                OutcomeKind.REJECTED.name -> TransportOutcome.Rejected(readReasons(checkNotNull(row.reasons)))
+                OutcomeKind.REJECTED.name -> TransportOutcome.Rejected(ReasonsJson.read(checkNotNull(row.reasons)))
                 else -> null
             }
         }
@@ -140,7 +143,7 @@ class JooqAttemptLog(
                 }
 
                 is TransportOutcome.Rejected -> {
-                    update.set(SUBMISSION_ATTEMPT.REASONS, writeReasons(outcome.reasons))
+                    update.set(SUBMISSION_ATTEMPT.REASONS, ReasonsJson.write(outcome.reasons))
                 }
 
                 TransportOutcome.TransientFailure -> {
@@ -154,18 +157,4 @@ class JooqAttemptLog(
         adapter: AdapterId,
         since: Instant,
     ): AttemptCounts = AdapterAttemptCountsQuery.counts(dsl, runner, platform, workloadPrincipal, adapter, since)
-
-    private fun writeReasons(reasons: List<FailureReason>): String =
-        mapper.writeValueAsString(
-            reasons.map { mapOf("code" to it.code, "field" to it.field, "message" to it.message) },
-        )
-
-    private fun readReasons(json: String): List<FailureReason> =
-        mapper.readTree(json).toList().map { node ->
-            FailureReason(
-                node.get("code").asString(),
-                node.get("field")?.takeUnless { it.isNull }?.asString(),
-                node.get("message").asString(),
-            )
-        }
 }

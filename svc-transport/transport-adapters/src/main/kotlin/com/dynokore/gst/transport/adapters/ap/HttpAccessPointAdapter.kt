@@ -45,6 +45,7 @@ class HttpAccessPointAdapter(
         LOG.warn("AP notification {} of adapter {} has the unknown type '{}' and is skipped", id, adapterId, type)
     },
 ) : AccessPointPort,
+    PackageSubmission,
     NotificationSource {
     private val mapper = JsonMapper.builder().build()
 
@@ -56,23 +57,30 @@ class HttpAccessPointAdapter(
     override fun submit(
         doc: DocRef,
         payload: String,
+    ): TransportOutcome =
+        post(
+            "${doc.docUuid}-v${doc.version}",
+            listOf(entry(doc, "INVOICE", payload.toByteArray(Charsets.UTF_8).size, payload)),
+        )
+
+    /**
+     * One POST of the whole package to the `submissions` path: one `documents` entry per member in order. The
+     * [packageId] is built by the caller; the AP's answer is translated as [submit] translates it.
+     */
+    override fun submitPackage(
+        packageId: String,
+        documents: List<PackageDocument>,
+    ): TransportOutcome =
+        post(
+            packageId,
+            documents.map { entry(it.doc, it.documentType, it.sizeBytes, it.payload) },
+        )
+
+    private fun post(
+        packageId: String,
+        documents: List<Map<String, Any>>,
     ): TransportOutcome {
-        val body =
-            mapper.writeValueAsString(
-                mapOf(
-                    "packageId" to "${doc.docUuid}-v${doc.version}",
-                    "documents" to
-                        listOf(
-                            mapOf(
-                                "docUuid" to doc.docUuid.toString(),
-                                "version" to doc.version,
-                                "documentType" to "INVOICE",
-                                "sizeBytes" to payload.toByteArray(Charsets.UTF_8).size,
-                                "payload" to payload,
-                            ),
-                        ),
-                ),
-            )
+        val body = mapper.writeValueAsString(mapOf("packageId" to packageId, "documents" to documents))
         val base = endpoints.active().toString().trimEnd('/')
         val target = URI.create("$base/ap/v1/$apPath/submissions")
         lastRequestUri = target
@@ -228,37 +236,6 @@ class HttpAccessPointAdapter(
         )
     }
 
-    private fun JsonNode.text(name: String): String? = get(name)?.takeIf { it.isString }?.asString()
-
-    private fun translate(response: HttpResponse<String>): TransportOutcome =
-        when (response.statusCode()) {
-            HTTP_OK, HTTP_ACCEPTED -> {
-                val receipt =
-                    runCatching {
-                        mapper
-                            .readTree(
-                                response.body(),
-                            ).get("apSubmissionId")
-                            ?.asString()
-                    }.getOrNull()
-                if (receipt.isNullOrBlank()) {
-                    TransportOutcome.TransientFailure
-                } else {
-                    TransportOutcome.Accepted(receipt)
-                }
-            }
-
-            HTTP_UNPROCESSABLE -> {
-                TransportOutcome.Rejected(
-                    listOf(FailureReason(FailureReason.PACKAGE_REFUSED, null, "the payload was refused")),
-                )
-            }
-
-            else -> {
-                TransportOutcome.TransientFailure
-            }
-        }
-
     private companion object {
         val LOG: Logger = LoggerFactory.getLogger(HttpAccessPointAdapter::class.java)
         const val PAGE_LIMIT = 50
@@ -271,12 +248,75 @@ class HttpAccessPointAdapter(
                 "DELIVERY_STATUS" to NotificationTranslator.DELIVERY_STATUS,
                 "INBOUND_DOCUMENT" to NotificationTranslator.INBOUND_NETWORK_DOCUMENT,
             )
-        const val HTTP_OK = 200
         const val HTTP_UNAUTHORIZED = 401
         const val HTTP_FORBIDDEN = 403
-        const val HTTP_ACCEPTED = 202
-        const val HTTP_UNPROCESSABLE = 422
     }
+}
+
+private val MAPPER = JsonMapper.builder().build()
+private const val HTTP_OK = 200
+private const val HTTP_ACCEPTED = 202
+private const val HTTP_UNPROCESSABLE = 422
+
+private fun entry(
+    doc: DocRef,
+    documentType: String,
+    sizeBytes: Int,
+    payload: String,
+): Map<String, Any> =
+    mapOf(
+        "docUuid" to doc.docUuid.toString(),
+        "version" to doc.version,
+        "documentType" to documentType,
+        "sizeBytes" to sizeBytes,
+        "payload" to payload,
+    )
+
+private fun translate(response: HttpResponse<String>): TransportOutcome =
+    when (response.statusCode()) {
+        HTTP_OK, HTTP_ACCEPTED -> {
+            val receipt =
+                runCatching {
+                    MAPPER
+                        .readTree(
+                            response.body(),
+                        ).get("apSubmissionId")
+                        ?.asString()
+                }.getOrNull()
+            if (receipt.isNullOrBlank()) {
+                TransportOutcome.TransientFailure
+            } else {
+                TransportOutcome.Accepted(receipt)
+            }
+        }
+
+        HTTP_UNPROCESSABLE -> {
+            TransportOutcome.Rejected(
+                listOf(FailureReason(FailureReason.PACKAGE_REFUSED, null, "the payload was refused")),
+            )
+        }
+
+        else -> {
+            TransportOutcome.TransientFailure
+        }
+    }
+
+private fun JsonNode.text(name: String): String? = get(name)?.takeIf { it.isString }?.asString()
+
+/** One member of a package as the AP receives it: the document type is the AP's name, the payload is UTF-8 text. */
+data class PackageDocument(
+    val doc: DocRef,
+    val documentType: String,
+    val sizeBytes: Int,
+    val payload: String,
+)
+
+/** The capability of an adapter to take a whole package in one request; [AccessPointPort] does not have it. */
+interface PackageSubmission {
+    fun submitPackage(
+        packageId: String,
+        documents: List<PackageDocument>,
+    ): TransportOutcome
 }
 
 /** The AP's notification page could not be read: nothing was taken from it and the poll cursor is unchanged. */
