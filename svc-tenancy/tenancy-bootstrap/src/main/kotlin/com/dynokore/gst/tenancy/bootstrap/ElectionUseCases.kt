@@ -1,6 +1,7 @@
 package com.dynokore.gst.tenancy.bootstrap
 
 import com.dynokore.gst.tenancy.adapters.election.AccessPointRouteChangedHandler
+import com.dynokore.gst.tenancy.adapters.election.ApportionmentModeProfileExtras
 import com.dynokore.gst.tenancy.adapters.election.AuditLogElectionAudit
 import com.dynokore.gst.tenancy.adapters.election.ConfigElectionPolicyStore
 import com.dynokore.gst.tenancy.adapters.election.ConsumedElectionEvents
@@ -108,9 +109,10 @@ class ElectionUseCases {
         val exempt = ExemptPurchaseProfileExtras(exemptPurchases)
         val cutover = MigrationCutoverProfileExtras(cutovers)
         val purchaseDateBasis = PurchaseDateBasisProfileExtras(elections)
+        val apportionmentMode = ApportionmentModeProfileExtras(elections)
         return ProfileExtras { entityRef ->
             issuance.entries(entityRef) + schemes.entries(entityRef) + exempt.entries(entityRef) +
-                cutover.entries(entityRef) + purchaseDateBasis.entries(entityRef)
+                cutover.entries(entityRef) + purchaseDateBasis.entries(entityRef) + apportionmentMode.entries(entityRef)
         }
     }
 

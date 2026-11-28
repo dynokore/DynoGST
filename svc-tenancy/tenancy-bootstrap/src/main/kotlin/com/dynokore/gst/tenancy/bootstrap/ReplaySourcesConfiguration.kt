@@ -1,11 +1,13 @@
 package com.dynokore.gst.tenancy.bootstrap
 
+import com.dynokore.gst.tenancy.adapters.election.ApportionmentModeProfileExtras
 import com.dynokore.gst.tenancy.adapters.election.PurchaseDateBasisProfileExtras
 import com.dynokore.gst.tenancy.adapters.events.EntityProfileReplaySource
 import com.dynokore.gst.tenancy.adapters.events.OrganisationStructureReplaySource
 import com.dynokore.gst.tenancy.adapters.persistence.JooqReplayReader
 import com.dynokore.gst.tenancy.adapters.persistence.ReplayReader
 import com.dynokore.gst.tenancy.application.election.ElectionPolicyStore
+import com.dynokore.gst.tenancy.application.structure.ProfileEntry
 import com.dynokore.platform.outboxandqueue.ReplayStateSource
 import com.dynokore.platform.tenancykernel.TenantContext
 import org.jooq.DSLContext
@@ -25,7 +27,7 @@ class ReplaySourcesConfiguration {
         dsl: DSLContext,
         tenants: TenantContext,
         elections: ElectionPolicyStore,
-    ): ReplayReader = JooqReplayReader(dsl, tenants, PurchaseDateBasisProfileExtras(elections)::entries)
+    ): ReplayReader = JooqReplayReader(dsl, tenants, replayProfileEntries(elections))
 
     @Bean
     fun organisationStructureReplaySource(
@@ -38,4 +40,11 @@ class ReplaySourcesConfiguration {
         reader: ReplayReader,
         mapper: ObjectMapper,
     ): ReplayStateSource = EntityProfileReplaySource(reader, mapper)
+}
+
+/** The election entries the replay appends to an entity profile: purchase date basis, then apportionment mode. */
+fun replayProfileEntries(elections: ElectionPolicyStore): (String) -> List<ProfileEntry> {
+    val purchaseDateBasis = PurchaseDateBasisProfileExtras(elections)
+    val apportionmentMode = ApportionmentModeProfileExtras(elections)
+    return { entityRef -> purchaseDateBasis.entries(entityRef) + apportionmentMode.entries(entityRef) }
 }
