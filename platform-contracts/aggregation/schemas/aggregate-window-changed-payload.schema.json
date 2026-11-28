@@ -9,6 +9,21 @@
       "type": "string",
       "description": "The registered entity the window belongs to."
     },
+    "businessUnitRef": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 40,
+      "description": "The business unit of the window. A producer always sends both businessUnitRef and aggregateType; a consumer refuses an event that has one without the other. The member is optional in the schema only because the schema is additive-only within a major version (API-41)."
+    },
+    "aggregateType": {
+      "type": "string",
+      "enum": [
+        "POS",
+        "STI",
+        "PCP"
+      ],
+      "description": "The category of the window. A producer always sends both businessUnitRef and aggregateType; a consumer refuses an event that has one without the other. The member is optional in the schema only because the schema is additive-only within a major version (API-41)."
+    },
     "prescribedPeriod": {
       "type": "string",
       "description": "The prescribed period reference."
@@ -60,7 +75,7 @@
     "stateVersion": {
       "type": "integer",
       "minimum": 1,
-      "description": "The producer-owned counter of the key tenant, entityRef, prescribedPeriod, window.from and window.to. It starts at 1 and rises by one for every event the producer publishes for that key. A consumer applies an event only when its stateVersion is greater than the one it holds for the key, and an event without it applies only when the consumer holds no row for the key (fail closed). A producer always sends it; the member is optional in the schema only because the schema is additive-only within a major version (API-41)."
+      "description": "The producer-owned counter of the key tenant, entityRef, prescribedPeriod, window.from and window.to. It starts at 1 and rises strictly with every event the producer publishes for that key. The counter may be shared by windows of several business units and categories, so gaps are normal for one window. A consumer keeps its state and compares stateVersion per tenant, entityRef, prescribedPeriod, window.from, window.to, businessUnitRef and aggregateType; events with neither businessUnitRef nor aggregateType form an identity of their own. A consumer applies an event only when its stateVersion is greater than the one it holds for that identity, and an event without it applies only when the consumer holds no row for that identity (fail closed). A producer always sends it; the member is optional in the schema only because the schema is additive-only within a major version (API-41)."
     }
   },
   "required": [

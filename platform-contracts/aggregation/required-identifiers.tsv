@@ -56,3 +56,9 @@ spanKnown	property	schemas/aggregate-window-changed-payload.schema.json	INV-REQ-
 listAggregationIntake	operation	openapi.yaml	INV-REQ-867
 listAggregationIntake.200	operation_response	openapi.yaml	INV-REQ-867
 listAggregationIntake.default	operation_response	openapi.yaml	INV-REQ-867
+# INV-T-29424 (INV-AC-29420): the business unit and the category of the window of the AggregateWindowChanged payload (INV-REQ-413).
+businessUnitRef	property	schemas/aggregate-window-changed-payload.schema.json	INV-REQ-413
+aggregateType	property	schemas/aggregate-window-changed-payload.schema.json	INV-REQ-413
+POS	enum_value	schemas/aggregate-window-changed-payload.schema.json	INV-REQ-413
+STI	enum_value	schemas/aggregate-window-changed-payload.schema.json	INV-REQ-413
+PCP	enum_value	schemas/aggregate-window-changed-payload.schema.json	INV-REQ-413
