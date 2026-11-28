@@ -42,3 +42,5 @@ channel	accessSignedLinkOutcomeRecorded	INV-T-17443	done
 operation	correctCounterpartyData	INV-T-27119	done
 operation	exportIdentityTriples	INV-T-26963	open
 operation	diffIdentityTripleBundle	INV-T-26963	open
+operation	dryRunRateImport	INV-T-28563	open
+operation	getRateImportDryRun	INV-T-28563	open

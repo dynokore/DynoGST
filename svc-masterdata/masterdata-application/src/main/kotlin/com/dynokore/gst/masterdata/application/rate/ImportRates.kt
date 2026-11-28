@@ -64,18 +64,97 @@ data class RejectedRateRow(
     val field: String,
 )
 
+/** The parts of a rate-file request the validation reads; the dry run and the apply send the same ones. */
+interface RateFile {
+    val entity: String
+    val source: String
+    val rangeFrom: LocalDate
+    val rowCount: Int
+    val rows: List<RateRow>
+}
+
 data class ImportRatesCommand(
-    val entity: String,
+    override val entity: String,
     /** The token's principal, never a request field. */
     val actor: String,
-    val source: String,
-    val rangeFrom: LocalDate,
+    override val source: String,
+    override val rangeFrom: LocalDate,
     val rangeTo: LocalDate,
     val importId: String,
     val fileHash: String,
-    val rowCount: Int,
-    val rows: List<RateRow>,
-)
+    override val rowCount: Int,
+    override val rows: List<RateRow>,
+) : RateFile
+
+/** Why a whole rate file is refused. */
+internal enum class RateFileRefusal { SOURCE_NOT_ELECTED, SOURCE_NOT_APPROVED, ROW_COUNT_MISMATCH }
+
+/** One row after the currency and rate rules: [Valid] with its parsed rate, or [Rejected]. */
+internal sealed interface CheckedRateRow {
+    data class Valid(
+        val rate: BigDecimal,
+    ) : CheckedRateRow
+
+    data class Rejected(
+        val rejected: RejectedRateRow,
+    ) : CheckedRateRow
+}
+
+/** The one validation of a rate file, shared by the dry run and the apply (INV-REQ-506). Reads only. */
+internal class RateFileRules(
+    private val elected: ElectedRateSource,
+    private val approved: ApprovedRateSources,
+) {
+    /** The election, approval and row-count rules; null when the file as a whole is accepted. */
+    fun refusal(file: RateFile): RateFileRefusal? {
+        // Point-in-time: each distinct row date (the range start when there are no rows) is judged by its own election.
+        val dates =
+            file.rows
+                .map { it.date }
+                .distinct()
+                .ifEmpty { listOf(file.rangeFrom) }
+        val elections = dates.associateWith { elected.elected(file.entity, it) }
+        return if (elections.values.any { it == null || it.source != file.source }) {
+            RateFileRefusal.SOURCE_NOT_ELECTED
+        } else if (elections.any { (date, election) -> !isApproved(file.source, election, date) }) {
+            RateFileRefusal.SOURCE_NOT_APPROVED
+        } else if (file.rows.size != file.rowCount) {
+            RateFileRefusal.ROW_COUNT_MISMATCH
+        } else {
+            null
+        }
+    }
+
+    /** The currency and rate rules of one row. */
+    fun check(row: RateRow): CheckedRateRow {
+        val rate = row.rate.trim().toBigDecimalOrNull()
+        return if (!CURRENCY.matches(row.baseCurrency)) {
+            rejected(row, RateRowRejection.CURRENCY_INVALID, "baseCurrency")
+        } else if (!CURRENCY.matches(row.quoteCurrency)) {
+            rejected(row, RateRowRejection.CURRENCY_INVALID, "quoteCurrency")
+        } else if (rate == null || rate.signum() <= 0) {
+            rejected(row, RateRowRejection.RATE_INVALID, "rate")
+        } else {
+            CheckedRateRow.Valid(rate)
+        }
+    }
+
+    private fun rejected(
+        row: RateRow,
+        reason: RateRowRejection,
+        field: String,
+    ) = CheckedRateRow.Rejected(RejectedRateRow(row.row, reason, field))
+
+    private fun isApproved(
+        source: String,
+        election: ElectedRate?,
+        date: LocalDate,
+    ) = election != null && approved.isApproved(source, election.basis, date)
+
+    private companion object {
+        val CURRENCY = Regex("^[A-Z]{3}$")
+    }
+}
 
 sealed interface ImportRatesOutcome {
     data class Loaded(
@@ -109,32 +188,18 @@ sealed interface ImportRatesOutcome {
 class ImportRates(
     private val tx: TransactionRunner,
     private val store: RateStore,
-    private val elected: ElectedRateSource,
-    private val approved: ApprovedRateSources,
+    elected: ElectedRateSource,
+    approved: ApprovedRateSources,
     private val publisher: ReferenceRateLoadedPublisher,
     private val imports: RateImportStore,
     private val clock: Clock,
     private val runner: LongRunner,
 ) {
+    private val rules = RateFileRules(elected, approved)
+
     fun handle(command: ImportRatesCommand): ImportRatesOutcome {
-        // Point-in-time: each distinct row date (the range start when there are no rows) is judged by its own election.
-        val dates =
-            command.rows
-                .map { it.date }
-                .distinct()
-                .ifEmpty { listOf(command.rangeFrom) }
-        val elections = dates.associateWith { elected.elected(command.entity, it) }
-        val outcome =
-            if (elections.values.any { it == null || it.source != command.source }) {
-                ImportRatesOutcome.SourceNotElected
-            } else if (elections.any { (date, election) -> !isApproved(command.source, election, date) }) {
-                ImportRatesOutcome.SourceNotApproved
-            } else if (command.rows.size != command.rowCount) {
-                ImportRatesOutcome.RowCountMismatch
-            } else {
-                null
-            }
-        if (outcome != null) return outcome
+        val refusal = rules.refusal(command)
+        if (refusal != null) return outcomeOf(refusal)
         val running = tx.inTransaction { startRecord(command) }
         val done = runner.run { work(command) }
         return when (done) {
@@ -148,6 +213,13 @@ class ImportRates(
             }
         }
     }
+
+    private fun outcomeOf(refusal: RateFileRefusal) =
+        when (refusal) {
+            RateFileRefusal.SOURCE_NOT_ELECTED -> ImportRatesOutcome.SourceNotElected
+            RateFileRefusal.SOURCE_NOT_APPROVED -> ImportRatesOutcome.SourceNotApproved
+            RateFileRefusal.ROW_COUNT_MISMATCH -> ImportRatesOutcome.RowCountMismatch
+        }
 
     private fun startRecord(command: ImportRatesCommand) =
         imports.insertRunning(
@@ -200,29 +272,22 @@ class ImportRates(
         )
     }
 
-    private fun isApproved(
-        source: String,
-        election: ElectedRate?,
-        date: LocalDate,
-    ) = election != null && approved.isApproved(source, election.basis, date)
-
     private fun load(command: ImportRatesCommand): Pair<List<ExchangeRate>, List<RejectedRateRow>> {
         val stored = mutableListOf<ExchangeRate>()
         val rejected = mutableListOf<RejectedRateRow>()
         for (row in command.rows) {
-            val rate = row.rate.trim().toBigDecimalOrNull()
-            if (!CURRENCY.matches(row.baseCurrency)) {
-                rejected += RejectedRateRow(row.row, RateRowRejection.CURRENCY_INVALID, "baseCurrency")
-            } else if (!CURRENCY.matches(row.quoteCurrency)) {
-                rejected += RejectedRateRow(row.row, RateRowRejection.CURRENCY_INVALID, "quoteCurrency")
-            } else if (rate == null || rate.signum() <= 0) {
-                rejected += RejectedRateRow(row.row, RateRowRejection.RATE_INVALID, "rate")
-            } else {
-                val record = record(command, row, rate)
-                if (store.save(record) == SaveResult.Saved) {
-                    stored += record
-                } else {
-                    rejected += RejectedRateRow(row.row, RateRowRejection.REVISION_CONFLICT, "rate")
+            when (val checked = rules.check(row)) {
+                is CheckedRateRow.Rejected -> {
+                    rejected += checked.rejected
+                }
+
+                is CheckedRateRow.Valid -> {
+                    val record = record(command, row, checked.rate)
+                    if (store.save(record) == SaveResult.Saved) {
+                        stored += record
+                    } else {
+                        rejected += RejectedRateRow(row.row, RateRowRejection.REVISION_CONFLICT, "rate")
+                    }
                 }
             }
         }
@@ -246,9 +311,5 @@ class ImportRates(
             revision = (previous?.revision ?: 0) + 1,
             importId = command.importId,
         )
-    }
-
-    private companion object {
-        val CURRENCY = Regex("^[A-Z]{3}$")
     }
 }
