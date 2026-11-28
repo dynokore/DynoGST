@@ -135,6 +135,14 @@ internal class JooqEntityStore(
 ) : EntityStore {
     override fun entity(ref: String): EntityRecord? = rows().where(ENTITY.REF.eq(ref)).fetchOne()?.let(::toEntity)
 
+    override fun entityForUpdate(ref: String): EntityRecord? =
+        rows()
+            .where(ENTITY.REF.eq(ref))
+            .forUpdate()
+            .of(ENTITY)
+            .fetchOne()
+            ?.let(::toEntity)
+
     override fun draftEntity(
         groupRef: String,
         legalName: String,

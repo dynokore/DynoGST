@@ -48,6 +48,8 @@ private class DvStructure(
 ) : StructureStore {
     override fun entity(ref: String): EntityRecord? = entities.firstOrNull { it.ref == ref }
 
+    override fun entityForUpdate(ref: String): EntityRecord? = entity(ref)
+
     override fun nextStructureVersion(): Long = 1L
 
     override fun group(ref: String): GroupRecord? = null

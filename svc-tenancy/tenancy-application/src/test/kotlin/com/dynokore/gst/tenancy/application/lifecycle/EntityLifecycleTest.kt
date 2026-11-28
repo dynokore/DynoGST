@@ -70,14 +70,43 @@ class EntityLifecycleTest {
     private var publishFailure = false
     private val elected = ElectionKind.entries.toMutableSet()
 
+    /** One read of an entity by a use case: the port method, the reference and whether a transaction was open. */
+    private data class EntityRead(
+        val method: String,
+        val ref: Any?,
+        val inTransaction: Boolean,
+    )
+
+    private val reads = mutableListOf<EntityRead>()
+    private var openTransactions = 0
+
     private val structure: StructureStore =
         proxy(StructureStore::class.java) { method, args ->
             when (method.name) {
-                "entity" -> current.takeIf { it.ref == args[0] }
-                "nextStructureVersion" -> current.structureVersion + 1
-                "touchEntity" -> Unit
-                else -> error("${method.name} is not used")
+                "entity", "entityForUpdate" -> {
+                    reads += EntityRead(method.name, args[0], openTransactions > 0)
+                    current.takeIf { it.ref == args[0] }
+                }
+
+                "nextStructureVersion" -> {
+                    current.structureVersion + 1
+                }
+
+                "touchEntity" -> {
+                    Unit
+                }
+
+                else -> {
+                    error("${method.name} is not used")
+                }
             }
+        }
+
+    /** The election gate's own store, so [reads] holds only the reads the lifecycle use cases make themselves. */
+    private val electionStructure: StructureStore =
+        proxy(StructureStore::class.java) { method, args ->
+            check(method.name == "entity") { "${method.name} is not used" }
+            current.takeIf { it.ref == args[0] }
         }
     private val policies: ElectionPolicyStore =
         proxy(ElectionPolicyStore::class.java) { method, args ->
@@ -126,6 +155,7 @@ class EntityLifecycleTest {
             override fun <T> inTransaction(block: () -> T): T {
                 val savedState = current
                 val savedOutbox = outbox.toList()
+                openTransactions++
                 return try {
                     block()
                 } catch (e: IllegalStateException) {
@@ -133,6 +163,8 @@ class EntityLifecycleTest {
                     outbox.clear()
                     outbox += savedOutbox
                     throw e
+                } finally {
+                    openTransactions--
                 }
             }
         }
@@ -171,7 +203,7 @@ class EntityLifecycleTest {
             SecondConfirmation(authority),
             coverage,
             certifications,
-            ElectionGate(ElectionStatusQueries(tx, structure, policies, facts)),
+            ElectionGate(ElectionStatusQueries(tx, electionStructure, policies, facts)),
             lifecycleStore,
             statuses,
             { emptyList() },
@@ -582,6 +614,72 @@ class EntityLifecycleTest {
         finalPeriod = FinalPeriod { ref, date -> calls.add(ref to date).let { PeriodOutcome.Done(emptyList()) } }
         deregister().handle("E1", LocalDate.of(2026, 8, 15), null)
         assertEquals(listOf("E1" to LocalDate.of(2026, 8, 15)), calls)
+    }
+
+    // ---- the locking read (INV-AC-29441) ----
+
+    private fun assertOneLockedRead() = assertEquals(listOf(EntityRead("entityForUpdate", "E1", true)), reads)
+
+    @Test
+    fun `INV-AC-29441 goLive writing path reads the entity once through the locking read in its transaction`() {
+        certify(CertificationOutcome.PASSED)
+        assertInstanceOf(LifecycleOutcome.Done::class.java, live())
+        assertEquals("LIVE", current.lifecycleState)
+        assertOneLockedRead()
+    }
+
+    @Test
+    fun `INV-AC-29441 goLive repeat reads the entity once through the locking read in its transaction`() {
+        current = current.copy(lifecycleState = "LIVE")
+        assertTrue(assertInstanceOf(LifecycleOutcome.Done::class.java, live()).repeated)
+        assertTrue(outbox.isEmpty())
+        assertOneLockedRead()
+    }
+
+    @Test
+    fun `INV-AC-29441 goLive refusal reads the entity once through the locking read in its transaction`() {
+        refused(live())
+        assertUntouched()
+        assertOneLockedRead()
+    }
+
+    @Test
+    fun `INV-AC-29441 suspendEntity writing path reads the entity once through the locking read in its transaction`() {
+        current = current.copy(lifecycleState = "LIVE")
+        assertInstanceOf(LifecycleOutcome.Done::class.java, suspend().handle("E1"))
+        assertEquals("SUSPENDED", current.lifecycleState)
+        assertOneLockedRead()
+    }
+
+    @Test
+    fun `INV-AC-29441 suspendEntity repeat reads the entity once through the locking read in its transaction`() {
+        current = current.copy(lifecycleState = "SUSPENDED")
+        val done = assertInstanceOf(LifecycleOutcome.Done::class.java, suspend().handle("E1"))
+        assertTrue(done.repeated)
+        assertTrue(outbox.isEmpty())
+        assertOneLockedRead()
+    }
+
+    @Test
+    fun `INV-AC-29441 suspendEntity refusal reads the entity once through the locking read in its transaction`() {
+        assertInstanceOf(LifecycleOutcome.Conflict::class.java, suspend().handle("E1"))
+        assertUntouched()
+        assertOneLockedRead()
+    }
+
+    @Test
+    fun `INV-AC-29441 deregisterEntity writing path reads the entity through the locking read in its transaction`() {
+        assertInstanceOf(LifecycleOutcome.Done::class.java, deregister().handle("E1", today, null))
+        assertEquals("DEREGISTERED", current.lifecycleState)
+        assertOneLockedRead()
+    }
+
+    @Test
+    fun `INV-AC-29441 deregisterEntity refusal reads the entity once through the locking read in its transaction`() {
+        unsubmitted = UnsubmittedDocuments { _, _ -> 3 }
+        assertInstanceOf(LifecycleOutcome.Conflict::class.java, deregister().handle("E1", today, null))
+        assertUntouched()
+        assertOneLockedRead()
     }
 
     // ---- events and rollback ----

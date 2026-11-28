@@ -164,6 +164,8 @@ class ExemptPurchaseElectionsTest {
     ) : EntityStore {
         override fun entity(ref: String): EntityRecord? = entity.takeIf { it.ref == ref }
 
+        override fun entityForUpdate(ref: String): EntityRecord? = entity(ref)
+
         override fun draftEntity(
             groupRef: String,
             legalName: String,

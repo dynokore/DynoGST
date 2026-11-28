@@ -217,7 +217,7 @@ class GoLive internal constructor(
     ): LifecycleOutcome {
         if (secondConfirmationBy.isNullOrEmpty()) return LifecycleOutcome.Invalid("secondConfirmationBy is required")
         return tx.inTransaction {
-            val entity = structure.entity(entityRef) ?: return@inTransaction LifecycleOutcome.NotFound
+            val entity = structure.entityForUpdate(entityRef) ?: return@inTransaction LifecycleOutcome.NotFound
             when (confirmation.verdict(caller, secondConfirmationBy, entity.ref)) {
                 ConfirmationVerdict.SAME_PERSON -> {
                     LifecycleOutcome.Forbidden("the confirmer is the caller")
@@ -307,7 +307,7 @@ class SuspendEntity internal constructor(
 
     fun handle(entityRef: String): LifecycleOutcome =
         tx.inTransaction {
-            val entity = structure.entity(entityRef) ?: return@inTransaction LifecycleOutcome.NotFound
+            val entity = structure.entityForUpdate(entityRef) ?: return@inTransaction LifecycleOutcome.NotFound
             when (entity.lifecycleState) {
                 LifecycleState.LIVE.name -> {
                     writer.write(entity, LifecycleState.SUSPENDED, today())
@@ -373,7 +373,7 @@ class DeregisterEntity internal constructor(
     ): LifecycleOutcome {
         if (registrationEndDate == null) return LifecycleOutcome.Invalid("registrationEndDate is required")
         return tx.inTransaction {
-            val entity = structure.entity(entityRef) ?: return@inTransaction LifecycleOutcome.NotFound
+            val entity = structure.entityForUpdate(entityRef) ?: return@inTransaction LifecycleOutcome.NotFound
             val unsubmitted =
                 try {
                     documents.count(OffboardingScope.ENTITY, entity.ref)

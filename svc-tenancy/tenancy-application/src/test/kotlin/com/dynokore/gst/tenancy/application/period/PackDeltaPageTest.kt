@@ -59,6 +59,8 @@ private class Structure(
 
     override fun entity(ref: String): EntityRecord? = entities.firstOrNull { it.ref == ref }
 
+    override fun entityForUpdate(ref: String): EntityRecord? = entity(ref)
+
     override fun nextStructureVersion(): Long = (drawn.size + 10L).also { drawn += it }
 
     override fun group(ref: String): GroupRecord? = null

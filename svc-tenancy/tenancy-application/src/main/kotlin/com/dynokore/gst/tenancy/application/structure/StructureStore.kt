@@ -59,6 +59,9 @@ interface GroupStore {
 interface EntityStore {
     fun entity(ref: String): EntityRecord?
 
+    /** The entity read under a row lock held until the transaction ends. */
+    fun entityForUpdate(ref: String): EntityRecord?
+
     fun draftEntity(
         groupRef: String,
         legalName: String,
