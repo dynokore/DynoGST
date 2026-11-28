@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: evidence API
-  version: 1.22.1
+  version: 1.23.0
   description: >-
     Contract-first source of truth for evidence (API-01, STK-44). The
     `evidence-contract` module generates its server interfaces and DTOs
@@ -216,12 +216,18 @@ paths:
         and otherwise the nil UUID 00000000-0000-0000-0000-000000000000,
         and no DECISION_TRACE item. Its chain has `imported` true and
         `importedGaps` (INV-REQ-954, INV-AC-1046).
+
+
+        Answers 409 EVD-010 when a version of the chain has a pack version
+        with no recorded source (INV-REQ-1345). The code is the whole
+        refusal, and the service never answers 200 without `reproduction`
+        for a chain that is not imported.
       tags: [lookup]
       x-principal: reporting
       x-caller-auth: end-user
       x-sync-edge: console-bff->evidence-svc
       x-timeout: 2000
-      x-error-codes: []
+      x-error-codes: [EVD-010]
       x-requirements: [INV-REQ-691, INV-REQ-723, INV-REQ-711, INV-REQ-725, INV-REQ-726, INV-REQ-1345, INV-REQ-664]
       parameters:
         - name: ackId
@@ -275,6 +281,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RetrievalPending'
+        '409':
+          description: >-
+            EVD-010, a version of the chain has a pack version with no
+            recorded source. The code is the whole refusal, and the service
+            never answers 200 without `reproduction` for a chain that is not
+            imported.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '../service-runtime/schemas/error-envelope.schema.json'
         default:
           $ref: '#/components/responses/Error'
   /internal/v1/evidence/lookup:

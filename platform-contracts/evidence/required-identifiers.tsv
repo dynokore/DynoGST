@@ -130,3 +130,5 @@ submittedAt	property	openapi.yaml	INV-REQ-645
 acknowledgedAt	property	openapi.yaml	INV-REQ-645
 xmlBase64	property	openapi.yaml	INV-REQ-645
 xmlSha256	property	openapi.yaml	INV-REQ-645
+getAcknowledgementChain.EVD-010	operation_error_code	openapi.yaml	INV-REQ-1345
+getAcknowledgementChain.409	operation_response	openapi.yaml	INV-REQ-1345
