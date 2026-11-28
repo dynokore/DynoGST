@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: rules API
-  version: 2.12.1
+  version: 2.13.0
   description: >-
     Contract-first source of truth for rules (API-01, STK-44). The
     `rules-contract` module generates its server interfaces and DTOs
@@ -695,6 +695,78 @@ paths:
           $ref: '#/components/responses/Error'
         '409':
           description: The pack is not in a state that accepts an acceptance, or the entry is already PRIMARY (SRT-008).
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+  /internal/v1/rules/mapping-packs/{packId}/entries/{entryId}/source-class-acceptance/withdrawal:
+    post:
+      operationId: withdrawSourceClassAcceptance
+      summary: Withdraw the caller's own acceptance of a non-PRIMARY mapping entry before approval
+      description: >-
+        Command to console-bff (INV-REQ-729, RUL-007). Withdraws the acceptance
+        in force for this entry alone. A pack or entry that is not found for the
+        entity answers 404 SRT-005. A caller not allowed by the scoped key
+        `mapping-pack.approve`, decided per request by the service
+        (`AuthorityReplica.decide`), or a call for an acceptance in force that
+        was given by another user, answers 403 SRT-004 with a detail that names
+        no person. A pack of status APPROVED or ACTIVE answers 409 SRT-008. A
+        success, or a repeat with no acceptance in force, answers 200 with the
+        `MappingEntry` (`accepted` false); a repeat changes nothing. A refusal
+        changes nothing. The withdrawal writes an audit entry holding the acting
+        user ID in the same transaction as the change. After it the entry blocks
+        sign-off with RUL-007 until it is accepted again.
+      tags: [mapping-packs]
+      x-principal: filing-workflow
+      x-caller-auth: end-user
+      x-sync-edge: console-bff->rules-svc
+      x-timeout: 2000
+      x-entity-ref: entityRef
+      x-error-codes: []
+      x-requirements: [INV-REQ-957, INV-REQ-729, RUL-007]
+      x-operation:
+        role: tax.approver
+        scope: tenant
+        precondition: "The pack is DRAFT or SUBMITTED, and the entry's acceptance in force was given by the caller."
+        reversibility: UNDOABLE
+        repeatKey: "(packId, entryId) — no-op if no acceptance is in force."
+      parameters:
+        - name: packId
+          in: path
+          required: true
+          schema: { type: string, maxLength: 40 }
+        - name: entryId
+          in: path
+          required: true
+          schema: { type: string, maxLength: 40 }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WithdrawSourceClassAcceptanceRequest'
+            examples:
+              default:
+                value: { entityRef: "ENT-1" }
+      responses:
+        '200':
+          description: >-
+            The entry with no acceptance in force. A repeat with no acceptance in force answers 200 with the current state and changes nothing, whatever the Idempotency-Key ((packId, entryId) — no-op if no acceptance is in force).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MappingEntry'
+              examples:
+                default:
+                  value: { entryId: "ENT-9", internalTaxCode: "SR-STD", irasCode: "SR", sourceClass: "SECONDARY", accepted: false }
+        '403':
+          description: The caller is not allowed by `mapping-pack.approve`, or the acceptance in force was given by another user (SRT-004).
+          $ref: '#/components/responses/Error'
+        '404':
+          description: The pack or entry does not exist for this entity (SRT-005).
+          $ref: '#/components/responses/Error'
+        '409':
+          description: The pack is APPROVED or ACTIVE (SRT-008).
           $ref: '#/components/responses/Error'
         default:
           $ref: '#/components/responses/Error'
@@ -2390,6 +2462,17 @@ components:
           type: string
           format: date
       required: [rationale, expiresOn]
+    WithdrawSourceClassAcceptanceRequest:
+      type: object
+      properties:
+        entityRef:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: >-
+            The entity the caller acts for. rules-svc passes it to the permission decision; an absent value is refused,
+            and for an existing pack a value different from the pack's `entityRef` is refused with 403 SRT-004
+            (producer-enforced, not by the schema).
     AcceptRateSourceRequest:
       type: object
       properties:

@@ -21,3 +21,4 @@ masterdata	POST	/internal/v1/masterdata/exchange-rates/import	entityRef
 masterdata	POST	/internal/v1/masterdata/exchange-rates/import/dry-runs	entityRef
 masterdata	POST	/internal/v1/masterdata/counterparties/{counterpartyRef}/requests	entityRef
 masterdata	POST	/internal/v1/masterdata/counterparties/{counterpartyRef}/corrections	entityRef
+rules	POST	/internal/v1/rules/mapping-packs/{packId}/entries/{entryId}/source-class-acceptance/withdrawal	entityRef

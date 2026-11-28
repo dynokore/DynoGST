@@ -473,3 +473,10 @@ effectiveFrom	property	schemas/mapping-pack-activated-payload.schema.json	INV-RE
 effectiveTo	property	schemas/mapping-pack-activated-payload.schema.json	INV-REQ-980
 activatedBy	property	schemas/mapping-pack-activated-payload.schema.json	INV-REQ-980
 activatedAt	property	schemas/mapping-pack-activated-payload.schema.json	INV-REQ-980
+withdrawSourceClassAcceptance	operation	openapi.yaml	INV-REQ-729
+WithdrawSourceClassAcceptanceRequest.entityRef	schema_property	openapi.yaml	INV-REQ-729
+withdrawSourceClassAcceptance.200	operation_response	openapi.yaml	INV-REQ-729
+withdrawSourceClassAcceptance.403	operation_response	openapi.yaml	INV-REQ-729
+withdrawSourceClassAcceptance.404	operation_response	openapi.yaml	INV-REQ-729
+withdrawSourceClassAcceptance.409	operation_response	openapi.yaml	INV-REQ-729
+withdrawSourceClassAcceptance.default	operation_response	openapi.yaml	INV-REQ-729

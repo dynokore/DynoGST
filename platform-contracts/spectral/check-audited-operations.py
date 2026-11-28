@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """spectral/check-audited-operations.py — INV-T-7365 (INV-Q-7360 A, INV-REQ-2588, INV-AC-2592)
 
-Fails closed when the table catalogue/audited-operations.tsv does not map each of the 69 audited
+Fails closed when the table catalogue/audited-operations.tsv does not map each of the 70 audited
 operation names of INV-REQ-2588 behavior 1 to operations of the contracts. Columns, tab separated:
 listedName, operationId, service, discriminator. `service` is the name of a contract directory
 with an `openapi.yaml` at its root; an operationId is searched in that file alone. The operationId
@@ -74,6 +74,7 @@ AUDITED_NAMES = (
     "attestWorkPaper",
     "uploadGstReturn",
     "acceptSourceClassEntry",
+    "withdrawSourceClassAcceptance",
     "acknowledgePackDelta",
     "activatePack",
     "importMappingSpreadsheet",
@@ -94,7 +95,7 @@ AUDITED_NAMES = (
     "rotateCredential",
     "testConnection",
 )
-assert len(AUDITED_NAMES) == 69 and len(set(AUDITED_NAMES)) == 69, "AUDITED_NAMES must have 69 distinct elements"
+assert len(AUDITED_NAMES) == 70 and len(set(AUDITED_NAMES)) == 70, "AUDITED_NAMES must have 70 distinct elements"
 
 HEADER = ["listedName", "operationId", "service", "discriminator"]
 TABLE = "audited-operations.tsv"
