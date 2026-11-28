@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: ingestion API
-  version: 1.23.0
+  version: 1.23.1
   description: >-
     Contract-first source of truth for ingestion (API-01, STK-44). The
     `ingestion-contract` module generates its server interfaces and DTOs
@@ -163,10 +163,12 @@ paths:
         Test mode (INV-REQ-829): a request marked as test with the
         `X-Test-Mode: true` header, or sent to a non-production workspace,
         runs the full pipeline and returns results as for live calls; it is
-        counted for nothing and submitted to nothing. In an installation
-        with no paired non-production workspace a header-marked request is
-        refused with `422` and ING-021 and never processed in production
-        (INV-AC-2060, INV-AC-1879).
+        counted for nothing and submitted to nothing. The exception, in
+        every installation form: a header-marked request made with a
+        production credential is refused with `422` and ING-021, is not
+        processed and stores nothing in production. Nothing is forwarded to
+        another tenant; a test uses the credential of a non-production
+        workspace (INV-AC-14108, INV-AC-2060, INV-AC-1879).
       tags: [transactions]
       x-principal: ingest
       x-caller-auth: end-user
@@ -277,7 +279,9 @@ paths:
         '422':
           description: >-
             Refused and nothing recorded: ING-020 over the size limit, ING-021
-            header-marked test request without a workspace, ING-025 for a
+            for a header-marked request made with a production credential
+            (nothing is forwarded to another tenant; a test uses the
+            credential of a non-production workspace), ING-025 for a
             backfill outside its scope (INV-REQ-1086).
           $ref: '#/components/responses/Error'
         '503':
@@ -331,10 +335,12 @@ paths:
         Test mode (INV-REQ-829): a request marked as test with the
         `X-Test-Mode: true` header, or sent to a non-production workspace,
         runs the full pipeline and returns results as for live calls; it is
-        counted for nothing and submitted to nothing. In an installation
-        with no paired non-production workspace a header-marked request is
-        refused with `422` and ING-021 and never processed in production
-        (INV-AC-2060, INV-AC-1879).
+        counted for nothing and submitted to nothing. The exception, in
+        every installation form: a header-marked request made with a
+        production credential is refused with `422` and ING-021, is not
+        processed and stores nothing in production. Nothing is forwarded to
+        another tenant; a test uses the credential of a non-production
+        workspace (INV-AC-14108, INV-AC-2060, INV-AC-1879).
 
         The envelope declares `batchId`, `entityRef`, `periodCovered`,
         `declaredCount`, `declaredNetTotal` and `declaredTaxTotal`
@@ -487,10 +493,12 @@ paths:
         Test mode (INV-REQ-829): a request marked as test with the
         `X-Test-Mode: true` header, or sent to a non-production workspace,
         runs the full pipeline and returns results as for live calls; it is
-        counted for nothing and submitted to nothing. In an installation
-        with no paired non-production workspace a header-marked request is
-        refused with `422` and ING-021 and never processed in production
-        (INV-AC-2060, INV-AC-1879).
+        counted for nothing and submitted to nothing. The exception, in
+        every installation form: a header-marked request made with a
+        production credential is refused with `422` and ING-021, is not
+        processed and stores nothing in production. Nothing is forwarded to
+        another tenant; a test uses the credential of a non-production
+        workspace (INV-AC-14108, INV-AC-2060, INV-AC-1879).
       tags: [aggregates]
       x-principal: ingest
       x-caller-auth: end-user
@@ -605,10 +613,12 @@ paths:
         Test mode (INV-REQ-829): a request marked as test with the
         `X-Test-Mode: true` header, or sent to a non-production workspace,
         runs the full pipeline and returns results as for live calls; it is
-        counted for nothing and submitted to nothing. In an installation
-        with no paired non-production workspace a header-marked request is
-        refused with `422` and ING-021 and never processed in production
-        (INV-AC-2060, INV-AC-1879).
+        counted for nothing and submitted to nothing. The exception, in
+        every installation form: a header-marked request made with a
+        production credential is refused with `422` and ING-021, is not
+        processed and stores nothing in production. Nothing is forwarded to
+        another tenant; a test uses the credential of a non-production
+        workspace (INV-AC-14108, INV-AC-2060, INV-AC-1879).
       tags: [issuances]
       x-principal: ingest
       x-caller-auth: end-user
@@ -714,10 +724,12 @@ paths:
         Test mode (INV-REQ-829): a request marked as test with the
         `X-Test-Mode: true` header, or sent to a non-production workspace,
         runs the full pipeline and returns results as for live calls; it is
-        counted for nothing and submitted to nothing. In an installation
-        with no paired non-production workspace a header-marked request is
-        refused with `422` and ING-021 and never processed in production
-        (INV-AC-2060, INV-AC-1879).
+        counted for nothing and submitted to nothing. The exception, in
+        every installation form: a header-marked request made with a
+        production credential is refused with `422` and ING-021, is not
+        processed and stores nothing in production. Nothing is forwarded to
+        another tenant; a test uses the credential of a non-production
+        workspace (INV-AC-14108, INV-AC-2060, INV-AC-1879).
       tags: [issuances]
       x-principal: ingest
       x-caller-auth: end-user
@@ -1268,9 +1280,10 @@ components:
       required: false
       description: >-
         INV-REQ-829: marks the request as a test; it runs the full pipeline,
-        is counted for nothing and is submitted to nothing. Refused with 422
-        and ING-021 where the installation has no paired non-production
-        workspace.
+        is counted for nothing and is submitted to nothing. The exception: a
+        header-marked request made with a production credential is refused
+        with 422 and ING-021. Nothing is forwarded to another tenant; a test
+        uses the credential of a non-production workspace.
       schema: { type: boolean, const: true }
     IfMatch:
       name: If-Match
