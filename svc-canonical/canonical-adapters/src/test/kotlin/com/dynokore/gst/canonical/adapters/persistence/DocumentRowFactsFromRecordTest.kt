@@ -10,6 +10,7 @@ import com.dynokore.gst.canonical.application.document.RecordDocumentCommand
 import com.dynokore.gst.canonical.application.document.ScopeAnswer
 import com.dynokore.gst.canonical.application.document.ScopeAnswerCapture
 import com.dynokore.gst.canonical.application.document.ScopeEvaluation
+import com.dynokore.gst.canonical.application.document.SelfBillingPairFact
 import com.dynokore.gst.canonical.domain.dating.PeriodSpan
 import com.dynokore.gst.canonical.domain.document.Direction
 import com.dynokore.gst.canonical.domain.document.DocumentState
@@ -295,6 +296,27 @@ class DocumentRowFactsFromRecordTest {
         val cmd = command().copy(direction = null)
         assertThrows<RowFactUnknown> { source(captured(cmd)).factsOf(cmd, docUuid, 1, result()) }.fact shouldBe
             "direction"
+    }
+
+    @Test
+    fun `INV-AC-29288 the facts carry the captured pair unread whatever the command direction and type code`() {
+        val pair = SelfBillingPairFact("PURCHASE", "TYPE_3")
+        listOf(Direction.SALE, Direction.PURCHASE).forEach { direction ->
+            listOf("380", "389").forEach { type ->
+                val cmd = command(direction)
+                val c = captured(cmd, verdict.copy(documentTypeCode = type, selfBillingAssignment = pair))
+                source(c).factsOf(cmd, docUuid, 1, result())!!.selfBillingAssignment shouldBe pair
+            }
+        }
+    }
+
+    @Test
+    fun `INV-AC-29288 the facts carry no pair when the captured answer has none, also for a self-billed type`() {
+        listOf(Direction.SALE, Direction.PURCHASE).forEach { direction ->
+            val cmd = command(direction)
+            val c = captured(cmd, verdict.copy(documentTypeCode = "389"))
+            source(c).factsOf(cmd, docUuid, 1, result())!!.selfBillingAssignment shouldBe null
+        }
     }
 
     @Test

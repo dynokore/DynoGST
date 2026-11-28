@@ -5,6 +5,7 @@ import com.dynokore.gst.canonical.application.document.LineAnswer
 import com.dynokore.gst.canonical.application.document.LineScopeFacts
 import com.dynokore.gst.canonical.application.document.SchemeFacts
 import com.dynokore.gst.canonical.application.document.SchemeFactsAnswer
+import com.dynokore.gst.canonical.application.document.SelfBillingPairFact
 import com.dynokore.platform.serviceruntime.resilience.Deadline
 import com.dynokore.platform.serviceruntime.resilience.ResilienceRegistry
 import com.dynokore.platform.serviceruntime.resilience.ResilientEdge
@@ -40,6 +41,15 @@ class ScopeEvaluationAdaptersTest {
             LineAnswer.Verdict("IN_SCOPE", documentTypeCode = "380")
         evaluatorOver(RulesAnswer.Unavailable).first.evaluate(f1) shouldBe LineAnswer.Unavailable
         evaluatorOver(RulesAnswer.Refused(400)).first.evaluate(f1) shouldBe LineAnswer.Unavailable
+    }
+
+    @Test
+    fun `INV-AC-29288 the line evaluator relays the pair of the verdict unchanged and its absence`() {
+        val pair = SelfBillingPairFact("PURCHASE", "TYPE_3")
+        evaluatorOver(RulesAnswer.Verdict("IN_SCOPE", "380", selfBillingAssignment = pair)).first.evaluate(f1) shouldBe
+            LineAnswer.Verdict("IN_SCOPE", documentTypeCode = "380", selfBillingAssignment = pair)
+        val without = evaluatorOver(RulesAnswer.Verdict("IN_SCOPE", "380")).first.evaluate(f1)
+        (without as LineAnswer.Verdict).selfBillingAssignment shouldBe null
     }
 
     @Test

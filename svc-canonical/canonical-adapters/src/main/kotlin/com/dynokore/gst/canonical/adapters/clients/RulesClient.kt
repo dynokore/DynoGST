@@ -4,7 +4,9 @@ import com.dynokore.gst.canonical.adapters.clients.rules.api.EvaluationApi
 import com.dynokore.gst.canonical.adapters.clients.rules.model.EvaluateDocumentRequest
 import com.dynokore.gst.canonical.adapters.clients.rules.model.EvaluateDocumentRequestCounterpartySchemeData
 import com.dynokore.gst.canonical.adapters.clients.rules.model.EvaluationResult
+import com.dynokore.gst.canonical.adapters.clients.rules.model.EvaluationResultSelfBillingAssignment
 import com.dynokore.gst.canonical.application.document.AppliedPackFact
+import com.dynokore.gst.canonical.application.document.SelfBillingPairFact
 import com.dynokore.platform.serviceruntime.identity.FlowContext
 import com.dynokore.platform.serviceruntime.resilience.Deadline
 import com.dynokore.platform.serviceruntime.resilience.ResilienceRegistry
@@ -28,6 +30,13 @@ private const val FLOW_CONTEXT_REFUSED = "SRT-004"
 
 private const val UNUSED_FLOW_CONTEXT = ""
 private val ENVELOPE = JsonMapper.builder().build()
+
+/** The wire values of the members of `selfBillingAssignment`, from the generated enums. */
+private val ASSIGNMENT_VALUES =
+    mapOf(
+        "direction" to EvaluationResultSelfBillingAssignment.Direction.entries.map { it.value },
+        "submissionType" to EvaluationResultSelfBillingAssignment.SubmissionType.entries.map { it.value },
+    )
 
 /** The sync edge canonical-svc -> rules-svc (sync-edges.yaml; `x-sync-edge` of `evaluateDocument`). */
 object RulesEdge {
@@ -79,6 +88,7 @@ sealed interface RulesAnswer {
         val mdePackVersion: String? = null,
         val appliedPacks: List<AppliedPackFact> = emptyList(),
         val supplyType: String? = null,
+        val selfBillingAssignment: SelfBillingPairFact? = null,
     ) : RulesAnswer
 
     /** No answer: a 5xx, a timeout, an I/O error, an open breaker or a full bulkhead. The caller holds. */
@@ -100,7 +110,41 @@ class RulesClient(
     environment: Environment,
     private val clock: Clock = Clock.systemUTC(),
 ) {
-    private val api = EvaluationApi(builder.baseUrl(RulesEdge.baseUrl(environment)).build())
+    private val api =
+        EvaluationApi(
+            builder
+                .clone()
+                .baseUrl(RulesEdge.baseUrl(environment))
+                // the answer is read twice: by the exactness check, then by the generated client
+                .bufferContent { _, _ -> true }
+                .requestInterceptor { request, body, execution ->
+                    val response = execution.execute(request, body)
+                    if (response.statusCode.is2xxSuccessful && !hasExactAssignment(response.body.readAllBytes())) {
+                        throw RestClientException("selfBillingAssignment holds a value outside the contract")
+                    }
+                    response
+                }.build(),
+        )
+
+    /**
+     * The decoder of the generated enums also takes padded text and ordinals, which would guess a value. So each
+     * member of a present `selfBillingAssignment` must be a string equal to a wire value (INV-AC-29288). A body that
+     * is not JSON is left to the generated client.
+     */
+    private fun hasExactAssignment(body: ByteArray): Boolean {
+        val assignment =
+            try {
+                ENVELOPE.readTree(body)?.get("selfBillingAssignment")
+            } catch (_: JacksonException) {
+                null
+            }
+        return assignment == null ||
+            assignment.isNull ||
+            ASSIGNMENT_VALUES.all { (member, values) ->
+                val text = assignment.get(member)
+                text != null && text.isString && text.asString() in values
+            }
+    }
 
     fun evaluate(facts: EvaluationFacts): RulesAnswer {
         // API-29: the deadline of the request being served; a call with none behind it gets the contract's 300 ms
@@ -178,6 +222,10 @@ class RulesClient(
                 categoryCode = body.categoryCode,
                 rate = body.rate?.toPlainString(),
                 supplyType = body.supplyType,
+                selfBillingAssignment =
+                    body.selfBillingAssignment?.let {
+                        SelfBillingPairFact(it.direction.value, it.submissionType.value)
+                    },
                 scopePackVersion = versions.getValue(SCOPE).singleOrNull(),
                 mappingPackVersion = versions.getValue(MAPPING).singleOrNull(),
                 mdePackVersion = versions.getValue(MDE).singleOrNull(),

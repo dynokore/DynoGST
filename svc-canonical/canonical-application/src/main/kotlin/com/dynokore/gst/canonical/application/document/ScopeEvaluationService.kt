@@ -38,6 +38,7 @@ class ScopeEvaluationService(
     /**
      * A line without a category code or rate, or lines that disagree on the pack versions, the applied packs or the
      * document type code (null equals null only), give Unavailable: the document holds (fail closed, INV-REQ-1208).
+     * So do two lines with different self-billing pairs; a line without a pair disagrees with none (INV-AC-29288).
      */
     private fun answerOf(verdicts: List<LineAnswer.Verdict>): ScopeAnswer {
         val first = verdicts.first()
@@ -51,7 +52,8 @@ class ScopeEvaluationService(
                     it.appliedPacks != first.appliedPacks ||
                     it.documentTypeCode != first.documentTypeCode
             }
-        return if (incomplete || disagree) {
+        val selfBilling = verdicts.mapNotNull { it.selfBillingAssignment }.distinct()
+        return if (incomplete || disagree || selfBilling.size > 1) {
             ScopeAnswer.Unavailable
         } else {
             ScopeAnswer.Verdict(
@@ -62,6 +64,7 @@ class ScopeEvaluationService(
                 mdePackVersion = first.mdePackVersion,
                 lineTax = lineTax,
                 appliedPacks = first.appliedPacks,
+                selfBillingAssignment = selfBilling.singleOrNull(),
             )
         }
     }

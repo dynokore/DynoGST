@@ -132,13 +132,24 @@ class DocumentRowWriter(
             traceReference = "trace/$docUuid/v$version",
             canonicalDocument = facts.version.canonical,
             aggregateId = null,
-            routingFacts = routingOf(command),
+            routingFacts = routingOf(command, facts),
         )
 
-    private fun routingOf(command: RecordDocumentCommand): RoutingFactsData =
+    private fun routingOf(
+        command: RecordDocumentCommand,
+        facts: DocumentRowFacts,
+    ): RoutingFactsData =
         RoutingFactsData(
             direction = RoutingDirection.valueOf(checkNotNull(command.direction) { "direction is absent" }.name),
             networkPath = command.networkPath,
             debitNote = true.takeIf { command.documentFunction == DocumentFunction.DEBIT_NOTE },
+            selfBillingAssignment = facts.selfBillingAssignment?.let(::assignmentOf),
+        )
+
+    /** By exact enum name; an unknown text throws, so the record rolls back and never loses its assignment. */
+    private fun assignmentOf(pair: SelfBillingPairFact): SelfBillingAssignmentData =
+        SelfBillingAssignmentData(
+            direction = RoutingDirection.valueOf(pair.direction),
+            submissionType = SelfBillingSubmissionType.valueOf(pair.submissionType),
         )
 }

@@ -3,12 +3,14 @@ package com.dynokore.gst.canonical.adapters.clients
 import com.dynokore.gst.canonical.adapters.clients.RulesAnswer.Refused
 import com.dynokore.gst.canonical.adapters.clients.RulesAnswer.Unavailable
 import com.dynokore.gst.canonical.adapters.clients.RulesAnswer.Verdict
+import com.dynokore.gst.canonical.application.document.SelfBillingPairFact
 import com.dynokore.platform.serviceruntime.resilience.Deadline
 import com.dynokore.platform.serviceruntime.resilience.ResilienceRegistry
 import com.dynokore.platform.serviceruntime.resilience.ResilientEdge
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.assertions.withClue
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.types.shouldBeInstanceOf
@@ -201,6 +203,62 @@ class RulesClientTest {
         val client = client(FakeRegistry(fixedClock))
         stub.reply = Reply(200, """{"scopeVerdict":"IN_SCOPE","supplyType":"FUTURE_SUPPLY_TYPE"}""")
         (client.evaluate(facts) as Verdict).supplyType shouldBe "FUTURE_SUPPLY_TYPE"
+    }
+
+    private fun answerCarrying(assignment: String): RulesAnswer {
+        stub.reply = Reply(200, """{"scopeVerdict":"IN_SCOPE"$assignment}""")
+        return client(FakeRegistry(fixedClock)).evaluate(facts)
+    }
+
+    private fun pairJson(
+        direction: String,
+        submissionType: String,
+    ) = ""","selfBillingAssignment":{"direction":$direction,"submissionType":$submissionType}"""
+
+    @Test
+    fun `INV-AC-29288 every pair of the answer reaches the verdict with both texts unchanged`() {
+        for (direction in listOf("SALE", "PURCHASE")) {
+            for (type in listOf("TYPE_1A", "TYPE_1B", "TYPE_2", "TYPE_3")) {
+                (answerCarrying(pairJson("\"$direction\"", "\"$type\"")) as Verdict).selfBillingAssignment shouldBe
+                    SelfBillingPairFact(direction, type)
+            }
+        }
+    }
+
+    @Test
+    fun `INV-AC-29288 an answer without an assignment gives a verdict without one`() {
+        (answerCarrying("") as Verdict).selfBillingAssignment shouldBe null
+        (answerCarrying(""","selfBillingAssignment":null""") as Verdict).selfBillingAssignment shouldBe null
+    }
+
+    @Test
+    fun `INV-AC-29288 an unusable assignment makes the answer Unavailable and never an absent assignment`() {
+        val sale = "\"SALE\""
+        val type2 = "\"TYPE_2\""
+        val unusable =
+            listOf(
+                pairJson("\"SUPPLY\"", type2),
+                pairJson("\"sale\"", type2),
+                pairJson("\"\"", type2),
+                pairJson(sale, "\"TYPE_4\""),
+                pairJson(sale, "\"type_2\""),
+                pairJson(sale, "\"TYPE_2 \""),
+                pairJson(sale, "\"\""),
+                pairJson("0", type2),
+                pairJson(sale, "2"),
+                pairJson("\"1\"", type2),
+                pairJson(sale, "\"2\""),
+                pairJson("\" SALE\"", type2),
+                pairJson("true", type2),
+                pairJson("null", type2),
+                ""","selfBillingAssignment":"SALE"""",
+                ""","selfBillingAssignment":[]""",
+                pairJson(sale, "null"),
+                ""","selfBillingAssignment":{"direction":"SALE"}""",
+                ""","selfBillingAssignment":{"submissionType":"TYPE_2"}""",
+                ""","selfBillingAssignment":{}""",
+            )
+        unusable.forEach { withClue(it) { answerCarrying(it) shouldBe Unavailable } }
     }
 
     @Test

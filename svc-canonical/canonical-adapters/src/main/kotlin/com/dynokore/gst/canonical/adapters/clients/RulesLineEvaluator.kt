@@ -27,6 +27,7 @@ class RulesLineEvaluator(
                     documentTypeCode = answer.documentTypeCode,
                     appliedPacks = answer.appliedPacks,
                     supplyType = answer.supplyType,
+                    selfBillingAssignment = answer.selfBillingAssignment,
                 )
             }
 

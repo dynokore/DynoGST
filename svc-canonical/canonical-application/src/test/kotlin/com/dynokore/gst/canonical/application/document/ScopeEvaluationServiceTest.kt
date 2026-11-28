@@ -2,6 +2,7 @@ package com.dynokore.gst.canonical.application.document
 
 import com.dynokore.gst.canonical.domain.document.Direction
 import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.assertions.withClue
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import java.time.LocalDate
@@ -103,6 +104,71 @@ class ScopeEvaluationServiceTest {
         val answer = run().service.evaluate(c1("SR-SUP", "SR-STD"), "2026-Q1", d0320)
         (answer as ScopeAnswer.Verdict).lineTax shouldBe
             listOf(LineTaxFact("SR", "9.00", "ZERO_RATED"), LineTaxFact("SR", "9.00", null))
+    }
+
+    private val purchase3 = SelfBillingPairFact("PURCHASE", "TYPE_3")
+
+    /** One line per given pair, evaluated in order by a fake rules-svc that answers exactly that pair. */
+    private fun answerOverPairs(vararg pairs: SelfBillingPairFact?): ScopeAnswer {
+        val service =
+            ScopeEvaluationService(
+                constitutions =
+                    object : EntityConstitutions {
+                        override fun constitutionOf(
+                            tenantId: UUID,
+                            entityRef: String,
+                        ): String = "PRIVATE_LIMITED"
+                    },
+                schemes = SchemeElections { _, _, _ -> emptyList() },
+                counterparty = CounterpartySchemeSource { SchemeFactsAnswer.Found(null) },
+                evaluator =
+                    LineEvaluator {
+                        LineAnswer.Verdict(
+                            "IN_SCOPE",
+                            "SR",
+                            "9.00",
+                            selfBillingAssignment = pairs[it.internalTaxCode.toInt()],
+                        )
+                    },
+            )
+        val codes = Array(pairs.size) { it.toString() }
+        return service.evaluate(c1(*codes), "2026-Q1", d0320)
+    }
+
+    private fun pairOver(vararg pairs: SelfBillingPairFact?): SelfBillingPairFact? =
+        (answerOverPairs(*pairs) as ScopeAnswer.Verdict).selfBillingAssignment
+
+    @Test
+    fun `INV-AC-29288 the same pair on every line is the pair of the answer`() {
+        pairOver(purchase3) shouldBe purchase3
+        pairOver(purchase3, purchase3.copy(), purchase3.copy()) shouldBe purchase3
+    }
+
+    @Test
+    fun `INV-AC-29288 lines without a pair do not hide the pair of another line, wherever it stands`() {
+        pairOver(null, purchase3) shouldBe purchase3
+        pairOver(purchase3, null) shouldBe purchase3
+        pairOver(null, null, purchase3) shouldBe purchase3
+        pairOver(null, purchase3, null, purchase3) shouldBe purchase3
+    }
+
+    @Test
+    fun `INV-AC-29288 no line with a pair gives an answer without one, whatever the command direction`() {
+        pairOver(null, null) shouldBe null
+        val purchase = run().service.evaluate(c1("SR-STD", direction = Direction.PURCHASE), "2026-Q1", d0320)
+        (purchase as ScopeAnswer.Verdict).selfBillingAssignment shouldBe null
+    }
+
+    @Test
+    fun `INV-AC-29288 lines whose pairs differ in direction only or in submission type only are Unavailable`() {
+        listOf(purchase3.copy(direction = "SALE"), purchase3.copy(submissionType = "TYPE_2")).forEach { other ->
+            withClue(other) {
+                answerOverPairs(purchase3, other) shouldBe ScopeAnswer.Unavailable
+                answerOverPairs(other, purchase3) shouldBe ScopeAnswer.Unavailable
+                answerOverPairs(null, purchase3, null, other) shouldBe ScopeAnswer.Unavailable
+                answerOverPairs(purchase3, purchase3, other) shouldBe ScopeAnswer.Unavailable
+            }
+        }
     }
 
     @Test

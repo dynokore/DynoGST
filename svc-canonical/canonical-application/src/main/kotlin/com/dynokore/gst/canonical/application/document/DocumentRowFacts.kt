@@ -7,6 +7,7 @@ import java.util.UUID
 /**
  * The owned facts of the document row of one record. Each value comes from its owner; none is invented here.
  * [prescribedPeriodRef] is empty when no period is assigned; [appliedPackVersions] are the packs rules-svc applied.
+ * [selfBillingAssignment] is the pair rules-svc answered; null when no line carried one.
  */
 @Suppress("LongParameterList") // one member per column of the document row, as the store port names them
 data class DocumentRowFacts(
@@ -21,6 +22,7 @@ data class DocumentRowFacts(
     val prescribedPeriodRef: String,
     val appliedPackVersions: List<AppliedPackFact>,
     val version: NewVersion,
+    val selfBillingAssignment: SelfBillingPairFact? = null,
 )
 
 /**

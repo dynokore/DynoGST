@@ -53,6 +53,12 @@ data class AppliedPackFact(
     val version: String,
 )
 
+/** The party-to-type pair of a self-billed line as the evaluation result names it, both texts copied unchanged. */
+data class SelfBillingPairFact(
+    val direction: String,
+    val submissionType: String,
+)
+
 sealed interface LineAnswer {
     data class Verdict(
         val scopeVerdict: String,
@@ -64,6 +70,7 @@ sealed interface LineAnswer {
         val documentTypeCode: String? = null,
         val appliedPacks: List<AppliedPackFact> = emptyList(),
         val supplyType: String? = null,
+        val selfBillingAssignment: SelfBillingPairFact? = null,
     ) : LineAnswer
 
     data object Unavailable : LineAnswer

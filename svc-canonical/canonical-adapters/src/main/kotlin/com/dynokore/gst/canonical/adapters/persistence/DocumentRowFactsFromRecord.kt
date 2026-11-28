@@ -102,6 +102,7 @@ class DocumentRowFactsFromRecord(
                     transactionDate = transactionDate,
                     createdBy = actingUser(),
                 ),
+            selfBillingAssignment = verdict.selfBillingAssignment,
         )
     }
 

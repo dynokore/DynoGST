@@ -404,6 +404,61 @@ class RowWritingResultBuilderTest {
     }
 
     @Test
+    fun `INV-AC-29288 every pair of the facts is announced by exact name, whatever the command direction`() {
+        val pairs =
+            RoutingDirection.entries.flatMap { d -> SelfBillingSubmissionType.entries.map { d to it } }
+        listOf(Direction.SALE, Direction.PURCHASE).forEach { commandDirection ->
+            pairs.forEach { (direction, type) ->
+                staged.clear()
+                val pair = SelfBillingPairFact(direction.name, type.name)
+                rowWriter.write(command(commandDirection), d1, 1, facts().copy(selfBillingAssignment = pair))
+                withClue(commandDirection to pair) {
+                    staged.single().routingFacts shouldBe
+                        RoutingFactsData(
+                            RoutingDirection.valueOf(commandDirection.name),
+                            RoutingNetworkPath.NOT_ON_NETWORK,
+                            selfBillingAssignment = SelfBillingAssignmentData(direction, type),
+                        )
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `INV-AC-29288 a next version announces the pair of its facts`() {
+        val pair = SelfBillingPairFact("PURCHASE", "TYPE_3")
+        rowWriter.write(command(), d2, 3, facts().copy(selfBillingAssignment = pair))
+        staged.single().routingFacts.selfBillingAssignment shouldBe
+            SelfBillingAssignmentData(RoutingDirection.PURCHASE, SelfBillingSubmissionType.TYPE_3)
+    }
+
+    @Test
+    fun `INV-AC-29288 facts without a pair announce no assignment, also for a self-billed type code`() {
+        listOf(Direction.SALE, Direction.PURCHASE).forEach {
+            rowWriter.write(command(it), d1, 1, facts().copy(documentTypeCode = 389))
+        }
+        staged.map { it.routingFacts.selfBillingAssignment } shouldBe listOf(null, null)
+    }
+
+    @Test
+    fun `INV-AC-29288 an unknown enum text throws and nothing is announced without the assignment`() {
+        listOf(
+            SelfBillingPairFact("sale", "TYPE_2"),
+            SelfBillingPairFact("SUPPLY", "TYPE_2"),
+            SelfBillingPairFact("SALE", "TYPE_4"),
+            SelfBillingPairFact("SALE", "type_2"),
+            SelfBillingPairFact("SALE", ""),
+        ).forEach {
+            withClue(it) {
+                assertThrows<IllegalArgumentException> {
+                    rowWriter.write(command(), d1, 1, facts().copy(selfBillingAssignment = it))
+                }
+            }
+        }
+        staged shouldBe emptyList()
+    }
+
+    @Test
     fun `INV-AC-22904 no constructor parameter of DocumentRowWriter is a DocumentStore`() {
         DocumentRowWriter::class.java.constructors
             .flatMap { it.parameterTypes.toList() }
