@@ -25,6 +25,7 @@ import tools.jackson.core.JacksonException
 import tools.jackson.databind.DeserializationFeature
 import tools.jackson.databind.JsonNode
 import tools.jackson.databind.json.JsonMapper
+import tools.jackson.databind.node.ObjectNode
 import tools.jackson.module.kotlin.KotlinModule
 import tools.jackson.module.kotlin.readValue
 import java.time.Clock
@@ -90,8 +91,18 @@ class CanonicalRecorderAdapter(
             rejected(failure)
         }
 
-    private fun parseResponse(raw: String): RecordDocumentResponse? =
-        runCatching { mapper.readValue<RecordDocumentResponse>(raw) }.getOrNull()
+    /**
+     * `scopeVerdict` is an extensible response enumeration (API-09, `x-extensible-enum`) carried as the received string:
+     * it is taken from the JSON, and the generated model, whose enum is closed, is bound with a known value in its place.
+     * A body where it is absent or not a string cannot be read.
+     */
+    private fun parseResponse(raw: String): SuccessBody? =
+        runCatching {
+            val tree = mapper.readTree(raw) as ObjectNode
+            val verdict = tree.get(SCOPE_VERDICT).takeIf { it.isString }!!.stringValue()
+            tree.put(SCOPE_VERDICT, TEMPLATE_VERDICT.value)
+            SuccessBody(mapper.treeToValue(tree, RecordDocumentResponse::class.java), verdict)
+        }.getOrNull()
 
     /** Method, path and headers come from the generated config; only the body is replaced by the parsed tree. */
     private fun requestConfig(tree: JsonNode): RequestConfig<JsonNode> {
@@ -112,18 +123,19 @@ class CanonicalRecorderAdapter(
         status: Int,
         raw: String?,
     ): CanonicalAnswer {
-        val body = raw?.takeIf { it.isNotBlank() }?.let { parseResponse(it) }
+        val success = raw?.takeIf { it.isNotBlank() }?.let { parseResponse(it) }
+        val body = success?.model
         return when {
             body == null -> {
                 CanonicalAnswer.Rejected(null, status)
             }
 
             status == HttpStatus.CREATED.value() -> {
-                CanonicalAnswer.Created(body.docUuid, body.version.toLong(), result(body))
+                CanonicalAnswer.Created(body.docUuid, body.version.toLong(), result(success))
             }
 
             status == HttpStatus.OK.value() -> {
-                CanonicalAnswer.Replay(body.docUuid, body.version.toLong(), result(body))
+                CanonicalAnswer.Replay(body.docUuid, body.version.toLong(), result(success))
             }
 
             status == HttpStatus.ACCEPTED.value() -> {
@@ -131,7 +143,7 @@ class CanonicalRecorderAdapter(
                     body.docUuid,
                     body.version.toLong(),
                     body.reasons.orEmpty().map { it.code },
-                    result(body),
+                    result(success),
                 )
             }
 
@@ -142,14 +154,22 @@ class CanonicalRecorderAdapter(
     }
 
     /** Every member is copied as received; a missing required member never reaches here (the parse failed). */
-    private fun result(body: RecordDocumentResponse) =
-        RecordedResult(
+    private fun result(success: SuccessBody): RecordedResult {
+        val body = success.model
+        return RecordedResult(
             version = body.version.toLong(),
-            scopeVerdict = body.scopeVerdict.toString(),
+            scopeVerdict = success.scopeVerdict,
             transactionDate = body.transactionDate,
             prescribedPeriodRef = body.prescribedPeriodRef,
             reasonItems = body.reasons.orEmpty().map { ReasonItem(it.code, it.message, it.field) },
         )
+    }
+
+    /** [model]'s own `scopeVerdict` is a placeholder; the received one is [scopeVerdict]. */
+    private class SuccessBody(
+        val model: RecordDocumentResponse,
+        val scopeVerdict: String,
+    )
 
     /** A 4xx with the Error envelope carries its code and status; a 5xx or any other body carries only the status. */
     private fun rejected(failure: RestClientResponseException): CanonicalAnswer {
@@ -183,6 +203,9 @@ class CanonicalRecorderAdapter(
                 currency = "",
                 lines = emptyList(),
             )
+
+        const val SCOPE_VERDICT = "scopeVerdict"
+        val TEMPLATE_VERDICT = RecordDocumentResponse.ScopeVerdict.entries.first()
 
         const val URL_PROPERTY = "ingestion.canonical-svc-url"
         const val EDGE = "ingestion-svc->canonical-svc"
