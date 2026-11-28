@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: canonical API
-  version: 2.6.0
+  version: 2.7.0
   description: >-
     Contract-first source of truth for canonical (API-01, STK-44). The
     `canonical-contract` module generates its server interfaces and DTOs
@@ -823,9 +823,8 @@ components:
         sourceTimeZone:
           type: string
           maxLength: 64
-          default: Asia/Singapore
           description: >-
-            The IANA zone id the source connection declares, in which a `postingTimestamp` without an offset is read; the assumption is recorded in the decision trace. An id that is not a zone is refused with `400` and SRT-001 (INV-REQ-68).
+            The IANA zone id the source connection declares, in which a `postingTimestamp` without an offset is read; the assumption is recorded in the decision trace. An id that is not a zone is refused with `400` and SRT-001 (INV-REQ-68). Absent means Asia/Singapore, applied by canonical-svc (INV-REQ-68); the schema declares no default, so that an absent zone stays distinct from a declared one.
         networkIssuance:
           type: object
           description: >-
