@@ -594,7 +594,8 @@ open class EntitiesController(
 
     /**
      * goLive (INV-REQ-987, INV-REQ-963, INV-REQ-875): the caller holds `entity-config.manage` (decided per request by
-     * the authority replica, fail closed); the use case decides the second confirmation and the gate.
+     * the authority replica, fail closed); the use case decides the second confirmation and the gate. The audit entry
+     * of a transition to LIVE commits with it; a repeat or a refusal writes none.
      */
     override fun goLive(
         entityRef: String,
@@ -602,7 +603,15 @@ open class EntitiesController(
         goLiveRequest: GoLiveRequest,
     ): ResponseEntity<EntityResponse> {
         val actor = lifecycleActor(entityRef)
-        return lifecycleResult(goLiveUseCase.handle(actor, entityRef, goLiveRequest.secondConfirmationBy))
+        val outcome =
+            tx.inTransaction {
+                goLiveUseCase.handle(actor, entityRef, goLiveRequest.secondConfirmationBy).also {
+                    if (it is LifecycleOutcome.Done && !it.repeated) {
+                        lifecycleAudit.wentLive(actor, entityRef, goLiveRequest.secondConfirmationBy)
+                    }
+                }
+            }
+        return lifecycleResult(outcome)
     }
 
     /** suspendEntity (INV-REQ-963 b2): stops future submission, retracts nothing. */
