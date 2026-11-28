@@ -92,14 +92,14 @@ class CanonicalRecorderAdapter(
         }
 
     /**
-     * `scopeVerdict` is an extensible response enumeration (API-09, `x-extensible-enum`) carried as the received string:
-     * it is taken from the JSON, and the generated model, whose enum is closed, is bound with a known value in its place.
-     * A body where it is absent or not a string cannot be read.
+     * `scopeVerdict` is an extensible response enumeration (API-09, `x-extensible-enum`) carried as the
+     * received string: it is taken from the JSON, and the generated model, whose enum is closed, is bound
+     * with a known value in its place. A body where it is absent or not a string cannot be read.
      */
     private fun parseResponse(raw: String): SuccessBody? =
         runCatching {
             val tree = mapper.readTree(raw) as ObjectNode
-            val verdict = tree.get(SCOPE_VERDICT).takeIf { it.isString }!!.stringValue()
+            val verdict = requireNotNull(tree.get(SCOPE_VERDICT)?.takeIf { it.isString }).stringValue()
             tree.put(SCOPE_VERDICT, TEMPLATE_VERDICT.value)
             SuccessBody(mapper.treeToValue(tree, RecordDocumentResponse::class.java), verdict)
         }.getOrNull()
