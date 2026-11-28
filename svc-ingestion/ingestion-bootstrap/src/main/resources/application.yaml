@@ -24,6 +24,10 @@ service-runtime:
     "[ingestion-svc->tenancy-svc]":
       timeout: PT2S
       retry.max-attempts: 2
+    # the modelled canonical-svc edge: 2 s timeout, one retry on the idempotent recordDocument repeat key (INV-REQ-1204)
+    "[ingestion-svc->canonical-svc]":
+      timeout: PT2S
+      retry.max-attempts: 2
 ingestion:
   canonical-svc-url: ${INGESTION_CANONICAL_SVC_URL} # required, no default: the context does not start without it (TPL-16)
   tenancy-svc-url: ${INGESTION_TENANCY_SVC_URL} # required setting, no default
