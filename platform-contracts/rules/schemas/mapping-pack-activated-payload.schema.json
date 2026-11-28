@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://platform-contracts.invoice.internal/rules/schemas/mapping-pack-activated-payload.schema.json",
+  "title": "MappingPackActivatedPayload",
+  "description": "Payload of the MappingPackActivated event (catalogued in model/architecture/events.yaml; class: domain). Emitted when a mapping pack of one entity is activated; feeds the pack activation history per entity (INV-REQ-980). Within a major version this schema is additive-only (API-41, FR-K.4): a field is never removed, renamed, retyped or made required.",
+  "type": "object",
+  "properties": {
+    "entityRef": {
+      "type": "string",
+      "description": "The entity whose mapping pack was activated.",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "packId": {
+      "type": "string",
+      "description": "The mapping pack identifier.",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "packVersion": {
+      "type": "string",
+      "description": "The version label of the mapping pack.",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "effectiveFrom": {
+      "type": "string",
+      "description": "First day the activated pack applies.",
+      "format": "date"
+    },
+    "effectiveTo": {
+      "type": "string",
+      "description": "Last day the activated pack applies; absent when the pack is open-ended.",
+      "format": "date"
+    },
+    "activatedBy": {
+      "type": "string",
+      "description": "The user id of the person who activated the pack; never a role.",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "activatedAt": {
+      "type": "string",
+      "description": "When the pack was activated.",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "entityRef",
+    "packId",
+    "packVersion",
+    "effectiveFrom",
+    "activatedBy",
+    "activatedAt"
+  ],
+  "additionalProperties": true
+}

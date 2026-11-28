@@ -747,6 +747,15 @@ topics:
     subscribers:
       - console-bff
       - notification-svc
+  - topic: gst.rules.mapping-pack-activated.v1
+    event_type: com.dynokore.gst.rules.MappingPackActivated.v1
+    content_topic: false
+    record_topic: false
+    retained_while_resolvable: false
+    producers:
+      - rules-svc
+    subscribers:
+      - submission-svc
   - topic: gst.rules.pack-currency-changed.v1
     event_type: com.dynokore.gst.rules.PackCurrencyChanged.v1
     content_topic: false
@@ -2070,6 +2079,7 @@ replay_topics:
       - com.dynokore.gst.platform.ReplayCompleted.v1
       - com.dynokore.gst.platform.RulePackActivated.v1
       - com.dynokore.gst.platform.RulePackStaged.v1
+      - com.dynokore.gst.rules.MappingPackActivated.v1
       - com.dynokore.gst.rules.RulePackStaged.v1
       - com.dynokore.gst.rules.UnreviewedActivationRecorded.v1
     content_topic: false

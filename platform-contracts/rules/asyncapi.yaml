@@ -1,7 +1,7 @@
 asyncapi: 3.1.0
 info:
   title: rules events
-  version: 1.5.0
+  version: 1.6.0
   description: >-
     Every event rules produces or consumes (API-43, STK-45), wrapped at
     publish time in the CloudEvents 1.0.2 envelope every service shares
@@ -40,6 +40,11 @@ channels:
     messages:
       UnreviewedActivationRecorded:
         $ref: '#/components/messages/UnreviewedActivationRecorded'
+  rulesMappingPackActivated:
+    address: 'gst.rules.mapping-pack-activated.v1'
+    messages:
+      MappingPackActivated:
+        $ref: '#/components/messages/MappingPackActivated'
   rulesExampleHappened:
     address: 'gst.rules.example-happened.v1'
     messages:
@@ -68,6 +73,13 @@ operations:
       $ref: '#/channels/rulesUnreviewedActivationRecorded'
     messages:
       - $ref: '#/channels/rulesUnreviewedActivationRecorded/messages/UnreviewedActivationRecorded'
+  publishMappingPackActivated:
+    action: send
+    description: MappingPackActivated — catalogued in model/architecture/events.yaml (§19.8).
+    channel:
+      $ref: '#/channels/rulesMappingPackActivated'
+    messages:
+      - $ref: '#/channels/rulesMappingPackActivated/messages/MappingPackActivated'
   publishExampleHappened:
     action: send
     description: Placeholder operation (INV-T-2849 scaffold) — replace with a real one.
@@ -119,6 +131,15 @@ components:
       contentType: application/cloudevents+json
       payload:
         $ref: './schemas/unreviewed-activation-recorded-payload.schema.json'
+    MappingPackActivated:
+      name: com.dynokore.gst.rules.MappingPackActivated.v1
+      title: MappingPackActivated
+      summary: MappingPackActivated — catalogued in model/architecture/events.yaml (§19.8).
+      description: >-
+        Emitted by: rules-svc. Consumed by: submission-svc. Delivery: At-least-once.
+      contentType: application/cloudevents+json
+      payload:
+        $ref: './schemas/mapping-pack-activated-payload.schema.json'
     ExampleHappened:
       name: com.dynokore.gst.rules.ExampleHappened.v1
       title: ExampleHappened

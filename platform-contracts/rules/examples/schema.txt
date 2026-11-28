@@ -13,7 +13,9 @@
 ../openapi.yaml#/components/schemas/RegulatoryPack regulatory-pack-*.json
 ../openapi.yaml#/components/schemas/PackDeltaAcknowledgement pack-delta-acknowledgement-*.json
 ../schemas/calendar-pack-contents.schema.json calendar-pack-contents-*.json
-../openapi.yaml#/components/schemas/MappingPack mapping-pack-[!c]*.json
+../openapi.yaml#/components/schemas/MappingPack mapping-pack-[!ca]*.json
+../openapi.yaml#/components/schemas/MappingPack mapping-pack-a[!c]*.json
+../openapi.yaml#/components/schemas/MappingPack mapping-pack-active-*.json
 ../openapi.yaml#/components/schemas/MappingEntryPage entries-page-*.json
 ../openapi.yaml#/components/schemas/DryRunResult dry-run-result-*.json
 ../openapi.yaml#/components/schemas/DryRunChangeTypeTotal dry-run-change-type-total-*.json
@@ -34,3 +36,4 @@
 ../schemas/schematron-pack-contents.schema.json schematron-pack-contents-*.json
 ../schemas/endpoint-acceptance-pack-contents.schema.json endpoint-acceptance-pack-contents-*.json
 ../schemas/breach-terms-pack-contents.schema.json breach-terms-pack-contents-*.json
+../schemas/mapping-pack-activated-payload.schema.json mapping-pack-activated-*.json
