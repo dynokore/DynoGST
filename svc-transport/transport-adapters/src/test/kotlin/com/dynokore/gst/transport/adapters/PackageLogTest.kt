@@ -198,6 +198,27 @@ class PackageLogTest {
     }
 
     @Test
+    fun `INV-AC-29528 complete of one package leaves another package and a single attempt open`() {
+        val s = Session()
+        val completed = ref()
+        val other = ref()
+        s.packages.begin(claim(completed), at).shouldBeNull()
+        s.packages.begin(claim(other), at).shouldBeNull()
+        val single = DocRef(UUID.randomUUID(), 1)
+        s.bound { s.attempts.begin(entity, single, adapter, at) }
+
+        s.packages.complete(completed, TransportOutcome.Accepted("AP-3"), at.plusSeconds(1))
+
+        s.packages
+            .find(other)!!
+            .outcome
+            .shouldBeNull()
+        s.count("submission_package", "package_ref = '$other' and outcome is null") shouldBe 1
+        s.count("submission_attempt", "package_ref = '$other' and outcome is null") shouldBe 2
+        s.count("submission_attempt", "doc_uuid = '${single.docUuid}' and outcome is null") shouldBe 1
+    }
+
+    @Test
     fun `INV-AC-29528 settledOutcome skips a rejected package, reports an accepted one and a rejected single`() {
         val s = Session()
         val rejectedDoc = DocRef(UUID.randomUUID(), 1)
