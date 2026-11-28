@@ -6,6 +6,7 @@ import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 import java.security.MessageDigest
+import java.time.LocalDate
 import java.util.HexFormat
 import java.util.UUID
 
@@ -18,7 +19,8 @@ class BuildPayloadTest {
     private val small = "<Invoice/>".toByteArray()
     private val big = ByteArray(10_485_761)
 
-    private fun input(aggregate: String? = "AGG-2026-0001") = BuildInput("ENT-1", "{}", aggregate, null, null)
+    private fun input(aggregate: String? = "AGG-2026-0001") =
+        BuildInput("ENT-1", "{}", aggregate, null, null, transactionDate = LocalDate.parse("2000-02-01"))
 
     private val ready = ArrayList<PayloadReadyFacts>()
     private val rejected = ArrayList<PayloadRejectedFacts>()
@@ -47,11 +49,12 @@ class BuildPayloadTest {
             },
             decisions = { _, _ -> types[current] ?: decisionText },
             projector = { _, _ -> projections.getValue(current!!) },
-            families = { "SG-PINT-1.0" },
+            families = { "PINT_SG" },
             ready = PublishPayloadReady { ready += it },
             rejected = { rejected += it },
             outcomes = { doc, v -> !firstTimeCheck || seen.add(doc to v) },
             layerOne = NOT_WIRED,
+            releases = acceptingSelector(),
         )
     }
 
@@ -68,7 +71,7 @@ class BuildPayloadTest {
         f.payloadBytes.contentEquals(small) shouldBe true
         f.payloadSha256 shouldBe sha(small)
         f.entityRef shouldBe "ENT-1"
-        f.specificationVersion shouldBe "SG-PINT-1.0"
+        f.specificationVersion shouldBe "PINT_SG"
     }
 
     @Test

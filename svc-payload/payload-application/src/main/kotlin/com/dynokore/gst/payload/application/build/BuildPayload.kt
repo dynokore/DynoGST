@@ -2,9 +2,11 @@ package com.dynokore.gst.payload.application.build
 
 import com.dynokore.gst.payload.application.payload.PayloadReadyFacts
 import com.dynokore.gst.payload.application.payload.PublishPayloadReady
+import com.dynokore.gst.payload.application.payload.RegenerationFacts
 import com.dynokore.gst.payload.domain.ClassifiedFinding
 import com.dynokore.gst.payload.domain.MdeResult
 import com.dynokore.gst.payload.domain.PayloadSizeCheck
+import com.dynokore.gst.payload.domain.SpecificationFamily
 import com.dynokore.gst.payload.domain.ValidationVerdict
 import java.security.MessageDigest
 import java.time.LocalDate
@@ -204,7 +206,7 @@ enum class SubmissionType(
  * Builds the payload of one version and stages `PayloadReady` or `PayloadRejected`. It opens no transaction: the
  * claimed job runs it in one.
  */
-@Suppress("LongParameterList") // the eight ports of the build
+@Suppress("LongParameterList") // the nine ports of the build
 class BuildPayload(
     private val inputs: BuildInputsReader,
     private val decisions: TypeDecisionReader,
@@ -214,6 +216,7 @@ class BuildPayload(
     private val rejected: PayloadRejectedPublisher,
     private val outcomes: BuildOutcomes,
     private val layerOne: LayerOneCheck,
+    private val releases: SpecificationReleaseSelector,
 ) {
     fun run(
         docUuid: UUID,
@@ -231,15 +234,51 @@ class BuildPayload(
                     version,
                     null,
                     projection.validationTrace,
-                    projection.packVersion?.let { listOf(PackVersionFact(MDE_PACK_TYPE, it)) },
+                    projection.packVersion?.let(::mdePack),
                 )
             }
 
             is Projection.Built -> {
-                built(input, docUuid, version, decision, projection.bytes)
+                selectRelease(input, docUuid, version, decision, projection)
             }
         }
     }
+
+    /** The release is selected once per built projection, before every check of the bytes (INV-REQ-590). */
+    private fun selectRelease(
+        input: BuildInput,
+        docUuid: UUID,
+        version: Int,
+        decision: String,
+        projection: Projection.Built,
+    ) {
+        val family = families.familyOf(input.familyRequest())
+        when (val selection = releases.select(SpecificationFamily.valueOf(family), input.transactionDate)) {
+            is ReleaseSelection.Refused -> {
+                rejected.stage(
+                    PayloadRejectedFacts(
+                        entityRef = input.entityRef,
+                        docUuid = docUuid,
+                        version = version,
+                        code = ReleaseRefusal.CODE,
+                        validationTrace = null,
+                        packVersions = projection.packVersion?.let(::mdePack),
+                        releaseRefusal = selection.facts,
+                    ),
+                )
+            }
+
+            is ReleaseSelection.Selected -> {
+                val regeneration =
+                    projection.packVersion?.let {
+                        RegenerationFacts(version, selection.release.release.code, mdePack(it))
+                    }
+                built(input, docUuid, version, decision, projection.bytes, family, regeneration)
+            }
+        }
+    }
+
+    private fun mdePack(packVersion: String) = listOf(PackVersionFact(MDE_PACK_TYPE, packVersion))
 
     private fun built(
         input: BuildInput,
@@ -247,16 +286,17 @@ class BuildPayload(
         version: Int,
         decision: String,
         bytes: ByteArray,
+        family: String,
+        regeneration: RegenerationFacts?,
     ) {
         if (PayloadSizeCheck.check(bytes.size.toLong(), 0).blocked) {
             reject(input, docUuid, version, PayloadSizeCheck.PAY_010, null)
             return
         }
-        val family = families.familyOf(input.familyRequest())
         val result = layerOne.check(bytes, family)
         when (val verdict = ValidationVerdict.of(result.findings, MdeResult.Complete)) {
             is ValidationVerdict.Passed -> {
-                publish(input, docUuid, version, decision, bytes, family)
+                publish(input, docUuid, version, decision, bytes, family, regeneration)
             }
 
             is ValidationVerdict.Blocked -> {
@@ -292,6 +332,7 @@ class BuildPayload(
         decision: String,
         bytes: ByteArray,
         family: String,
+        regeneration: RegenerationFacts?,
     ) = ready.publish(
         PayloadReadyFacts(
             entityRef = input.entityRef,
@@ -302,6 +343,7 @@ class BuildPayload(
             payloadBytes = bytes,
             payloadSha256 = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)),
             aggregateId = input.aggregateId,
+            regeneration = regeneration,
         ),
     )
 

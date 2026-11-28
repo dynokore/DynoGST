@@ -179,7 +179,8 @@ class PayloadReadyAggregateIdBoundaryTest {
             id,
             doc,
             SubmissionTypeDecidedConsumerConfiguration.VERSION_FACTS_TYPE,
-            """{"docUuid":"$doc","version":1,"canonicalDocument":$document$routing$aggregate}""",
+            """{"docUuid":"$doc","version":1,"canonicalDocument":$document$routing$aggregate""" +
+                ""","transactionDate":"2026-01-15"}""",
         )
     }
 
@@ -308,6 +309,7 @@ class PayloadReadyAggregateIdBoundaryTest {
                 "payloadBytes",
                 "payloadSha256",
                 "aggregateId",
+                "regenerationKey",
             )
         assertBytes(rd, re)
     }

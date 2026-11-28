@@ -202,7 +202,7 @@ class BuildPayloadJobDbTest {
         @TempDir dir: Path,
     ) = run(dir) { tenant ->
         val doc = UUID.randomUUID()
-        seed(tenant, doc, "TYPE_2")
+        seed(tenant, doc, "TYPE_2", transactionDate = LocalDate.of(2026, 3, 20))
         val handler = handler(doc)
         handler.runOnce() shouldBe true
         val ready = events(tenant.value, doc, readyType)
@@ -393,7 +393,7 @@ class BuildPayloadJobDbTest {
         @TempDir dir: Path,
     ) = run(dir) { tenant ->
         val doc = UUID.randomUUID()
-        seed(tenant, doc, null)
+        seed(tenant, doc, null, transactionDate = LocalDate.of(2026, 3, 20))
         val handler = handler(doc)
         shouldThrow<BuildJobFailed> { handler.runOnce() }.cause.shouldBeInstanceOf<BuildNotReady>()
         events(tenant.value, doc, readyType).size shouldBe 0

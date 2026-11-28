@@ -1,11 +1,13 @@
 package com.dynokore.gst.payload.bootstrap
 
+import com.dynokore.gst.payload.adapters.build.ConfiguredAcceptanceCalendars
 import com.dynokore.gst.payload.application.build.BuildInput
 import com.dynokore.gst.payload.application.build.BuildPayload
 import com.dynokore.gst.payload.application.build.LayerOneCheck
 import com.dynokore.gst.payload.application.build.LayerOneResult
 import com.dynokore.gst.payload.application.build.PayloadRejectedFacts
 import com.dynokore.gst.payload.application.build.Projection
+import com.dynokore.gst.payload.application.build.SpecificationReleaseSelector
 import com.dynokore.gst.payload.application.payload.PayloadReadyFacts
 import com.dynokore.gst.payload.application.payload.PublishPayloadReady
 import com.dynokore.gst.payload.domain.ClassifiedFinding
@@ -13,6 +15,7 @@ import com.dynokore.gst.payload.domain.Severity
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.support.DefaultListableBeanFactory
+import java.time.LocalDate
 import java.util.UUID
 
 class BuildPayloadConfigurationTest {
@@ -23,14 +26,20 @@ class BuildPayloadConfigurationTest {
 
     private fun build(factory: DefaultListableBeanFactory): BuildPayload =
         BuildPayloadConfiguration().buildPayload(
-            inputs = { _, _ -> BuildInput("ENT-1", "{}", "AGG-1", null, null) },
+            inputs = { _, _ ->
+                BuildInput("ENT-1", "{}", "AGG-1", null, null, transactionDate = LocalDate.of(2000, 2, 1))
+            },
             decisions = { _, _ -> "TYPE_2" },
             projector = { _, _ -> Projection.Built(small) },
-            families = { "SG-PINT-1.0" },
+            families = { "PINT_SG" },
             ready = PublishPayloadReady { ready += it },
             rejected = { rejected += it },
             outcomes = { _, _ -> true },
             layerOne = factory.getBeanProvider(LayerOneCheck::class.java),
+            releases =
+                SpecificationReleaseSelector(ConfiguredAcceptanceCalendars.parse(PayloadContext.CALENDAR)) {
+                    LocalDate.of(2000, 7, 15)
+                },
         )
 
     @Test

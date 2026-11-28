@@ -19,6 +19,7 @@ import com.dynokore.gst.payload.application.build.NOT_WIRED
 import com.dynokore.gst.payload.application.build.PayloadProjector
 import com.dynokore.gst.payload.application.build.PayloadRejectedPublisher
 import com.dynokore.gst.payload.application.build.SpecificationFamilySource
+import com.dynokore.gst.payload.application.build.SpecificationReleaseSelector
 import com.dynokore.gst.payload.application.build.TypeDecisionReader
 import com.dynokore.gst.payload.application.payload.PublishPayloadReady
 import com.dynokore.platform.configresolver.PolicyReader
@@ -108,6 +109,7 @@ class BuildPayloadConfiguration {
         rejected: PayloadRejectedPublisher,
         outcomes: BuildOutcomes,
         layerOne: ObjectProvider<LayerOneCheck>,
+        releases: SpecificationReleaseSelector,
     ): BuildPayload =
         BuildPayload(
             inputs,
@@ -118,6 +120,7 @@ class BuildPayloadConfiguration {
             rejected,
             outcomes,
             layerOne.getIfAvailable { NOT_WIRED },
+            releases,
         )
 
     @Bean

@@ -6,6 +6,7 @@ import com.dynokore.gst.payload.domain.ClassifiedFinding
 import com.dynokore.gst.payload.domain.Severity
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
+import java.time.LocalDate
 import java.util.UUID
 
 class BuildPayloadLayerOneTest {
@@ -28,10 +29,12 @@ class BuildPayloadLayerOneTest {
         projection: Projection = Projection.Built(small),
         result: LayerOneResult,
     ) = BuildPayload(
-        inputs = { _, _ -> BuildInput("ENT-1", "{}", "AGG-1", null, null) },
+        inputs = { _, _ ->
+            BuildInput("ENT-1", "{}", "AGG-1", null, null, transactionDate = LocalDate.parse("2000-02-01"))
+        },
         decisions = { _, _ -> "TYPE_2" },
         projector = { _, _ -> projection },
-        families = { "SG-PINT-1.0" },
+        families = { "PINT_SG" },
         ready = PublishPayloadReady { ready += it },
         rejected = { rejected += it },
         outcomes = { _, _ -> true },
@@ -40,6 +43,7 @@ class BuildPayloadLayerOneTest {
                 calls += bytes to family
                 result
             },
+        releases = acceptingSelector(),
     )
 
     private fun result(vararg f: ClassifiedFinding) = LayerOneResult(f.toList(), listOf(decision), packs)
@@ -85,8 +89,8 @@ class BuildPayloadLayerOneTest {
         build(result = result()).run(doc, 1)
         calls.size shouldBe 1
         calls.single().first.contentEquals(small) shouldBe true
-        calls.single().second shouldBe "SG-PINT-1.0"
-        ready.single().specificationVersion shouldBe "SG-PINT-1.0"
+        calls.single().second shouldBe "PINT_SG"
+        ready.single().specificationVersion shouldBe "PINT_SG"
     }
 
     @Test

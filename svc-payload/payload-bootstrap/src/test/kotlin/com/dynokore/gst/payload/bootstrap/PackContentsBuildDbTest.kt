@@ -139,7 +139,7 @@ class PackContentsBuildDbTest {
     ) = tx(tenant) {
         ctx.getBean(JooqVersionFactsStore::class.java).record(doc, 1, VersionFacts("E-001", null))
         val canonical = ctx.getBean(JooqCanonicalInputStore::class.java)
-        canonical.store(doc, 1, document(typeCode), "SALE", false, null as LocalDate?)
+        canonical.store(doc, 1, document(typeCode), "SALE", false, LocalDate.of(2026, 3, 20))
         ctx.getBean(JooqTypeDecisionStore::class.java).store(doc, 1, "TYPE_2", null)
         ctx.getBean(JooqBuildJobs::class.java).enqueueOnce(doc, 1)
     }

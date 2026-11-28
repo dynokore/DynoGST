@@ -18,10 +18,17 @@ object PayloadContext {
         Files.writeString(mountRoot.resolve("tenancy/binding-key-current"), PayloadDb.BINDING_SECRET)
     }
 
-    /** No connection is opened at start: the pool is lazy (TPL-16). */
-    fun offline(mountRoot: Path): ApplicationContextRunner {
+    /**
+     * No connection is opened at start: the pool is lazy (TPL-16). A null [timeZone] or [calendar] leaves that
+     * property out (INV-AC-26579).
+     */
+    fun offline(
+        mountRoot: Path,
+        timeZone: String? = TIME_ZONE,
+        calendar: String? = CALENDAR,
+    ): ApplicationContextRunner {
         secrets(mountRoot)
-        return base(mountRoot, MASTERDATA_URL)
+        return base(mountRoot, MASTERDATA_URL, timeZone, calendar)
     }
 
     /** As [offline] with the masterdata-svc base URL given (INV-AC-26694); null leaves the property out. */
@@ -35,6 +42,15 @@ object PayloadContext {
 
     private const val MASTERDATA_URL = "http://localhost:9"
 
+    /** Synthetic installation values: no real zone choice, calendar row or release code. */
+    private const val TIME_ZONE = "UTC"
+
+    internal val CALENDAR =
+        listOf("PINT_SG", "SG_PEPPOL_BIS").joinToString(",", "{\"calendars\":[", "]}") { family ->
+            """{"family":"$family","releaseOrder":["SYNTH-A"],""" +
+                """"entries":[{"version":"SYNTH-A","acceptedFrom":"2000-01-01"}]}"""
+        }
+
     /** The service over the Testcontainers database as a servlet context, for the tests that call the controllers. */
     fun web(mountRoot: Path): WebApplicationContextRunner {
         secrets(mountRoot)
@@ -47,6 +63,8 @@ object PayloadContext {
     private fun properties(
         mountRoot: Path,
         masterdataUrl: String? = MASTERDATA_URL,
+        timeZone: String? = TIME_ZONE,
+        calendar: String? = CALENDAR,
     ): List<String> =
         listOfNotNull(
             "spring.datasource.username=payload_runtime",
@@ -61,6 +79,8 @@ object PayloadContext {
             // the base URL of access-svc (INV-T-17184): the bean of the override wiring refuses to start without it
             "payload.access-svc-url=http://localhost:9",
             masterdataUrl?.let { "payload.masterdata-svc-url=$it" },
+            timeZone?.let { "payload.build.time-zone=$it" },
+            calendar?.let { "payload.acceptance-calendar=$it" },
             "gst.bindings.telemetry-export=bundled-otel",
             "gst.bindings.telemetry-export-otlp-endpoint=http://telemetry-export.invalid:4318",
         )
@@ -68,6 +88,8 @@ object PayloadContext {
     private fun base(
         mountRoot: Path,
         masterdataUrl: String? = MASTERDATA_URL,
+        timeZone: String? = TIME_ZONE,
+        calendar: String? = CALENDAR,
     ): ApplicationContextRunner =
         ApplicationContextRunner()
             // the real application.yaml (TPL-16), then the overrides below
@@ -75,13 +97,16 @@ object PayloadContext {
             .withUserConfiguration(PayloadApplication::class.java)
             .withPropertyValues(
                 "spring.datasource.url=jdbc:postgresql://localhost:5432/payload",
-                *properties(mountRoot, masterdataUrl).toTypedArray(),
+                *properties(mountRoot, masterdataUrl, timeZone, calendar).toTypedArray(),
             )
 
     /** Over the Testcontainers database; the login password and the binding key come from a mounted secret store. */
-    fun online(mountRoot: Path): ApplicationContextRunner {
+    fun online(
+        mountRoot: Path,
+        calendar: String? = CALENDAR,
+    ): ApplicationContextRunner {
         secrets(mountRoot)
-        return base(mountRoot)
+        return base(mountRoot, calendar = calendar)
             .withPropertyValues("spring.datasource.url=${PayloadDb.jdbcUrl}")
             // These builds run no Schematron pack (none is active here), so the production layer-one check, which
             // fails closed without an active pack (INV-AC-27232), is replaced by the no-op check they ran with.
