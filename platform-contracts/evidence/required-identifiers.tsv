@@ -132,3 +132,7 @@ xmlBase64	property	openapi.yaml	INV-REQ-645
 xmlSha256	property	openapi.yaml	INV-REQ-645
 getAcknowledgementChain.EVD-010	operation_error_code	openapi.yaml	INV-REQ-1345
 getAcknowledgementChain.409	operation_response	openapi.yaml	INV-REQ-1345
+ChainReproduction.overrideReleases	schema_property	openapi.yaml	INV-REQ-1345
+OverrideRelease.code	schema_property	openapi.yaml	INV-REQ-1345
+OverrideRelease.releasedBy	schema_property	openapi.yaml	INV-REQ-1345
+OverrideRelease.releasedAt	schema_property	openapi.yaml	INV-REQ-1345

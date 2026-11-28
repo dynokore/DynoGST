@@ -19,6 +19,10 @@ openapi.yaml	ChainReproduction.mappingTableVersion	NONE
 openapi.yaml	ChainReproduction.scopeRulesVersion	NONE
 openapi.yaml	ChainReproduction.schematronVersion	NONE
 openapi.yaml	ChainReproduction.overrideReleasedBy	IDENTIFYING
+openapi.yaml	ChainReproduction.overrideReleases	IDENTIFYING
+openapi.yaml	OverrideRelease.code	NONE
+openapi.yaml	OverrideRelease.releasedBy	IDENTIFYING
+openapi.yaml	OverrideRelease.releasedAt	NONE
 openapi.yaml	IntegrityStatus.entityRef	NONE
 openapi.yaml	IntegrityStatus.periodRef	NONE
 openapi.yaml	IntegrityStatus.result	NONE

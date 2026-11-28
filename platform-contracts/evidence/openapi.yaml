@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: evidence API
-  version: 1.23.0
+  version: 1.24.0
   description: >-
     Contract-first source of truth for evidence (API-01, STK-44). The
     `evidence-contract` module generates its server interfaces and DTOs
@@ -2020,8 +2020,37 @@ components:
         overrideReleasedBy:
           type: string
           maxLength: 100
-          description: The operator who released an override; present when an override was released.
+          description: >-
+            The releasedBy of the last item of overrideReleases; present exactly
+            when that list is present.
+        overrideReleases:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/OverrideRelease'
+          description: >-
+            Every recorded override release of the version, never a part of it,
+            in release order: the order in which payload-svc acquired the release
+            lock of the document, which need not be the order of releasedAt.
+            Absent when no release is recorded.
       required: [mappingTableVersion, scopeRulesVersion, schematronVersion]
+    OverrideRelease:
+      type: object
+      properties:
+        code:
+          type: string
+          minLength: 1
+          maxLength: 40
+        releasedBy:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: The user ID of the releasing user, never a role.
+        releasedAt:
+          type: string
+          format: date-time
+      required: [code, releasedBy, releasedAt]
     IntegrityResult:
       type: string
       enum: [VERIFIED, FAILED, NEVER_RUN]
