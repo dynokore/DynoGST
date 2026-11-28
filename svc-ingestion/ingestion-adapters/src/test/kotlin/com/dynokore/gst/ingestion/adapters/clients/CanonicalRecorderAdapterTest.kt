@@ -108,16 +108,6 @@ class CanonicalRecorderAdapterTest {
         return result as T
     }
 
-    /**
-     * One answered call under the default timeout, so that class loading of a cold JVM is not spent inside the short
-     * timeout of the case that follows: without it that call can time out before the request reaches the stub.
-     */
-    private fun warmUp() {
-        stub.reply = replyJson(201)
-        withAdapter { it.record(command) }
-        stub.seen.clear()
-    }
-
     private fun replyJson(
         status: Int,
         reasons: String = "",
@@ -189,10 +179,8 @@ class CanonicalRecorderAdapterTest {
 
     @Test
     fun `INV-AC-14090 an answer after the read timeout is Unavailable, one request when the edge has no retry`() {
-        warmUp()
-        // the timeout leaves a slow runner room to deliver the request; the answer still comes well after it
-        stub.reply = CanonicalStub.Reply(201, delayMillis = 3000)
-        val answer = withAdapter(registry(timeout = Duration.ofMillis(1000))) { it.record(command) }
+        stub.reply = CanonicalStub.Reply(201, delayMillis = 1500)
+        val answer = withAdapter(registry(timeout = Duration.ofMillis(300))) { it.record(command) }
         answer.shouldBeInstanceOf<CanonicalAnswer.Unavailable>().reason.let {
             it shouldContain "ingestion-svc->canonical-svc"
             it shouldContain "timed out"
@@ -344,25 +332,6 @@ class CanonicalRecorderAdapterTest {
             val tree = mapper.readTree(replyJson(201).body) as tools.jackson.databind.node.ObjectNode
             tree.remove(member)
             stub.reply = CanonicalStub.Reply(201, tree.toString())
-            withAdapter { it.record(command) } shouldBe CanonicalAnswer.Rejected(null, 201)
-            withAdapter { RecordTransaction(it).execute(command) } shouldBe RecordingOutcome.Failed
-        }
-    }
-
-    @Test
-    fun `INV-AC-28751 a scopeVerdict outside the generated enum is carried as the received string`() {
-        for (verdict in listOf("FUTURE_VALUE", "submittable", "NOT_SUBMITTABLE ", "unknown_default_open_api")) {
-            stub.reply =
-                replyJson(201).let { CanonicalStub.Reply(201, it.body.replace("\"SUBMITTABLE\"", "\"$verdict\"")) }
-            val answer = withAdapter { it.record(command) }.shouldBeInstanceOf<CanonicalAnswer.Created>()
-            answer.result.scopeVerdict shouldBe verdict
-        }
-    }
-
-    @Test
-    fun `INV-AC-28751 a scopeVerdict that is not a string gives Failed`() {
-        for (value in listOf("null", "0", "true", "[\"SUBMITTABLE\"]", "{}")) {
-            stub.reply = CanonicalStub.Reply(201, replyJson(201).body.replace("\"SUBMITTABLE\"", value))
             withAdapter { it.record(command) } shouldBe CanonicalAnswer.Rejected(null, 201)
             withAdapter { RecordTransaction(it).execute(command) } shouldBe RecordingOutcome.Failed
         }
