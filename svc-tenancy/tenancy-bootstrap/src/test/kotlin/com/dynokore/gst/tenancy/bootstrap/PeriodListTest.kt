@@ -5,6 +5,8 @@ import com.dynokore.gst.tenancy.adapters.http.PackDeltaCursor
 import com.dynokore.gst.tenancy.adapters.http.PeriodListCursor
 import com.dynokore.gst.tenancy.adapters.http.PeriodsController
 import com.dynokore.gst.tenancy.adapters.http.RenditionAttestationCursor
+import com.dynokore.gst.tenancy.adapters.http.SandboxCertificationCursor
+import com.dynokore.gst.tenancy.application.certification.ListSandboxCertifications
 import com.dynokore.gst.tenancy.application.election.CallerSource
 import com.dynokore.gst.tenancy.application.period.ConfirmPeriods
 import com.dynokore.gst.tenancy.application.period.FilingFactStore
@@ -65,6 +67,8 @@ class PeriodListTest {
             c.getBean(PackDeltaCursor::class.java),
             c.getBean(ListRenditionAttestations::class.java),
             c.getBean(RenditionAttestationCursor::class.java),
+            c.getBean(ListSandboxCertifications::class.java),
+            c.getBean(SandboxCertificationCursor::class.java),
         )
     }
 

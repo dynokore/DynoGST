@@ -6,19 +6,25 @@ import com.dynokore.gst.tenancy.adapters.certification.ConsumedCertificationEven
 import com.dynokore.gst.tenancy.adapters.certification.IdentityTripleChangedHandler
 import com.dynokore.gst.tenancy.adapters.certification.RulePackActivatedCertificationHandler
 import com.dynokore.gst.tenancy.adapters.events.CertificationStatusChangedOutbox
+import com.dynokore.gst.tenancy.adapters.http.SandboxCertificationCursor
+import com.dynokore.gst.tenancy.adapters.persistence.JooqCertificationHistory
 import com.dynokore.gst.tenancy.adapters.persistence.JooqCertificationStore
 import com.dynokore.gst.tenancy.adapters.persistence.JooqCertifiedEntityDirectory
 import com.dynokore.gst.tenancy.application.certification.CertifiableEntities
+import com.dynokore.gst.tenancy.application.certification.CertificationHistory
 import com.dynokore.gst.tenancy.application.certification.CertificationStatusPublisher
 import com.dynokore.gst.tenancy.application.certification.CertificationStore
 import com.dynokore.gst.tenancy.application.certification.CertifiedEntityDirectory
 import com.dynokore.gst.tenancy.application.certification.CertifySandbox
+import com.dynokore.gst.tenancy.application.certification.ListSandboxCertifications
 import com.dynokore.gst.tenancy.application.certification.MarkAllStaleForNewTrain
 import com.dynokore.gst.tenancy.application.certification.MarkCertificationStale
 import com.dynokore.gst.tenancy.application.certification.ReleaseTrainChanged
 import com.dynokore.gst.tenancy.application.election.ActionAuthority
+import com.dynokore.gst.tenancy.application.period.PeriodAccess
 import com.dynokore.platform.outboxandqueue.InboxConsumer
 import com.dynokore.platform.outboxandqueue.OutboxWriter
+import com.dynokore.platform.serviceruntime.binding.SecretStore
 import com.dynokore.platform.tenancykernel.PlatformTenantBinding
 import com.dynokore.platform.tenancykernel.TenantContext
 import com.dynokore.platform.tenancykernel.TransactionRunner
@@ -147,4 +153,23 @@ class CertificationUseCases {
         fun now(clock: ObjectProvider<Clock>): Instant =
             clock.getIfAvailable(Clock::systemUTC).instant().truncatedTo(ChronoUnit.MICROS)
     }
+}
+
+/** TPL-18: the history read of listSandboxCertifications (INV-T-29134) with the cursor of its pages. */
+@Configuration(proxyBeanMethods = false)
+class CertificationHistoryUseCases {
+    @Bean
+    fun certificationHistory(dsl: DSLContext): CertificationHistory = JooqCertificationHistory(dsl)
+
+    @Bean
+    fun listSandboxCertifications(
+        tx: TransactionRunner,
+        access: PeriodAccess,
+        entities: CertifiableEntities,
+        history: CertificationHistory,
+    ): ListSandboxCertifications = ListSandboxCertifications(tx, access, entities, history)
+
+    @Bean
+    fun sandboxCertificationCursor(secrets: SecretStore): SandboxCertificationCursor =
+        SandboxCertificationCursor(secrets)
 }

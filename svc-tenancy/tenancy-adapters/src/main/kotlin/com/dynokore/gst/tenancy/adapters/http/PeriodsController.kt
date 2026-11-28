@@ -1,5 +1,6 @@
 package com.dynokore.gst.tenancy.adapters.http
 
+import com.dynokore.gst.tenancy.application.certification.ListSandboxCertifications
 import com.dynokore.gst.tenancy.application.election.CallerSource
 import com.dynokore.gst.tenancy.application.period.ConfirmPeriods
 import com.dynokore.gst.tenancy.application.period.ListPeriodRecords
@@ -20,7 +21,9 @@ import com.dynokore.gst.tenancy.contract.model.PeriodRecordListResponse
 import com.dynokore.gst.tenancy.contract.model.PeriodResponse
 import com.dynokore.gst.tenancy.contract.model.RenditionAttestationRecord
 import com.dynokore.gst.tenancy.contract.model.RenditionAttestationRecordList
+import com.dynokore.gst.tenancy.contract.model.SandboxCertificationListResponse
 import com.dynokore.gst.tenancy.domain.PeriodPermissions
+import com.dynokore.gst.tenancy.domain.SandboxCertificationPermissions
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -50,6 +53,8 @@ open class PeriodsController(
     private val packCursors: PackDeltaCursor,
     private val listRenditionAttestations: ListRenditionAttestations,
     private val renditionCursors: RenditionAttestationCursor,
+    private val listSandboxCertifications: ListSandboxCertifications,
+    private val certificationCursors: SandboxCertificationCursor,
 ) : PeriodsApi {
     override fun confirmPeriods(
         entityRef: String,
@@ -157,6 +162,24 @@ open class PeriodsController(
                 )
             }
         }
+    }
+
+    override fun listSandboxCertifications(
+        entityRef: String,
+        limit: Int,
+        cursor: String?,
+    ): ResponseEntity<SandboxCertificationListResponse> {
+        // decided before the cursor is opened, as for the attestations; the key that guards certifySandbox guards the
+        // read, so no second key exists (the use case decides it again before any read)
+        access.denial(entityRef, SandboxCertificationPermissions.RECORD)?.let { forbidden(it) }
+        val now = clock.getIfAvailable(Clock::systemUTC).instant()
+        val user = caller.actor()
+        val after = cursor?.let { certificationCursors.open(it, entityRef, user, now) }
+        return ResponseEntity.ok(
+            certificationListOf(listSandboxCertifications.list(entityRef, limit, after)) { last ->
+                certificationCursors.issue(entityRef, user, last, now)
+            },
+        )
     }
 
     private companion object {
