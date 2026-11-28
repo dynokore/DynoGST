@@ -16,7 +16,6 @@ import org.springframework.context.ConfigurableApplicationContext
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Primary
 import tools.jackson.databind.JsonNode
-import tools.jackson.databind.json.JsonMapper
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -55,7 +54,6 @@ class GoLiveAuditHttpTest {
     }
 
     private val http = HttpClient.newHttpClient()
-    private val json = JsonMapper.builder().build()
     private lateinit var dir: Path
     private lateinit var context: ConfigurableApplicationContext
     private lateinit var lab: Lab
@@ -105,7 +103,7 @@ class GoLiveAuditHttpTest {
         val port = context.environment.getProperty("local.server.port")
         val request =
             HttpRequest
-                .newBuilder(URI.create("http://localhost:$port/internal/v1/tenancy/entities/${entity.entityRef}/go-live"))
+                .newBuilder(URI.create("http://localhost:$port$ENTITIES/${entity.entityRef}/go-live"))
                 .header("Content-Type", "application/json")
                 .header("Idempotency-Key", key.toString())
                 .header("X-Flow-Context", FIXED_FLOW_CONTEXT)
@@ -218,6 +216,7 @@ class GoLiveAuditHttpTest {
         }
 
     private companion object {
+        const val ENTITIES = "/internal/v1/tenancy/entities"
         const val AUDIT_TOPIC = "gst.platform.audit-entry-recorded.v1"
     }
 }
