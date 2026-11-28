@@ -3,13 +3,18 @@ package com.dynokore.gst.payload.bootstrap
 import com.dynokore.gst.payload.adapters.PayloadDb
 import com.dynokore.gst.payload.adapters.build.ActivePackRead
 import com.dynokore.gst.payload.adapters.build.BuildPayloadJobHandler
+import com.dynokore.gst.payload.adapters.build.SchematronLayerOneCheck
+import com.dynokore.gst.payload.adapters.packs.JooqRulePackReplica
 import com.dynokore.gst.payload.adapters.persistence.JooqBuildJobs
 import com.dynokore.gst.payload.adapters.persistence.JooqCanonicalInputStore
 import com.dynokore.gst.payload.adapters.persistence.JooqTypeDecisionStore
 import com.dynokore.gst.payload.adapters.persistence.JooqVersionFactsStore
 import com.dynokore.gst.payload.adapters.projection.MdePackOffNetworkPrefix
 import com.dynokore.gst.payload.application.build.BuildPayload
+import com.dynokore.gst.payload.application.build.LayerOneCheck
 import com.dynokore.gst.payload.application.build.SpecificationFamilySource
+import com.dynokore.gst.payload.domain.SchematronValidator
+import com.dynokore.gst.payload.domain.ValidationOutcome
 import com.dynokore.gst.payload.domain.version.VersionFacts
 import com.dynokore.platform.outboxandqueue.ClaimedItem
 import com.dynokore.platform.outboxandqueue.TenantScope
@@ -28,7 +33,7 @@ import java.util.UUID
 
 /**
  * INV-AC-26579 against a real database: the full TPL-18 context, the claimed build job and the outbox rows read as
- * the database owner. Only the family and the active pack are test beans.
+ * the database owner. The family and the active MDE pack are test beans; one case also replaces the layer-one bean.
  */
 class BuildPayloadReleaseDbTest {
     private val mapper = ObjectMapper()
@@ -51,13 +56,25 @@ class BuildPayloadReleaseDbTest {
         }
     }
 
-    /** Seeds one version, runs its build job once and gives the stored PayloadReady and PayloadRejected rows. */
-    private fun build(ctx: ApplicationContext): Pair<List<JsonNode>, List<JsonNode>> {
+    /**
+     * Seeds one version, runs its build job once and gives the stored PayloadReady and PayloadRejected rows. A
+     * [schematronVersion] is first staged and activated in the rule pack replica of the tenant.
+     */
+    private fun build(
+        ctx: ApplicationContext,
+        schematronVersion: String? = null,
+    ): Pair<List<JsonNode>, List<JsonNode>> {
         val tenant = TenantId(UUID.randomUUID())
         val doc = UUID.randomUUID()
         val scope = ctx.getBean(TenantScope::class.java)
         scope.bind(tenant, "svc:payload-svc") {
             scope.transactions.inTransaction {
+                schematronVersion?.let {
+                    val rules = ctx.getBean(JooqRulePackReplica::class.java)
+                    val type = SchematronLayerOneCheck.SCHEMATRON
+                    rules.stage(type, "synth-schematron", it, "{}")
+                    rules.activate(type, "synth-schematron", it)
+                }
                 ctx.getBean(JooqVersionFactsStore::class.java).record(doc, 1, VersionFacts("E-001", null))
                 ctx
                     .getBean(JooqCanonicalInputStore::class.java)
@@ -120,6 +137,37 @@ class BuildPayloadReleaseDbTest {
             ready.single()["specificationVersion"].asString() shouldBe "PINT_SG"
             rejected.size shouldBe 0
         }
+    }
+
+    @Test
+    fun `INV-AC-29337 the stored PayloadReady records the active Schematron pack version`(
+        @TempDir dir: Path,
+    ) {
+        val active = "SCH-DB-TEST"
+        // The production layer-one check over the real replica; only the XSLT run is a stub with no failed assert.
+        lateinit var replica: JooqRulePackReplica
+        val noFailedAssert =
+            object : SchematronValidator {
+                override fun validate(
+                    packVersion: String,
+                    document: ByteArray,
+                ) = ValidationOutcome(emptyList())
+            }
+        context(dir, calendar = true)
+            // the bean name of the no-op check of PayloadContext.online, which this one replaces
+            .withBean(
+                "layerOneCheckForBuildFixtures",
+                LayerOneCheck::class.java,
+                { SchematronLayerOneCheck(noFailedAssert) { replica.active(it) } },
+                { it.isPrimary = true },
+            ).run { ctx ->
+                replica = ctx.getBean(JooqRulePackReplica::class.java)
+                val (ready, rejected) = build(ctx, active)
+                rejected.size shouldBe 0
+                val packs = ready.single()["regenerationKey"]["packVersions"]
+                packs.values().map { it["packRef"].asString() to it["version"].asString() } shouldBe
+                    listOf("MDE" to "DB-TEST", "schematron" to active)
+            }
     }
 
     @Test

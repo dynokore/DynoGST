@@ -2,9 +2,11 @@ package com.dynokore.gst.payload.application.build
 
 import com.dynokore.gst.payload.application.payload.PayloadReadyFacts
 import com.dynokore.gst.payload.application.payload.PublishPayloadReady
+import com.dynokore.gst.payload.application.payload.RegenerationFacts
 import com.dynokore.gst.payload.domain.ClassifiedFinding
 import com.dynokore.gst.payload.domain.Severity
 import io.kotest.matchers.shouldBe
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 import java.time.LocalDate
 import java.util.UUID
@@ -110,6 +112,77 @@ class BuildPayloadLayerOneTest {
     @Test
     fun `INV-AC-27185 a blocked verdict publishes no PayloadReady`() {
         build(result = result(fatal)).run(doc, 1)
+        ready.size shouldBe 0
+    }
+
+    private val mde = PackVersionFact("MDE", "MDE-7")
+    private val schematron = PackVersionFact("schematron", "SCH-4")
+
+    private fun regenerationOf(
+        mdeVersion: String?,
+        vararg layerOnePacks: PackVersionFact,
+    ): RegenerationFacts? {
+        build(
+            projection = Projection.Built(small, mdeVersion),
+            result = LayerOneResult(emptyList(), emptyList(), layerOnePacks.toList()),
+        ).run(doc, 3)
+        rejected.size shouldBe 0
+        return ready.single().regeneration
+    }
+
+    @Test
+    fun `INV-AC-29337 the regeneration key holds the MDE version and then the Schematron version`() {
+        regenerationOf("MDE-7", schematron) shouldBe RegenerationFacts(3, "SYNTH-A", listOf(mde, schematron))
+    }
+
+    @Test
+    fun `INV-AC-29337 a Schematron version without an MDE version is recorded alone`() {
+        regenerationOf(null, schematron) shouldBe RegenerationFacts(3, "SYNTH-A", listOf(schematron))
+    }
+
+    @Test
+    fun `INV-AC-29337 an MDE version without a Schematron version is recorded alone`() {
+        regenerationOf("MDE-7") shouldBe RegenerationFacts(3, "SYNTH-A", listOf(mde))
+    }
+
+    @Test
+    fun `INV-AC-29337 with neither version there is no regeneration key`() {
+        regenerationOf(null) shouldBe null
+    }
+
+    @Test
+    fun `INV-AC-29337 the severity-override item beside the Schematron item is not in the key`() {
+        val override = PackVersionFact("severity-override", "OVR-2")
+        regenerationOf("MDE-7", schematron, override) shouldBe
+            RegenerationFacts(3, "SYNTH-A", listOf(mde, schematron))
+    }
+
+    @Test
+    fun `INV-AC-29337 two Schematron items throw and nothing is staged`() {
+        val two = listOf(schematron, PackVersionFact("schematron", "SCH-5"))
+        assertThrows(IllegalStateException::class.java) {
+            build(result = LayerOneResult(emptyList(), emptyList(), two)).run(doc, 1)
+        }
+        ready.size shouldBe 0
+        rejected.size shouldBe 0
+    }
+
+    @Test
+    fun `INV-AC-29337 the look-alikes Schematron and schematron-rules are not recorded`() {
+        val lookAlikes =
+            arrayOf(PackVersionFact("Schematron", "SCH-8"), PackVersionFact("schematron-rules", "SCH-9"))
+        regenerationOf("MDE-7", *lookAlikes) shouldBe RegenerationFacts(3, "SYNTH-A", listOf(mde))
+    }
+
+    @Test
+    fun `INV-AC-29337 a blocked layer-one verdict keeps its rejection and publishes nothing`() {
+        val checked = listOf(schematron, PackVersionFact("severity-override", "OVR-2"))
+        build(
+            projection = Projection.Built(small, "MDE-7"),
+            result = LayerOneResult(listOf(fatal), listOf(decision), checked),
+        ).run(doc, 1)
+        rejected.single() shouldBe
+            PayloadRejectedFacts("ENT-1", doc, 1, "PAY-002", null, checked, listOf(decision))
         ready.size shouldBe 0
     }
 }

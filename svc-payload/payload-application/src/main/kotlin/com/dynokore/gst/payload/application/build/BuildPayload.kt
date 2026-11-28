@@ -269,11 +269,7 @@ class BuildPayload(
             }
 
             is ReleaseSelection.Selected -> {
-                val regeneration =
-                    projection.packVersion?.let {
-                        RegenerationFacts(version, selection.release.release.code, mdePack(it))
-                    }
-                built(input, docUuid, version, decision, projection.bytes, family, regeneration)
+                built(input, docUuid, version, decision, projection, family, selection.release.release.code)
             }
         }
     }
@@ -285,10 +281,11 @@ class BuildPayload(
         docUuid: UUID,
         version: Int,
         decision: String,
-        bytes: ByteArray,
+        projection: Projection.Built,
         family: String,
-        regeneration: RegenerationFacts?,
+        release: String,
     ) {
+        val bytes = projection.bytes
         if (PayloadSizeCheck.check(bytes.size.toLong(), 0).blocked) {
             reject(input, docUuid, version, PayloadSizeCheck.PAY_010, null)
             return
@@ -296,6 +293,7 @@ class BuildPayload(
         val result = layerOne.check(bytes, family)
         when (val verdict = ValidationVerdict.of(result.findings, MdeResult.Complete)) {
             is ValidationVerdict.Passed -> {
+                val regeneration = regeneration(version, release, projection.packVersion, result.packVersions)
                 publish(input, docUuid, version, decision, bytes, family, regeneration)
             }
 
@@ -311,6 +309,22 @@ class BuildPayload(
                 )
             }
         }
+    }
+
+    /**
+     * The regeneration key of a passed build: the MDE version, then the Schematron version the check used
+     * (INV-AC-29337); the other packs of layer one are not recorded. Null when there is neither.
+     */
+    private fun regeneration(
+        version: Int,
+        release: String,
+        mdeVersion: String?,
+        layerOnePacks: List<PackVersionFact>,
+    ): RegenerationFacts? {
+        val schematron = layerOnePacks.filter { it.packType == SCHEMATRON_PACK_TYPE }
+        check(schematron.size <= 1) { "layer one returned more than one Schematron pack version" }
+        val packs = mdeVersion?.let(::mdePack).orEmpty() + schematron
+        return if (packs.isEmpty()) null else RegenerationFacts(version, release, packs)
     }
 
     private fun reject(
@@ -347,7 +361,10 @@ class BuildPayload(
         ),
     )
 
-    private companion object {
-        const val MDE_PACK_TYPE = "MDE"
+    companion object {
+        private const val MDE_PACK_TYPE = "MDE"
+
+        /** The pack type of the Schematron item of layer one; a bootstrap test holds it equal to the adapter's. */
+        const val SCHEMATRON_PACK_TYPE = "schematron"
     }
 }
