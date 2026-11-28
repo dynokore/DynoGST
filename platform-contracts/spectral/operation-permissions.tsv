@@ -4,6 +4,8 @@ transport	testConnection	adapter.configure
 transport	failoverAdapter	adapter.failover
 transport	setConnectionEntities	adapter.configure
 masterdata	importRates	exchange-rate.import
+masterdata	dryRunRateImport	exchange-rate.import
+masterdata	getRateImportDryRun	exchange-rate.import
 masterdata	enterRate	exchange-rate.enter
 masterdata	createConnection	connection.configure
 masterdata	getConnection	connection.view

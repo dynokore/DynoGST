@@ -33,3 +33,4 @@
 ../openapi.yaml#/components/schemas/ClientSignatoryRecord client-signatory-record-*.json
 ../schemas/signed-link-requested-payload.schema.json signed-link-requested-*.json
 ../openapi.yaml#/components/schemas/CorrectCounterpartyDataRequest correct-counterparty-data-request-*.json
+../openapi.yaml#/components/schemas/RateDryRunResult rate-dry-run-result*.json

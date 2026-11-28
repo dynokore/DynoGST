@@ -114,8 +114,6 @@ masterdata	getRegisterAndRates	MDM-007	no_status
 masterdata	importCounterparties	MDM-002	no_status
 masterdata	importCounterparties	MDM-003	no_status
 masterdata	importCounterparties	MDM-006	no_status
-masterdata	importRates	MDM-012	status_not_declared
-masterdata	importRates	MDM-013	status_not_declared
 masterdata	importRates	MDM-014	no_status
 masterdata	importRates	MDM-015	no_status
 masterdata	importRates	SRT-001	status_not_declared

@@ -1,0 +1,1 @@
+{"dryRunId": "RDR-7", "fileHash": "sha256:1a2b3c4d5e6f708192a3b4c5d6e7f809", "rowCount": 2, "validCount": 2, "rejectedRows": [], "preview": {"createCount": 1, "supersedeCount": 1, "changes": [{"currency": "USD", "date": "2026-03-01", "oldRate": "1.35700000", "newRate": "1.35800000"}, {"currency": "USD", "date": "2026-03-02", "newRate": "1.35900000"}]}}

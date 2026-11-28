@@ -1068,6 +1068,14 @@ paths:
         and date written concurrently).
 
 
+        The request names the reviewed rate-file dry run in `dryRunId`
+        (`dryRunRateImport`, INV-REQ-506). The service refuses the request
+        `422` with MDM-019, and stores nothing, unless `dryRunId` names a
+        SUCCEEDED dry run of the same tenant, entity, source, fileHash and
+        rows. `dryRunId` is optional in the schema only so that this change
+        stays additive (API-03).
+
+
         Long command (INV-Q-3438 A, INV-Q-3466 A, API-17): an import
         finished within x-timeout returns `201` with `ImportResult`; one that
         is not returns `202` with `Location` and `Retry-After` pointing at
@@ -1081,7 +1089,7 @@ paths:
       x-entity-ref: entityRef
       x-sync-edge: console-bff->masterdata-svc
       x-timeout: 2000
-      x-error-codes: [MDM-012, MDM-013, MDM-014, MDM-015, SRT-001, SRT-008]
+      x-error-codes: [MDM-012, MDM-013, MDM-014, MDM-015, MDM-019, SRT-001, SRT-008]
       x-requirements: [INV-REQ-957, INV-REQ-1010, "§35.2"]
       x-operation:
         kind: PERMISSION
@@ -1129,6 +1137,28 @@ paths:
               examples:
                 default:
                   value: { importId: "IMP-31", importKind: "RATES", state: "RUNNING", startedAt: "2026-03-20T03:15:00Z", actorRef: "IDN-0007", source: "MAS", dateRange: { from: "2026-03-01", to: "2026-03-31" } }
+        '422':
+          description: >-
+            Nothing is stored: the source is not the elected one (MDM-012) or
+            not approved (MDM-013), or the request names no usable rate-file
+            dry run (MDM-019).
+          content:
+            application/problem+json:
+              schema:
+                $ref: ../service-runtime/schemas/error-envelope.schema.json
+              examples:
+                default:
+                  value:
+                    type: https://errors.invoice.internal/MDM-019
+                    title: Rate import has no usable dry run
+                    status: 422
+                    code: MDM-019
+                    severity: BLOCK
+                    disposition: MANUAL
+                    remediationOwner: Finance
+                    errors:
+                      - { code: "MDM-019", field: "/dryRunId", message: "Dry run RDR-7 is for other rows" }
+                    correlationId: 3fa85f64-5717-4562-b3fc-2c963f66afa6
         default:
           $ref: '#/components/responses/Error'
   /internal/v1/masterdata/imports/{importId}:
@@ -1322,6 +1352,173 @@ paths:
                         - { row: 17, code: "MDM-003", field: "/uen", message: "UEN format is invalid" }
                       duplicates: []
                       preview: { createCount: 200, updateCount: 30, unchangedCount: 9, changes: [] }
+        default:
+          $ref: '#/components/responses/Error'
+  /internal/v1/masterdata/exchange-rates/import/dry-runs:
+    post:
+      operationId: dryRunRateImport
+      summary: Dry-run a rate file before it is applied
+      description: >-
+        Rate-file import dry run to console-bff (INV-REQ-506: upload, then
+        validate and preview, then apply), mirroring
+        `dryRunCounterpartyImport`. It validates the mapped rows (`rows`) of
+        the file and previews the change against the stored rates: how many
+        rates the apply would create and how many it would supersede. A dry
+        run stores no rate and publishes no event. Rejected rows carry
+        MDM-014 (invalid currency), MDM-015 (invalid rate) or SRT-008 (the
+        same source, pair and date written concurrently) in `rejectedRows`.
+        A source that is not the elected one is refused `422` with MDM-012;
+        a source that is not approved is refused `422` with MDM-013.
+        `importRates` names the reviewed `dryRunId`.
+
+
+        Long command (API-17): a dry run finished within x-timeout returns
+        `200` with `RateDryRunResult`; one that is not returns `202` with
+        `Location` and `Retry-After` pointing at `getRateImportDryRun`
+        (`/internal/v1/masterdata/exchange-rates/import/dry-runs/{dryRunId}`)
+        and the `RateDryRunStatus` body with state RUNNING. A repeat with the
+        same Idempotency-Key replays the stored response (API-15).
+      tags: [import]
+      x-principal: filing-workflow
+      x-caller-auth: end-user
+      x-entity-ref: entityRef
+      x-sync-edge: console-bff->masterdata-svc
+      x-timeout: 2000
+      x-error-codes: [MDM-012, MDM-013]
+      x-requirements: [INV-REQ-506]
+      x-operation:
+        kind: PERMISSION
+        permission: exchange-rate.import
+        scope: tenant
+        precondition: "The caller has parsed the rate file and holds its mapped rows and its fileHash (INV-REQ-506)."
+        reversibility: UNDOABLE
+        repeatKey: "Idempotency-Key — a dry run stores no rate; a repeat replays the stored result."
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImportRatesRequest'
+            examples:
+              default:
+                value: { source: "MAS", dateRange: { from: "2026-03-01", to: "2026-03-02" }, currencyPairs: ["USD/SGD"], entityRef: "E-001", fileHash: "sha256:1a2b3c4d5e6f708192a3b4c5d6e7f809", rowCount: 2, rows: [{ currency: "USD", date: "2026-03-01", rate: "1.35800000" }, { currency: "USD", date: "2026-03-02", rate: "1.35900000" }] }
+      responses:
+        '200':
+          description: The dry run's result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateDryRunResult'
+              examples:
+                default:
+                  value:
+                    dryRunId: "RDR-7"
+                    fileHash: "sha256:1a2b3c4d5e6f708192a3b4c5d6e7f809"
+                    rowCount: 2
+                    validCount: 2
+                    rejectedRows: []
+                    preview:
+                      createCount: 1
+                      supersedeCount: 1
+                      changes:
+                        - { currency: "USD", date: "2026-03-01", oldRate: "1.35700000", newRate: "1.35800000" }
+                        - { currency: "USD", date: "2026-03-02", newRate: "1.35900000" }
+        '202':
+          description: >-
+            The work did not finish within x-timeout and continues
+            asynchronously (API-17, INV-Q-3438 A); poll the status resource.
+          headers:
+            Location:
+              schema: { type: string }
+              description: '`/internal/v1/masterdata/exchange-rates/import/dry-runs/{dryRunId}` (API-17).'
+            Retry-After:
+              schema: { type: integer }
+              description: Seconds to wait before polling the status resource (API-17).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateDryRunStatus'
+              examples:
+                default:
+                  value: { dryRunId: "RDR-7", state: "RUNNING", startedAt: "2026-03-20T03:10:00Z" }
+        '413':
+          $ref: '#/components/responses/Error'
+        '422':
+          description: >-
+            The source is not the elected one (MDM-012) or not approved
+            (MDM-013); no dry run result is produced.
+          content:
+            application/problem+json:
+              schema:
+                $ref: ../service-runtime/schemas/error-envelope.schema.json
+              examples:
+                default:
+                  value:
+                    type: https://errors.invoice.internal/MDM-012
+                    title: Rate source is not your chosen source
+                    status: 422
+                    code: MDM-012
+                    severity: BLOCK
+                    disposition: MANUAL
+                    remediationOwner: Finance
+                    errors:
+                      - { code: "MDM-012", field: "/source", message: "ECB is not the elected source of entity E-001" }
+                    correlationId: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+        default:
+          $ref: '#/components/responses/Error'
+  /internal/v1/masterdata/exchange-rates/import/dry-runs/{dryRunId}:
+    get:
+      operationId: getRateImportDryRun
+      summary: Read a rate-file dry run's status and result
+      description: >-
+        The status resource of `dryRunRateImport` (API-17, INV-REQ-506).
+        `state` is RUNNING, SUCCEEDED or FAILED; `result` is the
+        `RateDryRunResult` only when SUCCEEDED and `error` the API-20
+        envelope only when FAILED. Readable only by the principal that
+        started the dry run, and kept at least 7 days (API-17).
+      tags: [import]
+      x-principal: filing-workflow
+      x-caller-auth: end-user
+      x-sync-edge: console-bff->masterdata-svc
+      x-timeout: 2000
+      x-error-codes: []
+      x-requirements: [INV-REQ-506]
+      x-operation:
+        kind: PERMISSION
+        permission: exchange-rate.import
+        scope: tenant
+        precondition: "The dry run exists."
+        reversibility: UNDOABLE
+        repeatKey: "None — a read."
+      parameters:
+        - name: dryRunId
+          in: path
+          required: true
+          schema: { type: string, maxLength: 40 }
+      responses:
+        '200':
+          description: The dry run's status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateDryRunStatus'
+              examples:
+                default:
+                  value:
+                    dryRunId: "RDR-7"
+                    state: "SUCCEEDED"
+                    startedAt: "2026-03-20T03:10:00Z"
+                    completedAt: "2026-03-20T03:10:20Z"
+                    result:
+                      dryRunId: "RDR-7"
+                      fileHash: "sha256:1a2b3c4d5e6f708192a3b4c5d6e7f809"
+                      rowCount: 2
+                      validCount: 1
+                      rejectedRows:
+                        - { row: 2, code: "MDM-015", field: "/rate", message: "Rate is invalid" }
+                      preview: { createCount: 1, supersedeCount: 0, changes: [{ currency: "USD", date: "2026-03-01", newRate: "1.35800000" }] }
         default:
           $ref: '#/components/responses/Error'
   /internal/v1/masterdata/exchange-rates:
@@ -2814,6 +3011,63 @@ components:
         error:
           $ref: '#/components/schemas/ErrorEnvelope'
       required: [dryRunId, state, startedAt]
+    RateDryRunResult:
+      type: object
+      description: >-
+        Rate-file import dry run result (INV-REQ-506), mirroring
+        CounterpartyDryRunResult: counts plus per-rate old and new values. A
+        dry run stores no rate and publishes no event.
+      properties:
+        dryRunId: { type: string, maxLength: 40 }
+        fileHash: { type: string, maxLength: 128 }
+        rowCount: { type: integer, minimum: 0 }
+        validCount: { type: integer, minimum: 0 }
+        rejectedRows:
+          type: array
+          description: Rejected rows carry MDM-014, MDM-015 or SRT-008.
+          items:
+            $ref: '#/components/schemas/RejectedRow'
+        preview:
+          type: object
+          properties:
+            createCount: { type: integer, minimum: 0 }
+            supersedeCount: { type: integer, minimum: 0 }
+            changes:
+              type: array
+              items:
+                type: object
+                properties:
+                  currency: { type: string, maxLength: 3 }
+                  date: { type: string, format: date }
+                  oldRate:
+                    type: string
+                    format: decimal
+                    pattern: '^-?\d{1,17}(\.\d{1,8})?$'
+                    description: The stored rate the apply would supersede, as a decimal string, up to 8 places (API-12).
+                  newRate:
+                    type: string
+                    format: decimal
+                    pattern: '^-?\d{1,17}(\.\d{1,8})?$'
+                    description: The rate the apply would store, as a decimal string, up to 8 places (API-12).
+                required: [currency, date, newRate]
+          required: [createCount, supersedeCount, changes]
+      required: [dryRunId, fileHash, rowCount, validCount, rejectedRows, preview]
+    RateDryRunStatus:
+      type: object
+      description: >-
+        Status resource of dryRunRateImport (API-17, INV-REQ-506); also the
+        202 body, with state RUNNING.
+      properties:
+        dryRunId: { type: string, maxLength: 40 }
+        state:
+          $ref: '#/components/schemas/OperationState'
+        startedAt: { type: string, format: date-time }
+        completedAt: { type: string, format: date-time, description: Present when state is not RUNNING. }
+        result:
+          $ref: '#/components/schemas/RateDryRunResult'
+        error:
+          $ref: '#/components/schemas/ErrorEnvelope'
+      required: [dryRunId, state, startedAt]
     ImportRecord:
       type: object
       description: >-
@@ -2832,7 +3086,7 @@ components:
         completedAt: { type: string, format: date-time, description: Present when state is not RUNNING. }
         actorRef: { type: string, maxLength: 64, description: 'The importing principal; the server fills it from the token.' }
         fileHash: { type: string, maxLength: 128, description: Counterparty imports only. }
-        dryRunId: { type: string, maxLength: 40, description: Counterparty imports only; the reviewed dry run. }
+        dryRunId: { type: string, maxLength: 40, description: 'The reviewed dry run of a counterparty import or of a rate import.' }
         source: { type: string, maxLength: 40, description: Rate imports only. }
         dateRange:
           type: object
@@ -2892,6 +3146,13 @@ components:
             election of that entity.
         fileHash: { type: string, maxLength: 128 }
         rowCount: { type: integer, minimum: 0 }
+        dryRunId:
+          type: string
+          maxLength: 40
+          description: >-
+            The reviewed dry run of `dryRunRateImport` (INV-REQ-506), sent to
+            `importRates`, which refuses `422` MDM-019 without a usable one.
+            Optional in the schema only to keep the change additive (API-03).
         rows:
           type: array
           maxItems: 5000
