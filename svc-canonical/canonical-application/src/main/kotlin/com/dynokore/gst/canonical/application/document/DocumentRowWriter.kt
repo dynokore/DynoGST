@@ -127,7 +127,8 @@ class DocumentRowWriter(
             transactionDate = facts.version.transactionDate,
             prescribedPeriodRef = facts.prescribedPeriodRef,
             scopeVerdict = checkNotNull(facts.version.scopeVerdict).name,
-            appliedPackVersions = facts.appliedPackVersions.map { AppliedPackVersion(it.packIdentifier, it.version) },
+            appliedPackVersions =
+                facts.appliedPackVersions.map { AppliedPackVersion(it.packIdentifier, it.version, it.packType) },
             traceReference = "trace/$docUuid/v$version",
             canonicalDocument = facts.version.canonical,
             aggregateId = null,

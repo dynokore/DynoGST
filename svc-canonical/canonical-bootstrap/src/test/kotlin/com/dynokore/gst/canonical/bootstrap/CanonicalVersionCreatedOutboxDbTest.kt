@@ -137,7 +137,7 @@ class CanonicalVersionCreatedOutboxDbTest {
         transactionDate = LocalDate.of(2026, 3, 20),
         prescribedPeriodRef = "2026-Q1",
         scopeVerdict = "SUBMITTABLE",
-        appliedPackVersions = listOf(AppliedPackVersion("sg-gst", "1.0.0")),
+        appliedPackVersions = listOf(AppliedPackVersion("sg-gst", "1.0.0", "SCOPE")),
         traceReference = "trace-$version",
         canonicalDocument = canonical,
         aggregateId = aggregateId,
@@ -365,6 +365,36 @@ class CanonicalVersionCreatedOutboxDbTest {
                 (it as ObjectNode).remove("traceReference")
             }
         schemaErrors(without.toString()).shouldNotBeEmpty()
+    }
+
+    @Test
+    fun `INV-AC-29335 the stored outbox row carries packType, packIdentifier and version of every applied pack`(
+        @TempDir dir: Path,
+    ) = run(dir) { b ->
+        val tenant = UUID.randomUUID()
+        val d = UUID.randomUUID()
+        val applied =
+            listOf(
+                AppliedPackVersion(packIdentifier = "gst-scope", version = "1.0.0", packType = "SCOPE"),
+                AppliedPackVersion(packIdentifier = "gst-mapping", version = "2.0.0", packType = "MAPPING"),
+            )
+        b.scope.bind(TenantId(tenant), actor) {
+            b.runner.inTransaction {
+                val facts = facts(d, 1, null).copy(appliedPackVersions = applied)
+                b.writer.createFirst(newDocument(tenant, d), facts, seededLink(tenant, d))
+            }
+        }
+        val data = rowsOf(tenant, d).single()[1]!!
+        mapper
+            .readTree(data)
+            .get("appliedPackVersions")
+            .toList()
+            .map { item -> item.properties().associate { it.key to it.value.asString() } } shouldBe
+            listOf(
+                mapOf("packType" to "SCOPE", "packIdentifier" to "gst-scope", "version" to "1.0.0"),
+                mapOf("packType" to "MAPPING", "packIdentifier" to "gst-mapping", "version" to "2.0.0"),
+            )
+        schemaErrors(data).shouldBeEmpty()
     }
 
     @Test

@@ -38,6 +38,8 @@ data class RoutingFactsData(
 data class AppliedPackVersion(
     val packIdentifier: String,
     val version: String,
+    /** The type of the applied pack, set at source (W3C PROV): never read from [packIdentifier]. No default. */
+    val packType: String,
 )
 
 /** The kind of a net derivation; the spelling of the published schema. */

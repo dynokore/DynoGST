@@ -283,7 +283,7 @@ class RecordAggregateDocument(
         appliedPackVersions =
             listOf(SCOPE, MAPPING, MDE)
                 .filter { it in d.packs }
-                .map { AppliedPackVersion(it, d.packs.getValue(it)) },
+                .map { AppliedPackVersion(packIdentifier = it, version = d.packs.getValue(it), packType = it) },
         traceReference = "$docUuid:1",
         canonicalDocument = d.canonical,
         aggregateId = input.aggregateId,

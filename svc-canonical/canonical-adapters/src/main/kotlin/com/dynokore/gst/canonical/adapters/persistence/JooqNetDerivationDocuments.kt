@@ -159,9 +159,9 @@ class JooqNetDerivationDocuments(
                     "$docUuid v$version has no mapping pack"
                 }
             listOfNotNull(
-                AppliedPackVersion("SCOPE", scope),
-                AppliedPackVersion("MAPPING", mapping),
-                row.record.get(DOCUMENT_VERSION.MDE_PACK_VERSION)?.let { AppliedPackVersion("MDE", it) },
+                AppliedPackVersion("SCOPE", scope, packType = "SCOPE"),
+                AppliedPackVersion("MAPPING", mapping, packType = "MAPPING"),
+                row.record.get(DOCUMENT_VERSION.MDE_PACK_VERSION)?.let { AppliedPackVersion("MDE", it, "MDE") },
             )
         }
 

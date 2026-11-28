@@ -316,11 +316,26 @@ class RowWritingResultBuilderTest {
         f.prescribedPeriodRef shouldBe "2026-Q1"
         f.scopeVerdict shouldBe "IN_SCOPE"
         f.appliedPackVersions shouldBe
-            listOf(AppliedPackVersion("gst-scope", "S-2026.1"), AppliedPackVersion("MAP-0042", "M-3"))
+            listOf(
+                AppliedPackVersion("gst-scope", "S-2026.1", "SCOPE"),
+                AppliedPackVersion("MAP-0042", "M-3", "MAPPING"),
+            )
         f.traceReference shouldBe "trace/$d1/v1"
         f.canonicalDocument shouldBe "R2"
         f.aggregateId shouldBe null
         f.routingFacts shouldBe RoutingFactsData(RoutingDirection.SALE, RoutingNetworkPath.NOT_ON_NETWORK)
+    }
+
+    @Test
+    fun `INV-AC-29335 the record path writes the type of each evaluation result, not its identifier`() {
+        val evaluated =
+            listOf(AppliedPackFact("SCOPE", "gst-scope", "1.0.0"), AppliedPackFact("MAPPING", "gst-mapping", "2.0.0"))
+        rowWriter.write(command(), d1, 1, facts().copy(appliedPackVersions = evaluated))
+        staged.single().appliedPackVersions shouldBe
+            listOf(
+                AppliedPackVersion(packIdentifier = "gst-scope", version = "1.0.0", packType = "SCOPE"),
+                AppliedPackVersion(packIdentifier = "gst-mapping", version = "2.0.0", packType = "MAPPING"),
+            )
     }
 
     @Test

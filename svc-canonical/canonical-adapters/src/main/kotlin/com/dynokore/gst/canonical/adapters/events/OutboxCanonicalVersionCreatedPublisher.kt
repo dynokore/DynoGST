@@ -54,7 +54,8 @@ class OutboxCanonicalVersionCreatedPublisher(
             append(",\"appliedPackVersions\":")
             append(
                 facts.appliedPackVersions.joinToString(",", "[", "]") {
-                    "{\"packIdentifier\":${json(it.packIdentifier)},\"version\":${json(it.version)}}"
+                    "{\"packType\":${json(it.packType)},\"packIdentifier\":${json(it.packIdentifier)}," +
+                        "\"version\":${json(it.version)}}"
                 },
             )
             append(",\"traceReference\":").append(json(facts.traceReference))

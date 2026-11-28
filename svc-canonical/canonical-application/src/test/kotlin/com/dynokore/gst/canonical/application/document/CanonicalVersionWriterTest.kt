@@ -124,7 +124,7 @@ class CanonicalVersionWriterTest {
         transactionDate = date,
         prescribedPeriodRef = "2026-Q1",
         scopeVerdict = "IN_SCOPE",
-        appliedPackVersions = listOf(AppliedPackVersion("scope", "1.0.0")),
+        appliedPackVersions = listOf(AppliedPackVersion("scope", "1.0.0", "SCOPE")),
         traceReference = "trace-$n",
         canonicalDocument = "{}",
         aggregateId = aggregateId,

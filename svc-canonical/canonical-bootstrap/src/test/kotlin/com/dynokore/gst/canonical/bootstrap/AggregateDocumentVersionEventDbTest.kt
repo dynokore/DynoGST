@@ -231,7 +231,7 @@ class AggregateDocumentVersionEventDbTest {
         transactionDate = LocalDate.of(2026, 1, 31),
         prescribedPeriodRef = "2026-01",
         scopeVerdict = "IN_SCOPE",
-        appliedPackVersions = listOf(AppliedPackVersion("SCOPE", "s1")),
+        appliedPackVersions = listOf(AppliedPackVersion("SCOPE", "s1", "SCOPE")),
         traceReference = "trace-$doc:$version",
         canonicalDocument = canonical,
         aggregateId = null,

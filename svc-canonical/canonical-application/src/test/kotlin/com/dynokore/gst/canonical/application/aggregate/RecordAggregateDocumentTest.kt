@@ -1,5 +1,6 @@
 package com.dynokore.gst.canonical.application.aggregate
 
+import com.dynokore.gst.canonical.application.document.AppliedPackVersion
 import com.dynokore.gst.canonical.application.document.CanonicalVersionCreatedFacts
 import com.dynokore.gst.canonical.application.document.CanonicalVersionCreatedPublisher
 import com.dynokore.gst.canonical.application.document.CanonicalVersionWriter
@@ -205,6 +206,19 @@ class RecordAggregateDocumentTest {
         f.routingFacts.counterpartyOnNetwork shouldBe null
         f.routingFacts.debitNote shouldBe null
         f.routingFacts.selfBillingAssignment shouldBe null
+    }
+
+    @Test
+    fun `INV-AC-29335 the aggregate path writes the type of each map key`() {
+        val applied = mapOf("MDE" to "7", "MAPPING" to "5", "SCOPE" to "3")
+        listOf("S1", "S2", "Z1").forEach { packs[it] = applied }
+        useCase.record(input())
+        staged.single().appliedPackVersions shouldBe
+            listOf(
+                AppliedPackVersion(packIdentifier = "SCOPE", version = "3", packType = "SCOPE"),
+                AppliedPackVersion(packIdentifier = "MAPPING", version = "5", packType = "MAPPING"),
+                AppliedPackVersion(packIdentifier = "MDE", version = "7", packType = "MDE"),
+            )
     }
 
     @Test

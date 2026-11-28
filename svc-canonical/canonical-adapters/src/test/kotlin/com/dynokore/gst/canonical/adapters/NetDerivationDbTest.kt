@@ -597,6 +597,37 @@ class NetDerivationDbTest : NetDerivationHarness() {
         packColumns(s, 2)[1] shouldBe "2.0.0"
     }
 
+    /** Each item of the stored event's appliedPackVersions as its whole member map, names compared exactly. */
+    private fun packItemsOfEvent(s: Seed): List<Map<String, String>> =
+        payload(outboxData(s, CREATED).single())
+            .get("appliedPackVersions")
+            .toList()
+            .map { item -> item.properties().associate { it.key to it.value.asString() } }
+
+    private fun packItem(
+        type: String,
+        version: String,
+    ) = mapOf("packType" to type, "packIdentifier" to type, "version" to version)
+
+    @Test
+    fun `INV-AC-29335 the stored path writes SCOPE, MAPPING and MDE pack types when the MDE column is set`() {
+        packs = Triple("1.0.0", "2.0.0", "3.0.0")
+        val s = seed()
+        handle(s, UUID.randomUUID(), base = 1)
+        packItemsOfEvent(s) shouldBe
+            listOf(packItem("SCOPE", "1.0.0"), packItem("MAPPING", "2.0.0"), packItem("MDE", "3.0.0"))
+        NetContractSchemas.errors(createdSchema, outboxData(s, CREATED).single()).shouldBeEmpty()
+    }
+
+    @Test
+    fun `INV-AC-29335 the stored path writes SCOPE and MAPPING pack types only when the MDE column is null`() {
+        packs = Triple("1.0.0", "2.0.0", null)
+        val s = seed()
+        handle(s, UUID.randomUUID(), base = 1)
+        packItemsOfEvent(s) shouldBe listOf(packItem("SCOPE", "1.0.0"), packItem("MAPPING", "2.0.0"))
+        NetContractSchemas.errors(createdSchema, outboxData(s, CREATED).single()).shouldBeEmpty()
+    }
+
     @Test
     fun `INV-AC-25342 a base with a null mapping pack stores nothing, stages nothing and leaves the mark unset`() {
         packs = Triple("1.0.0", null, null)
