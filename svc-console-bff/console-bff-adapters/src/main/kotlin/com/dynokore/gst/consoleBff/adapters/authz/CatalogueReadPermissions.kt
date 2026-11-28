@@ -161,6 +161,13 @@ class CatalogueReadPermissions(
                     "rendition-evidence.view",
                     entityPathVariable = "entityRef",
                 ),
+                Entry(
+                    "GET",
+                    "/bff/document-search",
+                    "searchDocuments",
+                    "submission.view-status",
+                    entityListRead = true,
+                ),
             )
     }
 }

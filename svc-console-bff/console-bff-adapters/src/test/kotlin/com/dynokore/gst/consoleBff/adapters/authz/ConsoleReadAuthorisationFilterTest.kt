@@ -15,6 +15,7 @@ import com.dynokore.platform.serviceruntime.replica.ReplicaFallback
 import com.dynokore.platform.serviceruntime.replica.RoleGrant
 import com.dynokore.platform.serviceruntime.replica.RoleGrantState
 import com.dynokore.platform.tenancykernel.TenantId
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
@@ -243,7 +244,7 @@ class ConsoleReadAuthorisationFilterTest {
     @Test
     fun `INV-AC-29110 the entity list reads of the production table are exactly this list`() {
         CatalogueReadPermissions.ENTRIES.filter { it.entityListRead }.map { it.operationId } shouldBe
-            listOf("getExceptions", "getPortfolio")
+            listOf("getExceptions", "getPortfolio", "searchDocuments")
     }
 
     @Test
@@ -705,11 +706,174 @@ class ConsoleReadAuthorisationEntityPathTest {
                 "/v1/portfolio",
                 "/bff/entities/{entityRef}/rendition-evidence",
                 "/bff/entities/{entityRef}/rendition-sample-checks/{checkId}/content",
+                "/bff/document-search",
             )
         table.entityPathVariableFor("GET", "/bff/entities/{entityRef}/rendition-evidence") shouldBe "entityRef"
     }
 
     private companion object {
         const val FIXTURE_ROLE = "fixture-holder"
+    }
+}
+
+/** INV-AC-29068: the document search route is decided by the read filter with the production table. */
+class ConsoleReadAuthorisationDocumentSearchTest {
+    private class FixedClock : Clock() {
+        override fun getZone(): ZoneId = ZoneOffset.UTC
+
+        override fun withZone(zone: ZoneId): Clock = this
+
+        override fun instant(): Instant = Instant.parse("2026-11-10T10:00:00Z")
+    }
+
+    private class Outcome(
+        val response: MockHttpServletResponse,
+        val chain: MockFilterChain,
+    ) {
+        val called get() = chain.request != null
+    }
+
+    private val clock = FixedClock()
+    private val tenant = TenantId.of("11111111-1111-1111-1111-111111111111")
+    private val asked = mutableListOf<String>()
+    private val replica =
+        AuthorityReplica(
+            clock,
+            OperationRoleMap { key ->
+                asked += key
+                mapOf((if (key == "submission.view-status") SEARCH_ROLE else OTHER_ROLE) to CellAllowance.PERMITTED)
+            },
+        ).apply { onSnapshotComplete(1) }
+    private val filter = ConsoleReadAuthorisationFilter(CatalogueReadPermissions(), replica, clock)
+    private var version = 1L
+
+    private fun grant(
+        scope: GrantScope,
+        ref: String,
+        role: String = SEARCH_ROLE,
+        state: RoleGrantState = RoleGrantState.ACTIVE,
+    ) = replica.accept(
+        AuthorityChanged(
+            tenant,
+            "p1",
+            ++version,
+            AuthorityRecord.RoleGrantRecord(
+                "g-$role-$ref",
+                state,
+                RoleGrant(role, scope, ref, clock.instant().minusSeconds(60)),
+            ),
+        ),
+    )
+
+    private fun search(
+        method: String = "GET",
+        uri: String = PATH,
+        entityRefs: List<String> = emptyList(),
+    ): Outcome {
+        val request = MockHttpServletRequest(method, uri).apply { requestURI = uri }
+        request.setAttribute(ConsoleSessionFilter.PRINCIPAL_ATTRIBUTE, "p1")
+        request.setAttribute(ConsoleSessionFilter.TENANT_ATTRIBUTE, tenant.toString())
+        entityRefs.forEach { request.addParameter("entityRef", it) }
+        val response = MockHttpServletResponse()
+        val chain = MockFilterChain()
+        filter.doFilter(request, response, chain)
+        return Outcome(response, chain)
+    }
+
+    /** No entityRef, the held one, one not held, a blank one and a repeated one: the filter reads none of them. */
+    private val entityRefQueries =
+        listOf(emptyList(), listOf("E1"), listOf("E9"), listOf(""), listOf("E1", "E9"))
+
+    private fun passesWithAndWithoutEntityRef() {
+        for (method in listOf("GET", "HEAD")) {
+            for (refs in entityRefQueries) {
+                val out = search(method, entityRefs = refs)
+                out.response.status shouldBe 200
+                out.called shouldBe true
+            }
+        }
+        asked.toSet() shouldBe setOf("submission.view-status")
+    }
+
+    private fun refused(out: Outcome) {
+        out.response.status shouldBe 403
+        out.response.contentAsString shouldContain "SRT-004"
+        out.called shouldBe false
+    }
+
+    private fun refusedWithAndWithoutEntityRef() {
+        for (method in listOf("GET", "HEAD")) {
+            for (refs in entityRefQueries) refused(search(method, entityRefs = refs))
+        }
+    }
+
+    @Test
+    fun `INV-AC-29068 a tenant-scope grant of a role listed for the key passes with and without entityRef`() {
+        grant(GrantScope.TENANT, tenant.toString())
+        passesWithAndWithoutEntityRef()
+    }
+
+    @Test
+    fun `INV-AC-29068 a grant of the key on one entity only passes with and without entityRef`() {
+        grant(GrantScope.ENTITY, "E1")
+        passesWithAndWithoutEntityRef()
+    }
+
+    @Test
+    fun `INV-AC-29068 no grant is refused`() {
+        refusedWithAndWithoutEntityRef()
+    }
+
+    @Test
+    fun `INV-AC-29068 a tenant-scope grant of another key only is refused`() {
+        grant(GrantScope.TENANT, tenant.toString(), OTHER_ROLE)
+        refusedWithAndWithoutEntityRef()
+    }
+
+    @Test
+    fun `INV-AC-29068 an entity-scoped grant of another key only is refused`() {
+        grant(GrantScope.ENTITY, "E1", OTHER_ROLE)
+        refusedWithAndWithoutEntityRef()
+    }
+
+    @Test
+    fun `INV-AC-29068 a revoked tenant-scope grant is refused on the next read`() {
+        grant(GrantScope.TENANT, tenant.toString())
+        search().called shouldBe true
+        grant(GrantScope.TENANT, tenant.toString(), state = RoleGrantState.REMOVED)
+        refusedWithAndWithoutEntityRef()
+    }
+
+    @Test
+    fun `INV-AC-29068 a revoked entity-scoped grant is refused on the next read`() {
+        grant(GrantScope.ENTITY, "E1")
+        search().called shouldBe true
+        grant(GrantScope.ENTITY, "E1", state = RoleGrantState.REMOVED)
+        refusedWithAndWithoutEntityRef()
+    }
+
+    @Test
+    fun `INV-AC-29068 the look-alike paths are refused even with a tenant-scope grant`() {
+        grant(GrantScope.TENANT, tenant.toString())
+        grant(GrantScope.ENTITY, "E1")
+        asked.clear()
+        for (uri in listOf("/bff/document-searches", "/bff/document-search/", "/bff/Document-Search")) {
+            refused(search(uri = uri))
+            refused(search(uri = uri, entityRefs = listOf("E1")))
+        }
+        asked shouldBe emptyList()
+    }
+
+    @Test
+    fun `INV-AC-29068 the search entry cannot be constructed with an entity parameter or path variable`() {
+        val e = CatalogueReadPermissions.ENTRIES.single { it.operationId == "searchDocuments" }
+        shouldThrow<IllegalArgumentException> { e.copy(entityParameter = "entityRef") }
+        shouldThrow<IllegalArgumentException> { e.copy(entityPathVariable = "entityRef") }
+    }
+
+    private companion object {
+        const val PATH = "/bff/document-search"
+        const val SEARCH_ROLE = "fixture-search-viewer"
+        const val OTHER_ROLE = "fixture-other-holder"
     }
 }

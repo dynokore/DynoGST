@@ -250,6 +250,54 @@ class ReadPermissionContractTest {
         check(ask("keyFor", "POST", template) == null) { "mapped for POST" }
     }
 
+    @Test
+    fun `INV-AC-29068 searchDocuments is one marked entry of its key naming no entity and is not unmapped`() {
+        val template = "/bff/document-search"
+        val e =
+            CatalogueReadPermissions.ENTRIES
+                .single { it.operationId == "searchDocuments" || it.pathTemplate == template }
+        check(
+            e ==
+                CatalogueReadPermissions.Entry(
+                    "GET",
+                    template,
+                    "searchDocuments",
+                    "submission.view-status",
+                    entityListRead = true,
+                ),
+        ) { "entry: $e" }
+        check(DOMAINS.none { it.operationId == e.operationId || it.pathTemplate == template }) { "also domain-keyed" }
+        check("searchDocuments" !in EXPECTED_UNMAPPED) { "searchDocuments is still listed as unmapped" }
+        check(Op("searchDocuments", template) in getOperations(openapi)) { "not in the pinned contract" }
+        check("submission.view-status" in allKeys()) { "key not in the generated map of the pinned catalogue" }
+        check(real().isEmpty()) { "${real()}" }
+        check(ask("keyFor", "GET", template) == "submission.view-status") { "key of the route" }
+        check(ask("admitsAnyEntityFor", "GET", template) == true) { "not an entity list read" }
+        check(ask("entityParameterFor", "GET", template) == null) { "a query parameter names the entity" }
+        check(ask("entityPathVariableFor", "GET", template) == null) { "a path variable names the entity" }
+        check(ask("entityRefFor", "GET", template) == null) { "an entity is taken from the path" }
+    }
+
+    @Test
+    fun `INV-AC-29068 the contract check fails on the search entry removed, misspelled or left unmapped`() {
+        val e = CatalogueReadPermissions.ENTRIES.single { it.operationId == "searchDocuments" }
+        val others = CatalogueReadPermissions.ENTRIES.filter { it != e }
+
+        fun offences(
+            table: List<CatalogueReadPermissions.Entry>,
+            unmapped: Set<String> = EXPECTED_UNMAPPED,
+        ) = findings(getOperations(openapi), table, DOMAINS, unmapped, allKeys())
+        val removed = offences(others)
+        check(removed == listOf("GET operation not in the table or the unmapped list: searchDocuments")) { "$removed" }
+        val misspelled = offences(others + e.copy(permissionKey = "submission.view-statuss"))
+        check(
+            misspelled ==
+                listOf("table key of searchDocuments is not listed by the generated map: submission.view-statuss"),
+        ) { "$misspelled" }
+        val both = offences(CatalogueReadPermissions.ENTRIES, EXPECTED_UNMAPPED + "searchDocuments")
+        check(both == listOf("operation both in the table and unmapped: searchDocuments")) { "$both" }
+    }
+
     /**
      * One lookup in the real table. It is called by reflection: the table implements a port of the application module,
      * which is not on the compile classpath of this module.
@@ -292,7 +340,6 @@ class ReadPermissionContractTest {
             setOf(
                 "getExceptionDecisionTrace",
                 "getOverridePreview",
-                "searchDocuments",
                 "compareDocumentVersions",
             )
     }
