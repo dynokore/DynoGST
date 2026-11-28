@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: reconciliation API
-  version: 1.13.0
+  version: 1.14.0
   description: >-
     Contract-first source of truth for reconciliation (API-01, STK-44). The
     `reconciliation-contract` module generates its server interfaces and DTOs
@@ -336,6 +336,9 @@ paths:
       x-timeout: 2000
       x-error-codes: []
       x-requirements: []
+      x-operation:
+        kind: PERMISSION
+        permission: reconciliation.view
       parameters:
         - $ref: '#/components/parameters/EntityRef'
         - $ref: '#/components/parameters/PeriodRef'
@@ -425,6 +428,9 @@ paths:
       x-timeout: 2000
       x-error-codes: []
       x-requirements: []
+      x-operation:
+        kind: PERMISSION
+        permission: reconciliation.view
       parameters:
         - $ref: '#/components/parameters/RunId'
       responses:
