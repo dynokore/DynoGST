@@ -20,6 +20,7 @@ import org.junit.jupiter.api.Test
 import tools.jackson.module.kotlin.jacksonObjectMapper
 import java.sql.Connection
 import java.time.Instant
+import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -61,9 +62,9 @@ class ReadinessReplaySourceDbTest {
     private fun seed() {
         SubmissionDb.superuser().use { c ->
             // E1/P1 signalled 08:00, E1/P2 09:00, E2/P1 10:00, E10/P1 11:00; tenant b holds E1/P1 at 09:30
-            val hours = mapOf("E1/P1" to 8, "E1/P2" to 9, "E2/P1" to 10, "E10/P1" to 11)
-            snapshots.forEach { (key, s) -> insert(c, a, key, s, hours.getValue(key), 0) }
-            insert(c, b, "E1/P1", snapshots.getValue("E1/P1"), 9, 30)
+            val times = mapOf("E1/P1" to "08:00", "E1/P2" to "09:00", "E2/P1" to "10:00", "E10/P1" to "11:00")
+            snapshots.forEach { (key, s) -> insert(c, a, key, s, times.getValue(key)) }
+            insert(c, b, "E1/P1", snapshots.getValue("E1/P1"), "09:30")
         }
     }
 
@@ -72,8 +73,7 @@ class ReadinessReplaySourceDbTest {
         tenant: UUID,
         key: String,
         s: ReadinessSnapshot,
-        hour: Int,
-        minute: Int,
+        time: String,
     ) {
         val (entity, period) = key.split('/')
         val counts = s.countsByState.entries.joinToString(",", "{", "}") { "\"${it.key.name}\":${it.value}" }
@@ -82,7 +82,7 @@ class ReadinessReplaySourceDbTest {
                 "insert into submission.readiness_signal values " +
                     "('$tenant', '$entity', '$period', '${s.verdict.name}', " +
                     "${s.blockedCount}, '$counts'::jsonb, " +
-                    "timestamptz '2026-11-21 %02d:%02d:00+00')".format(hour, minute),
+                    "timestamptz '2026-11-21 $time:00+00')",
             )
         }
     }
@@ -131,7 +131,7 @@ class ReadinessReplaySourceDbTest {
     private fun at(
         hour: Int,
         minute: Int = 0,
-    ) = Instant.parse("2026-11-21T%02d:%02d:00Z".format(hour, minute))
+    ) = Instant.parse(String.format(Locale.ROOT, "2026-11-21T%02d:%02d:00Z", hour, minute))
 
     @Test
     fun `INV-AC-29140 the full scope returns each stored signal once with the live data, page by page`() {
