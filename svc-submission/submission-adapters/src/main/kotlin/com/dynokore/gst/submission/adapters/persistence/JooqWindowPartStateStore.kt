@@ -15,15 +15,16 @@ import java.time.OffsetDateTime
  * [WindowPartStates] over `submission.window_part_state`: one statement, `insert ... on conflict do update ... where
  * stored state_version < new`, in one transaction of the bound tenant (INV-REQ-792, ruled case 4). FAILING is stored
  * as LATE, NOT_FAILING as CLOSED, OPEN as OPEN, MISSED as MISSED. The row key includes the business unit and category,
- * so the event of one window never changes the row of another (INV-REQ-413). `missed_at` is the transaction instant of the write
- * that made the row MISSED: a later MISSED keeps it and any other state clears it (INV-REQ-413). Values are never
- * logged.
+ * so the event of one window never changes the row of another. `missed_at` is the transaction instant of the write that
+ * made the row MISSED: a later MISSED keeps it and any other state clears it (INV-REQ-413). Values are never logged.
  */
 class JooqWindowPartStateStore(
     private val dsl: DSLContext,
     private val runner: TransactionRunner,
 ) : WindowPartStates {
     private val w = WindowPartState.WINDOW_PART_STATE
+    private val rowKey =
+        listOf(w.TENANT_ID, w.ENTITY_REF, w.PERIOD_REF, w.PART_FROM, w.PART_TO, w.BUSINESS_UNIT_REF, w.AGGREGATE_TYPE)
 
     @Suppress("LongParameterList")
     override fun record(
@@ -61,15 +62,8 @@ class JooqWindowPartStateStore(
                 .set(w.STATE, column)
                 .set(w.STATE_VERSION, stateVersion)
                 .set(w.MISSED_AT, if (missed) now else noInstant)
-                .onConflict(
-                    w.TENANT_ID,
-                    w.ENTITY_REF,
-                    w.PERIOD_REF,
-                    w.PART_FROM,
-                    w.PART_TO,
-                    w.BUSINESS_UNIT_REF,
-                    w.AGGREGATE_TYPE,
-                ).doUpdate()
+                .onConflict(rowKey)
+                .doUpdate()
                 .set(w.STATE, column)
                 .set(w.STATE_VERSION, stateVersion)
                 .set(w.MISSED_AT, if (missed) keptOrNow else noInstant)

@@ -54,7 +54,10 @@ class JacksonAggregateWindowChangedDataReader : AggregateWindowChangedDataReader
         if (hasUnit != data.has("aggregateType")) {
             throw ContractViolation("AggregateWindowChanged businessUnitRef and aggregateType must come together")
         }
-        if (!hasUnit) return WindowIdentity.NONE
+        return if (hasUnit) namedIdentityOf(data) else WindowIdentity.NONE
+    }
+
+    private fun namedIdentityOf(data: JsonNode): WindowIdentity {
         val unit = data.text("businessUnitRef", "businessUnitRef")
         if (unit.isBlank() || unit.codePointCount(0, unit.length) > MAX_BUSINESS_UNIT_LENGTH) {
             throw ContractViolation("AggregateWindowChanged businessUnitRef is blank or too long")
