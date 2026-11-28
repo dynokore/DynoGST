@@ -1,5 +1,6 @@
 package com.dynokore.gst.tenancy.bootstrap
 
+import com.dynokore.gst.tenancy.adapters.persistence.JooqReplayReader
 import com.dynokore.gst.tenancy.application.election.ElectionPolicyStore
 import com.dynokore.gst.tenancy.application.election.ElectionRecord
 import com.dynokore.gst.tenancy.application.election.ExemptPurchaseElectionStore
@@ -9,6 +10,8 @@ import com.dynokore.gst.tenancy.domain.ElectionKind
 import com.dynokore.platform.configresolver.PolicyHistory
 import com.dynokore.platform.tenancykernel.TenantContext
 import org.assertj.core.api.Assertions.assertThat
+import org.jooq.SQLDialect
+import org.jooq.impl.DSL
 import org.junit.jupiter.api.Test
 import java.lang.reflect.Proxy
 import java.time.LocalDate
@@ -82,7 +85,12 @@ class ApportionmentModeReplayTest {
 
     @Test
     fun `INV-AC-26475 case 3 the replay reader composition for E1 carries both families`() {
-        val entries = replayProfileEntries(store)("E1")
+        val reader = ReplaySourcesConfiguration().replayReader(DSL.using(SQLDialect.POSTGRES), tenants(), store)
+        // the function the bean passes: the reader keeps it private and reads it only with a database
+        val field = JooqReplayReader::class.java.getDeclaredField("extraEntries").apply { isAccessible = true }
+
+        @Suppress("UNCHECKED_CAST")
+        val entries = (field.get(reader) as (String) -> List<ProfileEntry>)("E1")
         assertThat(entries).isEqualTo(
             listOf(
                 ProfileEntry("purchaseDateBasis", "INVOICE_DATE", day("2026-01-01")),
